@@ -3335,26 +3335,48 @@ function PesosScreen({ exercises, onAddExercise, onSetBase, onRemoveExercise, on
 
 function PesosExerciseCard({ exercise, onSetBase, onRemove, editable }) {
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [baseInput, setBaseInput] = useState(exercise.baseKg || "");
 
   const save = () => {
     const v = parseFloat(baseInput);
     if (!isNaN(v) && v > 0) onSetBase(v);
     setEditing(false);
+    setExpanded(true);
   };
 
   return (
-    <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 700, margin: 0 }}>{exercise.name}</p>
+    <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 12, position: "relative" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: (editing || expanded) ? 8 : 0 }}>
+        <p
+          className="vir-btn"
+          onClick={() => setExpanded(!expanded)}
+          style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 700, margin: 0, flex: 1, cursor: "pointer" }}
+        >
+          {exercise.name} <span style={{ color: "#8A8A8A", fontSize: 11 }}>{expanded ? "▲" : "▼"}</span>
+        </p>
         {editable && (
-          <div style={{ display: "flex", gap: 4 }}>
-            <button className="vir-btn" onClick={() => { setBaseInput(exercise.baseKg || ""); setEditing(!editing); }} style={{ background: "transparent", color: "#ADADAD", padding: 4 }}>
-              <Pencil size={14} />
+          <button className="vir-btn" onClick={() => setMenuOpen(!menuOpen)} style={{ background: "transparent", color: "#ADADAD", padding: "4px 6px", fontSize: 18, lineHeight: 1 }}>
+            ⋮
+          </button>
+        )}
+        {menuOpen && (
+          <div style={{ position: "absolute", top: 38, right: 12, zIndex: 10, background: "#333333", border: "1px solid #565656", borderRadius: 10, overflow: "hidden", minWidth: 160, boxShadow: "0 8px 20px rgba(0,0,0,.4)" }}>
+            <button
+              className="vir-btn"
+              onClick={() => { setBaseInput(exercise.baseKg || ""); setEditing(true); setExpanded(true); setMenuOpen(false); }}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "11px 14px", color: "#F5F5F5", fontSize: 13, background: "transparent", borderBottom: "1px solid #565656" }}
+            >
+              Modificar peso
             </button>
             {onRemove && (
-              <button className="vir-btn" onClick={onRemove} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
-                <X size={14} />
+              <button
+                className="vir-btn"
+                onClick={() => { setMenuOpen(false); onRemove(); }}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "11px 14px", color: "#FF8890", fontSize: 13, background: "transparent" }}
+              >
+                Eliminar ejercicio
               </button>
             )}
           </div>
@@ -3369,11 +3391,14 @@ function PesosExerciseCard({ exercise, onSetBase, onRemove, editable }) {
             placeholder="Kg"
             style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 10 }}
           />
-          <button className="vir-btn" onClick={save} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13 }}>Guardar</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="vir-btn" onClick={save} style={{ ...primaryBtn, flex: 1, padding: "11px 0", fontSize: 13 }}>Guardar</button>
+            <button className="vir-btn" onClick={() => setEditing(false)} style={{ ...ghostBtn, flex: 1, padding: "11px 0", fontSize: 13 }}>Cancelar</button>
+          </div>
         </div>
       ) : !exercise.baseKg ? (
-        <p style={{ color: "#8A8A8A", fontSize: 12, margin: 0 }}>{editable ? "Toca el lápiz para registrar el 100%." : "Tu entrenador todavía no ha registrado esta marca."}</p>
-      ) : (
+        expanded && <p style={{ color: "#8A8A8A", fontSize: 12, margin: 0 }}>{editable ? "Abre el menú (⋮) para registrar el 100%." : "Tu entrenador todavía no ha registrado esta marca."}</p>
+      ) : expanded ? (
         <>
           <p style={{ color: "#8A8A8A", fontSize: 11, margin: "0 0 8px" }}>Registro (100%): <span className="vir-mono" style={{ color: "#F5F5F5" }}>{exercise.baseKg} kg</span></p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
@@ -3387,7 +3412,7 @@ function PesosExerciseCard({ exercise, onSetBase, onRemove, editable }) {
             ))}
           </div>
         </>
-      )}
+      ) : null}
     </div>
   );
 }
