@@ -279,6 +279,12 @@ export default function ViradaPrototype() {
         setRoleOverrides(prev => ({ ...prev, ...roles }));
         setPasswords(prev => ({ ...prev, ...pwds }));
       }
+      const { data: teamsData, error: teamsErr } = await supabase.from("teams").select("*");
+      if (!teamsErr && teamsData) {
+        setTeams(teamsData.map(t => ({ id: t.id, clubId: t.club_id, name: t.name, code: t.code })));
+        // los entrenos de agua siguen generándose en memoria por ahora (todavía no migrados a Supabase)
+        setSessions(teamsData.flatMap(t => buildSessions(t.id)));
+      }
     };
     loadData();
   }, []);
@@ -385,14 +391,21 @@ export default function ViradaPrototype() {
 
   const teamName = (id) => teams.find(t => t.id === id)?.name || "—";
   const teamCode = (id) => teams.find(t => t.id === id)?.code || "—";
-  const addTeam = (name) => {
-    const id = `t${Date.now()}`;
-    setTeams(prev => [...prev, { id, clubId: currentClubId, name, code: randomTeamCode() }]);
-    setSessions(prev => [...prev, ...buildSessions(id)]);
+  const addTeam = async (name) => {
+    const code = randomTeamCode();
+    const { data, error } = await supabase.from("teams").insert({
+      club_id: currentClubId, name, code,
+    }).select().single();
+    if (error) { flash("No se pudo crear la tripulación. Inténtalo de nuevo."); return; }
+    const newTeam = { id: data.id, clubId: data.club_id, name: data.name, code: data.code };
+    setTeams(prev => [...prev, newTeam]);
+    setSessions(prev => [...prev, ...buildSessions(data.id)]);
     flash(`Tripulación "${name}" creada`);
   };
-  const removeTeam = (id) => {
+  const removeTeam = async (id) => {
     const t = teams.find(t => t.id === id);
+    const { error } = await supabase.from("teams").delete().eq("id", id);
+    if (error) { flash("No se pudo eliminar la tripulación. Inténtalo de nuevo."); return; }
     setTeams(prev => prev.filter(t => t.id !== id));
     setSessions(prev => prev.filter(s => s.teamId !== id));
     setCoachTeams(prev => Object.fromEntries(Object.entries(prev).map(([cid, ids]) => [cid, ids.filter(tid => tid !== id)])));
