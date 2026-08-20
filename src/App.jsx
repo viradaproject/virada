@@ -274,10 +274,11 @@ export default function ViradaPrototype() {
         }));
         setAssignedUsers(activeUsers);
         setPendingUsers(pendingList);
-        const roles = {}, pwds = {};
-        usersData.forEach(u => { if (u.role) roles[u.id] = u.role; pwds[u.id] = u.password_hash; });
+        const roles = {}, pwds = {}, emails = {};
+        usersData.forEach(u => { if (u.role) roles[u.id] = u.role; pwds[u.id] = u.password_hash; if (u.recovery_email) emails[u.id] = u.recovery_email; });
         setRoleOverrides(prev => ({ ...prev, ...roles }));
         setPasswords(prev => ({ ...prev, ...pwds }));
+        setRecoveryEmails(prev => ({ ...prev, ...emails }));
       }
       const { data: teamsData, error: teamsErr } = await supabase.from("teams").select("*");
       if (!teamsErr && teamsData) {
@@ -310,14 +311,22 @@ export default function ViradaPrototype() {
     const seq = ROWERS.length + idx + 1;
     return `${joinYear}${clubCode}${String(seq).padStart(4, "0")}`;
   };
-  const updateMyProfile = ({ apodo, side, email, newPassword }) => {
+  const updateMyProfile = async ({ apodo, side, email, newPassword }) => {
+    const updates = { nickname: apodo, side };
+    if (email !== undefined) updates.recovery_email = email;
+    if (newPassword) updates.password_hash = await hashPassword(newPassword);
+    const { error } = await supabase.from("users").update(updates).eq("id", currentUserId);
+    if (error) { flash("No se pudo actualizar el perfil. Inténtalo de nuevo."); return; }
     setNicknameOverrides(prev => ({ ...prev, [currentUserId]: apodo }));
     setSideOverrides(prev => ({ ...prev, [currentUserId]: side }));
     if (email !== undefined) setRecoveryEmails(prev => ({ ...prev, [currentUserId]: email }));
-    if (newPassword) setPasswords(prev => ({ ...prev, [currentUserId]: newPassword }));
+    if (newPassword) setPasswords(prev => ({ ...prev, [currentUserId]: updates.password_hash }));
+    setAssignedUsers(prev => prev.map(u => u.id === currentUserId ? { ...u, apodo, side } : u));
     flash("Perfil actualizado");
   };
-  const updateClubName = (name) => {
+  const updateClubName = async (name) => {
+    const { error } = await supabase.from("clubs").update({ name }).eq("id", currentClubId);
+    if (error) { flash("No se pudo actualizar el nombre del club. Inténtalo de nuevo."); return; }
     setClubs(prev => prev.map(c => c.id === currentClubId ? { ...c, name } : c));
     flash("Nombre del club actualizado");
   };
