@@ -548,24 +548,23 @@ export default function ViradaPrototype() {
 
   const [pesosExercises, setPesosExercises] = useState({}); // { [rowerId]: [{id,name,baseKg}] }
   const pesosExercisesOf = (id) => pesosExercises[id] || [];
-  const addPesosExercise = (name) => {
-    setPesosExercises(prev => ({ ...prev, [currentUserId]: [...(prev[currentUserId] || []), { id: `ex${Date.now()}`, name, baseKg: null }] }));
+  const addPesosExercise = (rowerId, name) => {
+    setPesosExercises(prev => ({ ...prev, [rowerId]: [...(prev[rowerId] || []), { id: `ex${Date.now()}`, name, baseKg: null }] }));
   };
-  const setPesosExerciseBase = (exId, kg) => {
-    setPesosExercises(prev => ({ ...prev, [currentUserId]: (prev[currentUserId] || []).map(ex => ex.id === exId ? { ...ex, baseKg: kg } : ex) }));
+  const setPesosExerciseBase = (rowerId, exId, kg) => {
+    setPesosExercises(prev => ({ ...prev, [rowerId]: (prev[rowerId] || []).map(ex => ex.id === exId ? { ...ex, baseKg: kg } : ex) }));
     flash("Registro actualizado");
   };
+  const removePesosExercise = (rowerId, exId) => {
+    setPesosExercises(prev => ({ ...prev, [rowerId]: (prev[rowerId] || []).filter(ex => ex.id !== exId) }));
+    flash("Ejercicio eliminado");
+  };
 
-  const [ergoTests, setErgoTests] = useState({}); // { [rowerId]: watts }
-  const [ergoZoneNotes, setErgoZoneNotes] = useState({}); // { [rowerId]: { Z0: "...", ... } }
-  const setErgoTest = (watts) => {
-    setErgoTests(prev => ({ ...prev, [currentUserId]: watts }));
+  const [ergoTestTimes, setErgoTestTimes] = useState({}); // { [rowerId]: "mm:ss" del TEST 1600 }
+  const setErgoTest = (timeStr) => {
+    setErgoTestTimes(prev => ({ ...prev, [currentUserId]: timeStr }));
     flash("TEST 1600 actualizado");
   };
-  const setErgoZoneNote = (zone, value) => {
-    setErgoZoneNotes(prev => ({ ...prev, [currentUserId]: { ...(prev[currentUserId] || {}), [zone]: value } }));
-  };
-
   const [gymPlans, setGymPlans] = useState({}); // { [teamId]: { [week]: { fisico1..4: content } } }
   const [gymCompletion, setGymCompletion] = useState({}); // { [rowerId]: { "teamId-week-slot": { done, photo } } }
   const currentWeek = Math.ceil(today.getDate() / 7);
@@ -815,7 +814,7 @@ export default function ViradaPrototype() {
                   attendance={attendanceStats}
                   crewStats={statsFor(currentUserId)}
                   pesosExercises={pesosExercisesOf(currentUserId)}
-                  ergoTest={ergoTests[currentUserId] || null}
+                  ergoTest={ergoTestTimes[currentUserId] ? Math.round(wattsFromTestTime(ergoTestTimes[currentUserId])) : null}
                   onNavigate={(id) => setScreen(id)}
                   myId={currentUserId}
                   myName={displayNameOf(currentUserId)}
@@ -889,13 +888,14 @@ export default function ViradaPrototype() {
                   statsFor={statsFor}
                   totalPastActive={totalPastActiveFor(teamOf(openPerson.id))}
                   pesosExercises={pesosExercisesOf(openPerson.id)}
-                  ergoTest={ergoTests[openPerson.id] || null}
+                  ergoTest={ergoTestTimes[openPerson.id] ? Math.round(wattsFromTestTime(ergoTestTimes[openPerson.id])) : null}
                   currentWeek={currentWeek}
                   weekPlanFor={gymWeekPlan}
                   recordFor={(teamId, week, slot) => gymRecordOf(openPerson.id, teamId, week, slot)}
                   waterWeekMonth={waterStatsFor(openPerson.id, teamOf(openPerson.id))}
                   gymWeekMonth={gymStatsFor(openPerson.id, teamOf(openPerson.id))}
                   onViewPhoto={(photo, caption) => setViewPhoto({ photo, caption })}
+                  onOpenPesos={() => setScreen("coachPesos")}
                 />
               )}
               {screen === "home" && role === "club" && (
@@ -1047,17 +1047,28 @@ export default function ViradaPrototype() {
               {screen === "testPesos" && role === "rower" && (
                 <PesosScreen
                   exercises={pesosExercisesOf(currentUserId)}
-                  onAddExercise={addPesosExercise}
-                  onSetBase={setPesosExerciseBase}
+                  onAddExercise={(name) => addPesosExercise(currentUserId, name)}
+                  onSetBase={(exId, kg) => setPesosExerciseBase(currentUserId, exId, kg)}
+                  onRemoveExercise={(exId) => removePesosExercise(currentUserId, exId)}
                   onBack={() => setScreen("profile")}
+                  editable
+                />
+              )}
+              {screen === "coachPesos" && (role === "coach" || role === "admin") && openPerson && (
+                <PesosScreen
+                  exercises={pesosExercisesOf(openPerson.id)}
+                  onAddExercise={(name) => addPesosExercise(openPerson.id, name)}
+                  onSetBase={(exId, kg) => setPesosExerciseBase(openPerson.id, exId, kg)}
+                  onRemoveExercise={(exId) => removePesosExercise(openPerson.id, exId)}
+                  onBack={() => setScreen("coachRowerDetail")}
+                  editable={false}
+                  subtitle={`Test de pesos de ${openPerson.name} · lo gestiona el propio remero desde su perfil`}
                 />
               )}
               {screen === "zonasErgo" && role === "rower" && (
                 <ErgoZonesScreen
-                  testWatts={ergoTests[currentUserId] || null}
+                  testTime={ergoTestTimes[currentUserId] || null}
                   onSetTest={setErgoTest}
-                  zoneNotes={ergoZoneNotes[currentUserId] || {}}
-                  onSetZoneNote={setErgoZoneNote}
                   onBack={() => setScreen("profile")}
                 />
               )}
@@ -1067,7 +1078,7 @@ export default function ViradaPrototype() {
                   attendance={attendanceStats}
                   crewStats={statsFor(currentUserId)}
                   pesosCount={pesosExercisesOf(currentUserId).length}
-                  ergoTestSet={!!ergoTests[currentUserId]}
+                  ergoTestSet={!!ergoTestTimes[currentUserId]}
                   waterWeekMonth={waterStatsFor(currentUserId, myTeamId)}
                   gymWeekMonth={gymStatsFor(currentUserId, myTeamId)}
                   currentWeek={currentWeek}
@@ -1574,7 +1585,7 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
   );
 }
 
-function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, totalPastActive, pesosExercises, ergoTest, currentWeek, weekPlanFor, recordFor, waterWeekMonth, gymWeekMonth, onViewPhoto }) {
+function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, totalPastActive, pesosExercises, ergoTest, currentWeek, weekPlanFor, recordFor, waterWeekMonth, gymWeekMonth, onViewPhoto, onOpenPesos }) {
   const s = statsFor(person.id);
   const freq = totalPastActive > 0 ? Math.round((s.entrenado / totalPastActive) * 100) : 0;
   const registeredExercises = pesosExercises.filter(ex => ex.baseKg).length;
@@ -1662,10 +1673,13 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
           </div>
         </>
       ) : (
-        <p style={{ color: "#8A8A8A", fontSize: 12.5, lineHeight: 1.5 }}>
-          Los registros de pesos y ergo son personales de cada remero. Este remero aún no ha compartido ninguno desde su perfil.
+        <p style={{ color: "#8A8A8A", fontSize: 12.5, lineHeight: 1.5, marginBottom: 12 }}>
+          Todavía no hay ningún registro de pesos ni de ergo para este remero.
         </p>
       )}
+      <button className="vir-btn" onClick={onOpenPesos} style={{ ...primaryBtn, padding: "11px 0", fontSize: 12.5 }}>
+        Ver Test de pesos
+      </button>
     </div>
   );
 }
@@ -3250,11 +3264,48 @@ function PhotoField({ photo, onChange, jpgOnly, allowPdf }) {
   );
 }
 
-const PESOS_PCTS = [100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50, 45, 40, 35, 30];
+const PESOS_PCTS = Array.from({ length: 21 }, (_, i) => 100 - i * 5); // 100 → 0, saltos de 5
 const ERGO_ZONES = ["Z0", "Z1", "Z2", "Z3", "Z4", "Z5", "Z6"];
-const ERGO_PCTS = Array.from({ length: 25 }, (_, i) => 150 - i * 5); // 150 → 30, saltos de 5
+const ERGO_PCTS = Array.from({ length: 23 }, (_, i) => 150 - i * 5); // 150 → 40, saltos de 5
+// Bandas de intensidad por zona, como % del TEST (fórmula fija, igual para todos)
+const ERGO_ZONE_BANDS = {
+  Z0: [40, 50], Z1: [50, 60], Z2: [60, 70], Z3: [70, 80],
+  Z4: [80, 90], Z5: [90, 100], Z6: [100, 115],
+};
+const parseErgoTime = (str) => {
+  const m = (str || "").trim().match(/^(\d{1,2}):(\d{2})(?:\.(\d))?$/);
+  if (!m) return null;
+  return (+m[1]) * 60 + (+m[2]) + (m[3] ? +m[3] / 10 : 0);
+};
+// Fórmula estándar de ergómetro (Concept2): vatios = 2.80 / (ritmo por 500m en segundos / 500) ^ 3
+const wattsFromTestTime = (timeStr, distanceM = 1600) => {
+  const seconds = parseErgoTime(timeStr);
+  if (!seconds) return null;
+  const splitPer500 = (seconds * 500) / distanceM;
+  return 2.8 / Math.pow(splitPer500 / 500, 3);
+};
+// Bandas de zona como % del vatiaje base (calculado a partir del tiempo del test)
+const ERGO_ZONE_BANDS = {
+  Z0: [0.40, 0.55],
+  Z1: [0.55, 0.65],
+  Z2: [0.65, 0.75],
+  Z3: [0.75, 0.85],
+  Z4: [0.85, 0.95],
+  Z5: [0.95, 1.05],
+  Z6: [1.05, 1.20],
+};
+const parseTestTime = (str) => {
+  const m = (str || "").trim().match(/^(\d+):(\d{1,2})(?:[.,](\d))?$/);
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + (m[3] ? parseInt(m[3], 10) / 10 : 0);
+};
+// Fórmula estándar de ergómetro: watts = 2.80 / (seg por metro)^3
+const wattsFromTest1600 = (timeSeconds) => {
+  if (!timeSeconds || timeSeconds <= 0) return null;
+  return Math.round(2.8 * Math.pow(1600 / timeSeconds, 3));
+};
 
-function PesosScreen({ exercises, onAddExercise, onSetBase, onBack }) {
+function PesosScreen({ exercises, onAddExercise, onSetBase, onRemoveExercise, onBack, editable, subtitle }) {
   const [search, setSearch] = useState("");
   const [newExercise, setNewExercise] = useState("");
 
@@ -3265,28 +3316,43 @@ function PesosScreen({ exercises, onAddExercise, onSetBase, onBack }) {
       <BackRow onBack={onBack} />
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Test de pesos</h2>
       <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 16px", lineHeight: 1.4 }}>
-        Cada ejercicio tiene su propia tabla de porcentajes de trabajo, calculada a partir del registro (100%).
+        {subtitle || "Cada ejercicio tiene su propia tabla de porcentajes de trabajo, calculada a partir del registro (100%)."}
       </p>
+      {!editable && (
+        <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "0 0 16px", lineHeight: 1.4 }}>
+          🔒 Solo consulta — lo gestiona el propio remero desde su perfil.
+        </p>
+      )}
 
       <div style={{ position: "relative", marginBottom: 16 }}>
         <Search size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar ejercicio" style={{ ...inputStyle, paddingLeft: 34 }} />
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        <input value={newExercise} onChange={e => setNewExercise(e.target.value)} placeholder="Nuevo ejercicio (ej. Sentadilla)" style={{ ...inputStyle, padding: "9px 11px", fontSize: 12.5, flex: 1 }} />
-        <button className="vir-btn" onClick={() => { if (newExercise.trim()) { onAddExercise(newExercise.trim()); setNewExercise(""); } }} style={{ ...primaryBtn, padding: "9px 16px", fontSize: 12.5 }}>Crear</button>
-      </div>
+      {editable && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          <input value={newExercise} onChange={e => setNewExercise(e.target.value)} placeholder="Nuevo ejercicio (ej. Sentadilla)" style={{ ...inputStyle, padding: "11px", fontSize: 16, flex: 1, minWidth: 0 }} />
+          <button className="vir-btn" onClick={() => { if (newExercise.trim()) { onAddExercise(newExercise.trim()); setNewExercise(""); } }} style={{ ...primaryBtn, padding: "9px 16px", fontSize: 12.5 }}>Crear</button>
+        </div>
+      )}
 
-      {visible.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13 }}>Sin ejercicios que coincidan con la búsqueda.</p>}
+      {visible.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13 }}>{exercises.length === 0 ? "Todavía no hay ejercicios registrados." : "Sin ejercicios que coincidan con la búsqueda."}</p>}
       {visible.map(ex => (
-        <PesosExerciseCard key={ex.id} exercise={ex} onSetBase={(kg) => onSetBase(ex.id, kg)} />
+        <PesosExerciseCard
+          key={ex.id}
+          exercise={ex}
+          onSetBase={(kg) => onSetBase(ex.id, kg)}
+          onRemove={onRemoveExercise ? () => {
+            if (window.confirm(`¿Eliminar "${ex.name}"? Se perderá su registro y su tabla de porcentajes.`)) onRemoveExercise(ex.id);
+          } : null}
+          editable={editable}
+        />
       ))}
     </div>
   );
 }
 
-function PesosExerciseCard({ exercise, onSetBase }) {
+function PesosExerciseCard({ exercise, onSetBase, onRemove, editable }) {
   const [editing, setEditing] = useState(false);
   const [baseInput, setBaseInput] = useState(exercise.baseKg || "");
 
@@ -3300,22 +3366,31 @@ function PesosExerciseCard({ exercise, onSetBase }) {
     <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 700, margin: 0 }}>{exercise.name}</p>
-        <button className="vir-btn" onClick={() => { setBaseInput(exercise.baseKg || ""); setEditing(!editing); }} style={{ background: "transparent", color: "#ADADAD", padding: 4 }}>
-          <Pencil size={14} />
-        </button>
+        {editable && (
+          <div style={{ display: "flex", gap: 4 }}>
+            <button className="vir-btn" onClick={() => { setBaseInput(exercise.baseKg || ""); setEditing(!editing); }} style={{ background: "transparent", color: "#ADADAD", padding: 4 }}>
+              <Pencil size={14} />
+            </button>
+            {onRemove && (
+              <button className="vir-btn" onClick={onRemove} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {editing ? (
-        <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 4 }}>
           <input
-            type="number" value={baseInput} onChange={e => setBaseInput(e.target.value)}
+            type="number" inputMode="decimal" value={baseInput} onChange={e => setBaseInput(e.target.value)}
             placeholder="Registro al 100% (kg)"
-            style={{ ...inputStyle, padding: "8px 10px", fontSize: 12.5, flex: 1 }}
+            style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%" }}
           />
-          <button className="vir-btn" onClick={save} style={{ ...primaryBtn, padding: "0 16px", fontSize: 12 }}>Guardar</button>
+          <button className="vir-btn" onClick={save} style={{ ...primaryBtn, padding: "10px 0", fontSize: 13 }}>Guardar</button>
         </div>
       ) : !exercise.baseKg ? (
-        <p style={{ color: "#8A8A8A", fontSize: 12, margin: 0 }}>Toca el lápiz para registrar tu marca al 100%.</p>
+        <p style={{ color: "#8A8A8A", fontSize: 12, margin: 0 }}>{editable ? "Toca el lápiz para registrar el 100%." : "Tu entrenador todavía no ha registrado esta marca."}</p>
       ) : (
         <>
           <p style={{ color: "#8A8A8A", fontSize: 11, margin: "0 0 8px" }}>Registro (100%): <span className="vir-mono" style={{ color: "#F5F5F5" }}>{exercise.baseKg} kg</span></p>
@@ -3335,13 +3410,14 @@ function PesosExerciseCard({ exercise, onSetBase }) {
   );
 }
 
-function ErgoZonesScreen({ testWatts, onSetTest, zoneNotes, onSetZoneNote, onBack }) {
+function ErgoZonesScreen({ testTime, onSetTest, onBack }) {
   const [editingTest, setEditingTest] = useState(false);
-  const [testInput, setTestInput] = useState(testWatts || "");
+  const [testInput, setTestInput] = useState(testTime || "");
+
+  const baseWatts = wattsFromTestTime(testTime);
 
   const saveTest = () => {
-    const v = parseFloat(testInput);
-    if (!isNaN(v) && v > 0) onSetTest(v);
+    if (parseErgoTime(testInput)) onSetTest(testInput.trim());
     setEditingTest(false);
   };
 
@@ -3350,52 +3426,58 @@ function ErgoZonesScreen({ testWatts, onSetTest, zoneNotes, onSetZoneNote, onBac
       <BackRow onBack={onBack} />
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Zonas de ergómetro</h2>
       <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
-        Registra tu TEST 1600 en vatios; las zonas y los porcentajes de trabajo se calculan a partir de ese valor.
+        Registra tu tiempo del TEST 1600; las zonas Z0-Z6 y los porcentajes de trabajo se calculan solos a partir de ese tiempo.
       </p>
 
       <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "14px 16px", marginBottom: 22 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: editingTest ? 10 : 0 }}>
           <div>
-            <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 4px" }}>TEST 1600</p>
-            <p className="vir-mono" style={{ color: "#F5F5F5", fontSize: 22, fontWeight: 700, margin: 0 }}>{testWatts ? `${testWatts} W` : "—"}</p>
+            <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 4px" }}>TEST 1600 · tiempo</p>
+            <p className="vir-mono" style={{ color: "#F5F5F5", fontSize: 22, fontWeight: 700, margin: 0 }}>{testTime || "—"}</p>
+            {baseWatts && <p style={{ color: "#8A8A8A", fontSize: 11, margin: "4px 0 0" }}>≈ {Math.round(baseWatts)} W de media</p>}
           </div>
-          <button className="vir-btn" onClick={() => { setTestInput(testWatts || ""); setEditingTest(!editingTest); }} style={{ background: "#333333", border: "1px solid #565656", borderRadius: 10, padding: "8px 10px", color: "#ADADAD" }}>
+          <button className="vir-btn" onClick={() => { setTestInput(testTime || ""); setEditingTest(!editingTest); }} style={{ background: "#333333", border: "1px solid #565656", borderRadius: 10, padding: "8px 10px", color: "#ADADAD" }}>
             <Pencil size={15} />
           </button>
         </div>
         {editingTest && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <input type="number" value={testInput} onChange={e => setTestInput(e.target.value)} placeholder="Vatios" style={{ ...inputStyle, padding: "9px 11px", fontSize: 12.5, flex: 1 }} />
-            <button className="vir-btn" onClick={saveTest} style={{ ...primaryBtn, padding: "0 18px", fontSize: 12.5 }}>Guardar</button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <input value={testInput} onChange={e => setTestInput(e.target.value)} placeholder="mm:ss (ej. 6:45)" inputMode="numeric" style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%" }} />
+            <button className="vir-btn" onClick={saveTest} style={{ ...primaryBtn, padding: "10px 0", fontSize: 13 }}>Guardar</button>
           </div>
         )}
       </div>
 
       <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Trabajo de zonas</p>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 22 }}>
-        {ERGO_ZONES.map(z => (
-          <div key={z} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "10px 12px" }}>
-            <p style={{ color: "#E61E29", fontSize: 12.5, fontWeight: 800, margin: "0 0 4px" }}>{z}</p>
-            <input
-              value={zoneNotes[z] || ""}
-              onChange={e => onSetZoneNote(z, e.target.value)}
-              placeholder="Ritmo / vatios objetivo"
-              style={{ ...inputStyle, padding: "7px 9px", fontSize: 11.5 }}
-            />
-          </div>
-        ))}
-      </div>
+      {!baseWatts ? (
+        <p style={{ color: "#8A8A8A", fontSize: 12.5, marginBottom: 22 }}>Registra tu tiempo del TEST 1600 para calcular las zonas.</p>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 22 }}>
+          {ERGO_ZONES.map(z => {
+            const [minPct, maxPct] = ERGO_ZONE_BANDS[z];
+            const minW = Math.round(baseWatts * minPct / 100);
+            const maxW = Math.round(baseWatts * maxPct / 100);
+            return (
+              <div key={z} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "10px 12px" }}>
+                <p style={{ color: "#E61E29", fontSize: 12.5, fontWeight: 800, margin: "0 0 4px" }}>{z}</p>
+                <p className="vir-mono" style={{ color: "#F5F5F5", fontSize: 13, fontWeight: 700, margin: 0 }}>{minW}–{maxW} W</p>
+                <p style={{ color: "#8A8A8A", fontSize: 9.5, margin: "2px 0 0" }}>{minPct}–{maxPct}% del test</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Valores de trabajo por porcentaje</p>
-      {!testWatts ? (
-        <p style={{ color: "#8A8A8A", fontSize: 12.5 }}>Registra tu TEST 1600 para calcular esta tabla.</p>
+      {!baseWatts ? (
+        <p style={{ color: "#8A8A8A", fontSize: 12.5 }}>Registra tu tiempo del TEST 1600 para calcular esta tabla.</p>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
           {ERGO_PCTS.map(pct => (
             <div key={pct} style={{ background: "#404040", border: `1px solid ${pct === 100 ? "#E61E29" : "#565656"}`, borderRadius: 8, padding: "6px 8px", textAlign: "center" }}>
               <p style={{ color: "#8A8A8A", fontSize: 10, margin: 0 }}>{pct}%</p>
               <p className="vir-mono" style={{ color: pct === 100 ? "#E61E29" : "#F5F5F5", fontSize: 12.5, fontWeight: 700, margin: "2px 0 0" }}>
-                {Math.round(testWatts * pct / 100)} W
+                {Math.round(baseWatts * pct / 100)} W
               </p>
             </div>
           ))}
@@ -3582,7 +3664,7 @@ function TabBar({ screen, setScreen, notifCount, role }) {
   const homeGroup = ["sessionRower", "sessionCoach", "coachPlan", "coachGymPlan"];
   const profileGroup = ["testPesos", "zonasErgo", "estadisticas", "rowerGymPlan"];
   const active = homeGroup.includes(screen) ? "home"
-    : screen === "coachRowerDetail" ? "coachTeamStats"
+    : (screen === "coachRowerDetail" || screen === "coachPesos") ? "coachTeamStats"
     : (screen === "teamDetail" || screen === "teamExport") ? "teams"
     : screen === "raceDetail" ? "regattas"
     : profileGroup.includes(screen) ? "profile"
