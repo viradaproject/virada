@@ -3310,9 +3310,10 @@ function PesosScreen({ exercises, onAddExercise, onSetBase, onRemoveExercise, on
       </div>
 
       {editable && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-          <input value={newExercise} onChange={e => setNewExercise(e.target.value)} placeholder="Nuevo ejercicio (ej. Sentadilla)" style={{ ...inputStyle, padding: "11px", fontSize: 16, flex: 1, minWidth: 0 }} />
-          <button className="vir-btn" onClick={() => { if (newExercise.trim()) { onAddExercise(newExercise.trim()); setNewExercise(""); } }} style={{ ...primaryBtn, padding: "9px 16px", fontSize: 12.5 }}>Crear</button>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Ejercicio</label>
+          <input value={newExercise} onChange={e => setNewExercise(e.target.value)} placeholder="Ej. Sentadilla" style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 10 }} />
+          <button className="vir-btn" onClick={() => { if (newExercise.trim()) { onAddExercise(newExercise.trim()); setNewExercise(""); } }} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13 }}>Crear</button>
         </div>
       )}
 
@@ -3361,13 +3362,14 @@ function PesosExerciseCard({ exercise, onSetBase, onRemove, editable }) {
       </div>
 
       {editing ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 4 }}>
+        <div style={{ marginBottom: 4 }}>
+          <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Peso 100% (2RP)</label>
           <input
             type="number" inputMode="decimal" value={baseInput} onChange={e => setBaseInput(e.target.value)}
-            placeholder="Registro al 100% (kg)"
-            style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%" }}
+            placeholder="Kg"
+            style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 10 }}
           />
-          <button className="vir-btn" onClick={save} style={{ ...primaryBtn, padding: "10px 0", fontSize: 13 }}>Guardar</button>
+          <button className="vir-btn" onClick={save} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13 }}>Guardar</button>
         </div>
       ) : !exercise.baseKg ? (
         <p style={{ color: "#8A8A8A", fontSize: 12, margin: 0 }}>{editable ? "Toca el lápiz para registrar el 100%." : "Tu entrenador todavía no ha registrado esta marca."}</p>
@@ -3421,9 +3423,10 @@ function ErgoZonesScreen({ testTime, onSetTest, onBack }) {
           </button>
         </div>
         {editingTest && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <input value={testInput} onChange={e => setTestInput(e.target.value)} placeholder="mm:ss (ej. 6:45)" inputMode="numeric" style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%" }} />
-            <button className="vir-btn" onClick={saveTest} style={{ ...primaryBtn, padding: "10px 0", fontSize: 13 }}>Guardar</button>
+          <div>
+            <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Tiempo TEST 1600</label>
+            <input value={testInput} onChange={e => setTestInput(e.target.value)} placeholder="mm:ss (ej. 6:45)" inputMode="numeric" style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 10 }} />
+            <button className="vir-btn" onClick={saveTest} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13 }}>Guardar</button>
           </div>
         )}
       </div>
