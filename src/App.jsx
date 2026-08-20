@@ -129,7 +129,7 @@ const raceCountdownLabel = (dateLabel) => {
 const race = (dateLabel, title) => ({ id: `rc${Math.random().toString(36).slice(2, 9)}`, dateLabel, title, notes: "", docs: [] });
 const RACE_SEED = [
   {
-    id: "cat-llagut", name: "LLAGUT",
+    id: "cat-fcr-oficiales", name: "REGATAS FCR OFICIALES",
     races: [
       race("4 Octubre", "Arenys"),
       race("18 Octubre", "Roses"),
@@ -137,11 +137,6 @@ const RACE_SEED = [
       race("15 Novembre", "CN St Feliu"),
       race("29 Novembre", "Lloret (Hotelers)"),
       race("19 i 20 Desembre", "CCAT VE Cambrils"),
-    ],
-  },
-  {
-    id: "cat-llaut-batel", name: "LLAÜT MEDITERRANI I BATEL",
-    races: [
       race("23 Gener", "1a Regata Llaüt - Flix"),
       race("7 Febrer", "2a Regata Llaüt - Empuriabrava"),
       race("20 Febrer", "1a Regata Batel - Lloret (Hotelers)"),
@@ -155,6 +150,14 @@ const RACE_SEED = [
       race("9 Maig", ""),
       race("21, 22 i 23 Maig", "CE"),
     ],
+  },
+  {
+    id: "cat-no-oficiales", name: "REGATAS NO OFICIALES",
+    races: [],
+  },
+  {
+    id: "cat-extraordinarios", name: "EVENTOS EXTRAORDINARIOS",
+    races: [],
   },
 ];
 const DOC_TYPES = ["Dossier", "Horarios", "Resultados", "Otro"];
