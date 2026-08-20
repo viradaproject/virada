@@ -239,7 +239,7 @@ export default function ViradaPrototype() {
   const [sideOverrides, setSideOverrides] = useState({});
   const [clubs, setClubs] = useState([DEMO_CLUB]); // { id, name, code, username, password, createdAt }
   const [currentClubId, setCurrentClubId] = useState(null);
-  const [raceCategories, setRaceCategories] = useState(RACE_SEED);
+  const [raceCategories, setRaceCategories] = useState([]); // se carga desde Supabase
   const [passwords, setPasswords] = useState(DEMO_PASSWORDS);
   const [recoveryEmails, setRecoveryEmails] = useState({});
   const [loginError, setLoginError] = useState(null);
@@ -288,6 +288,21 @@ export default function ViradaPrototype() {
         setTeams(teamsData.map(t => ({ id: t.id, clubId: t.club_id, name: t.name, code: t.code })));
         // los entrenos de agua siguen generándose en memoria por ahora (todavía no migrados a Supabase)
         setSessions(teamsData.flatMap(t => buildSessions(t.id)));
+      }
+      const { data: catsData, error: catsErr } = await supabase.from("race_categories").select("*");
+      const { data: racesData } = await supabase.from("races").select("*");
+      const { data: docsData } = await supabase.from("race_documents").select("*");
+      if (!catsErr && catsData) {
+        const assembled = catsData.map(cat => ({
+          id: cat.id, name: cat.name,
+          races: (racesData || []).filter(r => r.category_id === cat.id).map(r => ({
+            id: r.id, dateLabel: r.date_label, title: r.title || "", notes: r.notes || "",
+            docs: (docsData || []).filter(d => d.race_id === r.id).map(d => ({
+              id: d.id, label: d.title, name: d.file_name, fileType: d.file_type, dataUrl: d.file_url,
+            })),
+          })),
+        }));
+        setRaceCategories(assembled);
       }
     };
     loadData();
@@ -703,42 +718,64 @@ export default function ViradaPrototype() {
     flash(`Club registrado · código ${code}`);
   };
 
-  const addRaceCategory = (name) => {
+  const addRaceCategory = async (name) => {
     if (!name || !name.trim()) return;
-    setRaceCategories(prev => [...prev, { id: `cat${Date.now()}`, name: name.trim().toUpperCase(), races: [] }]);
+    const { data, error } = await supabase.from("race_categories").insert({ name: name.trim().toUpperCase() }).select().single();
+    if (error) { flash("No se pudo crear la categoría. Inténtalo de nuevo."); return; }
+    setRaceCategories(prev => [...prev, { id: data.id, name: data.name, races: [] }]);
     flash("Categoría de regatas creada");
   };
-  const removeRaceCategory = (catId) => {
+  const removeRaceCategory = async (catId) => {
+    const { error } = await supabase.from("race_categories").delete().eq("id", catId);
+    if (error) { flash("No se pudo eliminar la categoría. Inténtalo de nuevo."); return; }
     setRaceCategories(prev => prev.filter(c => c.id !== catId));
     flash("Categoría eliminada");
   };
-  const addRace = (catId, dateLabel, title) => {
+  const addRace = async (catId, dateLabel, title) => {
     if (!dateLabel || !dateLabel.trim()) return;
-    setRaceCategories(prev => prev.map(c => c.id === catId ? { ...c, races: [...c.races, race(dateLabel.trim(), (title || "").trim())] } : c));
+    const { data, error } = await supabase.from("races").insert({
+      category_id: catId, date_label: dateLabel.trim(), title: (title || "").trim(),
+    }).select().single();
+    if (error) { flash("No se pudo añadir el día. Inténtalo de nuevo."); return; }
+    const newRace = { id: data.id, dateLabel: data.date_label, title: data.title || "", notes: data.notes || "", docs: [] };
+    setRaceCategories(prev => prev.map(c => c.id === catId ? { ...c, races: [...c.races, newRace] } : c));
     flash("Día de regata añadido");
   };
-  const removeRace = (catId, raceId) => {
+  const removeRace = async (catId, raceId) => {
+    const { error } = await supabase.from("races").delete().eq("id", raceId);
+    if (error) { flash("No se pudo eliminar el día. Inténtalo de nuevo."); return; }
     setRaceCategories(prev => prev.map(c => c.id === catId ? { ...c, races: c.races.filter(r => r.id !== raceId) } : c));
     flash("Día de regata eliminado");
   };
-  const addRaceDoc = (catId, raceId, doc) => {
+  const addRaceDoc = async (catId, raceId, doc) => {
+    const { data, error } = await supabase.from("race_documents").insert({
+      race_id: raceId, title: doc.label, file_name: doc.name, file_type: doc.fileType, file_url: doc.dataUrl,
+    }).select().single();
+    if (error) { flash("No se pudo subir el documento. Inténtalo de nuevo."); return; }
+    const newDoc = { id: data.id, label: data.title, name: data.file_name, fileType: data.file_type, dataUrl: data.file_url };
     setRaceCategories(prev => prev.map(c => c.id !== catId ? c : {
-      ...c, races: c.races.map(r => r.id !== raceId ? r : { ...r, docs: [...r.docs, { id: `doc${Date.now()}`, ...doc }] }),
+      ...c, races: c.races.map(r => r.id !== raceId ? r : { ...r, docs: [...r.docs, newDoc] }),
     }));
     flash("Documento subido");
   };
-  const removeRaceDoc = (catId, raceId, docId) => {
+  const removeRaceDoc = async (catId, raceId, docId) => {
+    const { error } = await supabase.from("race_documents").delete().eq("id", docId);
+    if (error) { flash("No se pudo eliminar el documento. Inténtalo de nuevo."); return; }
     setRaceCategories(prev => prev.map(c => c.id !== catId ? c : {
       ...c, races: c.races.map(r => r.id !== raceId ? r : { ...r, docs: r.docs.filter(d => d.id !== docId) }),
     }));
   };
-  const updateRaceTitle = (catId, raceId, title) => {
+  const updateRaceTitle = async (catId, raceId, title) => {
+    const { error } = await supabase.from("races").update({ title }).eq("id", raceId);
+    if (error) { flash("No se pudo actualizar el título. Inténtalo de nuevo."); return; }
     setRaceCategories(prev => prev.map(c => c.id !== catId ? c : {
       ...c, races: c.races.map(r => r.id !== raceId ? r : { ...r, title }),
     }));
     flash("Título actualizado");
   };
-  const updateRaceNotes = (catId, raceId, notes) => {
+  const updateRaceNotes = async (catId, raceId, notes) => {
+    const { error } = await supabase.from("races").update({ notes }).eq("id", raceId);
+    if (error) { flash("No se pudo actualizar la información. Inténtalo de nuevo."); return; }
     setRaceCategories(prev => prev.map(c => c.id !== catId ? c : {
       ...c, races: c.races.map(r => r.id !== raceId ? r : { ...r, notes }),
     }));
