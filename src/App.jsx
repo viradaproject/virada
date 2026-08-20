@@ -3284,26 +3284,6 @@ const wattsFromTestTime = (timeStr, distanceM = 1600) => {
   const splitPer500 = (seconds * 500) / distanceM;
   return 2.8 / Math.pow(splitPer500 / 500, 3);
 };
-// Bandas de zona como % del vatiaje base (calculado a partir del tiempo del test)
-const ERGO_ZONE_BANDS = {
-  Z0: [0.40, 0.55],
-  Z1: [0.55, 0.65],
-  Z2: [0.65, 0.75],
-  Z3: [0.75, 0.85],
-  Z4: [0.85, 0.95],
-  Z5: [0.95, 1.05],
-  Z6: [1.05, 1.20],
-};
-const parseTestTime = (str) => {
-  const m = (str || "").trim().match(/^(\d+):(\d{1,2})(?:[.,](\d))?$/);
-  if (!m) return null;
-  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + (m[3] ? parseInt(m[3], 10) / 10 : 0);
-};
-// Fórmula estándar de ergómetro: watts = 2.80 / (seg por metro)^3
-const wattsFromTest1600 = (timeSeconds) => {
-  if (!timeSeconds || timeSeconds <= 0) return null;
-  return Math.round(2.8 * Math.pow(1600 / timeSeconds, 3));
-};
 
 function PesosScreen({ exercises, onAddExercise, onSetBase, onRemoveExercise, onBack, editable, subtitle }) {
   const [search, setSearch] = useState("");
