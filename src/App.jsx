@@ -196,6 +196,16 @@ const crewStatsFor = (sessions, id, now) => {
   return { convocado, entrenado };
 };
 const weekOfDate = (date) => Math.ceil(date.getDate() / 7);
+// Convierte una fila cruda de la tabla water_sessions al formato que usa la app
+const mapWaterSessionRow = (s) => ({
+  id: s.id, teamId: s.team_id, date: new Date(s.date + "T00:00:00"), iso: s.iso, dow: s.dow,
+  time: s.time, title: s.title, active: s.active, status: s.status,
+  suspendedReason: s.suspended_reason, boat: s.boat, oars: s.oars,
+  signups: new Set(s.signups || []),
+  seats: (s.seats && s.seats.length === 8) ? s.seats : Array(8).fill(null),
+  patron: s.patron || null,
+  reserves: (s.reserves && s.reserves.length === 2) ? s.reserves : [null, null],
+});
 const JS_DOW_TO_WEEK_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"]; // Date.getDay(): 0=domingo..6=sábado
 // Posiciones del bote: patrón (0) al frente, luego 4 filas de BABOR/ESTRIBOR (1 a 4)
 const SEAT_LABELS = [
@@ -324,15 +334,7 @@ export default function ViradaPrototype() {
       }
       const { data: waterSessionsData, error: waterErr } = await supabase.from("water_sessions").select("*").order("iso", { ascending: true });
       if (!waterErr && waterSessionsData) {
-        setSessions(waterSessionsData.map(s => ({
-          id: s.id, teamId: s.team_id, date: new Date(s.date + "T00:00:00"), iso: s.iso, dow: s.dow,
-          time: s.time, title: s.title, active: s.active, status: s.status,
-          suspendedReason: s.suspended_reason, boat: s.boat, oars: s.oars,
-          signups: new Set(s.signups || []),
-          seats: (s.seats && s.seats.length === 8) ? s.seats : Array(8).fill(null),
-          patron: s.patron || null,
-          reserves: (s.reserves && s.reserves.length === 2) ? s.reserves : [null, null],
-        })));
+        setSessions(waterSessionsData.map(mapWaterSessionRow));
       }
       const { data: notificationsData } = await supabase.from("notifications").select("*").order("created_at", { ascending: false });
       if (notificationsData) {
@@ -397,6 +399,27 @@ export default function ViradaPrototype() {
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  // Tiempo real: si otra persona activa un día, se apunta, monta la alineación o cierra/reabre
+  // la tripulación, se refleja en la app de todos los que la tengan abierta, sin recargar
+  useEffect(() => {
+    const channel = supabase
+      .channel("water_sessions_live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "water_sessions" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          setSessions(prev => prev.filter(s => s.id !== payload.old.id));
+          return;
+        }
+        const updated = mapWaterSessionRow(payload.new);
+        setSessions(prev => {
+          const exists = prev.some(s => s.id === updated.id);
+          return exists ? prev.map(s => s.id === updated.id ? updated : s) : [...prev, updated];
+        });
+        setOpenSession(prev => (prev && prev.id === updated.id) ? updated : prev);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   // Detecta cuando alguien llega desde el enlace de recuperación de contraseña del correo
@@ -1456,7 +1479,7 @@ export default function ViradaPrototype() {
                 <CalendarScreen sessions={coachUpcoming} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} myId={currentUserId} teamName={teamName} showTeamLabel={coachScope === "club"} />
               )}
               {screen === "sessionRower" && openSession && (
-                <SessionRowerScreen session={openSession} onBack={() => setScreen(role === "rower" ? "home" : "calendar")} onToggle={toggleSignup} myId={currentUserId} nameOf={nameOf} nicknameOf={nicknameOf} />
+                <SessionRowerScreen session={openSession} onBack={() => setScreen(role === "rower" ? "home" : "calendar")} onToggle={toggleSignup} myId={currentUserId} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} />
               )}
               {screen === "sessionCoach" && openSession && (
                 <SessionCoachScreen
@@ -3936,7 +3959,7 @@ function CalendarScreen({ sessions, onOpen, onToggle, myId, teamName, showTeamLa
   );
 }
 
-function SessionRowerScreen({ session, onBack, onToggle, myId, nameOf, nicknameOf }) {
+function SessionRowerScreen({ session, onBack, onToggle, myId, nameOf, nicknameOf, sideOf }) {
   const seatIdx = session.seats.indexOf(myId);
   const isPatron = session.patron === myId;
   const reserveIdx = session.reserves.indexOf(myId);
@@ -4001,7 +4024,7 @@ function SessionRowerScreen({ session, onBack, onToggle, myId, nameOf, nicknameO
               {mySeatLabel() && <p className="vir-mono" style={{ color: "#ADADAD", fontSize: 12.5, margin: "3px 0 0" }}>{mySeatLabel()}</p>}
             </div>
           </div>
-          <BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} />
+          <BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} />
         </div>
       )}
     </div>
@@ -4085,7 +4108,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
             })}
           </div>
 
-          <BoatDiagram session={session} selected={selected} onAssign={onAssign} onClear={onClear} readOnly={!editable} nicknameOf={nicknameOf} nameOf={nameOf} />
+          <BoatDiagram session={session} selected={selected} onAssign={onAssign} onClear={onClear} readOnly={!editable} nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} />
 
           {editable && (
             <button className="vir-btn" disabled={filled === 0} onClick={() => onClose(session)} style={{
@@ -4098,7 +4121,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
       ) : (
         <>
           <Badge text="Tripulación cerrada" tone="closed" />
-          <div style={{ marginTop: 16 }}><BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} /></div>
+          <div style={{ marginTop: 16 }}><BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} /></div>
           {editable && (
             <button className="vir-btn" onClick={() => onReopen(session)} style={{ ...ghostBtn, marginTop: 18 }}>
               Reabrir para modificar
@@ -4110,13 +4133,14 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
   );
 }
 
-function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameOf, nameOf }) {
+function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameOf, nameOf, sideOf }) {
   const handleSlot = (type, idx, occupied) => {
     if (readOnly) return;
     if (occupied) { onClear(session, type, idx); return; }
     if (selected) onAssign(session, type, idx);
   };
   const canClick = (occupied) => !readOnly && (occupied || !!selected);
+  const colorFor = (rowerId) => (sideOf && rowerId && SIDE_META[sideOf(rowerId)]) ? SIDE_META[sideOf(rowerId)].color : "#E61E29";
 
   const centerX = 150;
   const cx = { babor: 92, estribor: 208 };
@@ -4126,16 +4150,19 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
   const reservePos = [{ x: 92, y: 44 }, { x: 208, y: 44 }];
   const patronPos = { x: centerX, y: 486 };
 
-  const Seat = ({ x, y, filled, label, rowerId, onClick }) => (
-    <g style={{ cursor: canClick(filled) ? "pointer" : "default" }} onClick={onClick}>
-      <circle cx={x} cy={y} r="18" className="vir-seat"
-        fill={filled ? "#E61E29" : "#404040"} stroke={filled ? "#E61E29" : "#6E6E6E"} strokeWidth="1.5" />
-      <text x={x} y={y + 4} textAnchor="middle" fontSize="10.5" fontWeight="700" fill={filled ? "#FFFFFF" : "#8A8A8A"}>{label}</text>
-      {filled && (
-        <text x={x} y={y + 34} textAnchor="middle" fontSize="11" fontWeight="600" fill="#F5F5F5">{crewLabel(rowerId, nicknameOf, nameOf)}</text>
-      )}
-    </g>
-  );
+  const Seat = ({ x, y, filled, label, rowerId, onClick }) => {
+    const color = colorFor(rowerId);
+    return (
+      <g style={{ cursor: canClick(filled) ? "pointer" : "default" }} onClick={onClick}>
+        <circle cx={x} cy={y} r="18" className="vir-seat"
+          fill={filled ? color : "#404040"} stroke={filled ? color : "#6E6E6E"} strokeWidth="1.5" />
+        <text x={x} y={y + 4} textAnchor="middle" fontSize="10.5" fontWeight="700" fill={filled ? "#FFFFFF" : "#8A8A8A"}>{label}</text>
+        {filled && (
+          <text x={x} y={y + 34} textAnchor="middle" fontSize="11" fontWeight="600" fill="#F5F5F5">{crewLabel(rowerId, nicknameOf, nameOf)}</text>
+        )}
+      </g>
+    );
+  };
 
   return (
     <div style={{ background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
@@ -4145,15 +4172,18 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
         <text x={cx.babor} y={80} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">BABOR</text>
         <text x={cx.estribor} y={80} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ESTRIBOR</text>
 
-        {[0, 1].map(i => (
-          <g key={i} style={{ cursor: canClick(!!session.reserves[i]) ? "pointer" : "default" }}
-            onClick={() => handleSlot("reserve", i, !!session.reserves[i])}>
-            <rect x={reservePos[i].x - 26} y={reservePos[i].y - 16} width="52" height="32" rx="9" className="vir-seat"
-              fill={session.reserves[i] ? "#F0A8AC" : "#404040"} stroke={session.reserves[i] ? "#F0A8AC" : "#6E6E6E"} strokeWidth="1.5" />
-            <text x={reservePos[i].x} y={reservePos[i].y + 4} textAnchor="middle" fontSize="10.5" fontWeight="700" fill={session.reserves[i] ? "#7A1015" : "#8A8A8A"}>R{i + 1}</text>
-            {session.reserves[i] && <text x={reservePos[i].x} y={reservePos[i].y - 24} textAnchor="middle" fontSize="10.5" fontWeight="600" fill="#F5F5F5">{crewLabel(session.reserves[i], nicknameOf, nameOf)}</text>}
-          </g>
-        ))}
+        {[0, 1].map(i => {
+          const rColor = colorFor(session.reserves[i]);
+          return (
+            <g key={i} style={{ cursor: canClick(!!session.reserves[i]) ? "pointer" : "default" }}
+              onClick={() => handleSlot("reserve", i, !!session.reserves[i])}>
+              <rect x={reservePos[i].x - 26} y={reservePos[i].y - 16} width="52" height="32" rx="9" className="vir-seat"
+                fill={session.reserves[i] ? rColor : "#404040"} stroke={session.reserves[i] ? rColor : "#6E6E6E"} strokeWidth="1.5" />
+              <text x={reservePos[i].x} y={reservePos[i].y + 4} textAnchor="middle" fontSize="10.5" fontWeight="700" fill={session.reserves[i] ? "#FFFFFF" : "#8A8A8A"}>R{i + 1}</text>
+              {session.reserves[i] && <text x={reservePos[i].x} y={reservePos[i].y - 24} textAnchor="middle" fontSize="10.5" fontWeight="600" fill="#F5F5F5">{crewLabel(session.reserves[i], nicknameOf, nameOf)}</text>}
+            </g>
+          );
+        })}
 
         {[0, 1, 2, 3].map(row => {
           const seatNum = 4 - row; // fila 4 arriba -> fila 1 abajo
@@ -4174,8 +4204,8 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
         <g style={{ cursor: canClick(!!session.patron) ? "pointer" : "default" }}
           onClick={() => handleSlot("patron", 0, !!session.patron)}>
           <circle cx={patronPos.x} cy={patronPos.y} r="19" className="vir-seat"
-            fill={session.patron ? "#F5F5F5" : "#404040"} stroke={session.patron ? "#F5F5F5" : "#6E6E6E"} strokeWidth="1.5" />
-          <text x={patronPos.x} y={patronPos.y + 5} textAnchor="middle" fontSize="13" fontWeight="700" fill={session.patron ? "#B5151E" : "#8A8A8A"}>P</text>
+            fill={session.patron ? colorFor(session.patron) : "#404040"} stroke={session.patron ? colorFor(session.patron) : "#6E6E6E"} strokeWidth="1.5" />
+          <text x={patronPos.x} y={patronPos.y + 5} textAnchor="middle" fontSize="13" fontWeight="700" fill={session.patron ? "#FFFFFF" : "#8A8A8A"}>P</text>
           {session.patron && <text x={patronPos.x} y={patronPos.y + 38} textAnchor="middle" fontSize="11" fontWeight="600" fill="#F5F5F5">{crewLabel(session.patron, nicknameOf, nameOf)}</text>}
         </g>
       </svg>
