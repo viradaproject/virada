@@ -496,12 +496,16 @@ export default function ViradaPrototype() {
     flash("Nombre del club actualizado");
   };
   const assignTeam = async (id, teamId) => {
-    setTeamOverrides(prev => ({ ...prev, [id]: teamId }));
-    const { error } = await supabase.from("users").update({ team_id: teamId }).eq("id", id);
+    const { data, error } = await supabase.from("users").update({ team_id: teamId }).eq("id", id).select();
     if (error) { flash("No se pudo guardar la tripulación. Inténtalo de nuevo."); return; }
+    if (!data || data.length === 0) { flash("No se pudo guardar: no tienes permiso sobre este usuario."); return; }
+    setTeamOverrides(prev => ({ ...prev, [id]: teamId }));
     flash(`${displayNameOf(id)} asignado a ${teamName(teamId)}`);
   };
-  const setPersonRole = (id, role) => {
+  const setPersonRole = async (id, role) => {
+    const { data, error } = await supabase.from("users").update({ role }).eq("id", id).select();
+    if (error) { flash("No se pudo actualizar el rol. Inténtalo de nuevo."); return; }
+    if (!data || data.length === 0) { flash("No se pudo actualizar el rol: no tienes permiso sobre este usuario."); return; }
     setRoleOverrides(prev => ({ ...prev, [id]: role }));
     flash(`Rol actualizado a ${role === "coach" ? "Entrenador" : "Remero"}`);
   };
@@ -580,8 +584,9 @@ export default function ViradaPrototype() {
     if (!p) return;
     const updates = { status: "active", role, activated_at: new Date().toISOString() };
     if (role === "rower" && teamId) updates.team_id = teamId;
-    const { error } = await supabase.from("users").update(updates).eq("id", id);
+    const { data, error } = await supabase.from("users").update(updates).eq("id", id).select();
     if (error) { flash("No se pudo asignar el rol. Inténtalo de nuevo."); return; }
+    if (!data || data.length === 0) { flash("No se pudo asignar el rol: no tienes permiso sobre este usuario."); return; }
     setPendingUsers(prev => prev.filter(u => u.id !== id));
     setAssignedUsers(prev => [...prev, p]);
     setRoleOverrides(prev => ({ ...prev, [id]: role }));
