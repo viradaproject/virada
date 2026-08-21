@@ -371,6 +371,20 @@ export default function ViradaPrototype() {
         });
         setGymCompletion(completion);
       }
+      const { data: pesosData } = await supabase.from("pesos_exercises").select("*");
+      if (pesosData) {
+        const byRower = {};
+        pesosData.forEach(ex => {
+          byRower[ex.rower_id] = [...(byRower[ex.rower_id] || []), { id: ex.id, name: ex.name, baseKg: ex.base_kg }];
+        });
+        setPesosExercises(byRower);
+      }
+      const { data: ergoData } = await supabase.from("ergo_tests").select("*");
+      if (ergoData) {
+        const byRower = {};
+        ergoData.forEach(row => { byRower[row.rower_id] = row.test_time; });
+        setErgoTestTimes(byRower);
+      }
     };
     loadData();
   }, []);
@@ -690,21 +704,32 @@ export default function ViradaPrototype() {
 
   const [pesosExercises, setPesosExercises] = useState({}); // { [rowerId]: [{id,name,baseKg}] }
   const pesosExercisesOf = (id) => pesosExercises[id] || [];
-  const addPesosExercise = (rowerId, name) => {
-    setPesosExercises(prev => ({ ...prev, [rowerId]: [...(prev[rowerId] || []), { id: `ex${Date.now()}`, name, baseKg: null }] }));
+  const addPesosExercise = async (rowerId, name) => {
+    const { data, error } = await supabase.from("pesos_exercises").insert({ rower_id: rowerId, name }).select().single();
+    if (error) { flash("No se pudo crear el ejercicio. Inténtalo de nuevo."); return; }
+    setPesosExercises(prev => ({ ...prev, [rowerId]: [...(prev[rowerId] || []), { id: data.id, name: data.name, baseKg: data.base_kg }] }));
   };
-  const setPesosExerciseBase = (rowerId, exId, kg) => {
+  const setPesosExerciseBase = async (rowerId, exId, kg) => {
     setPesosExercises(prev => ({ ...prev, [rowerId]: (prev[rowerId] || []).map(ex => ex.id === exId ? { ...ex, baseKg: kg } : ex) }));
+    const { error } = await supabase.from("pesos_exercises").update({ base_kg: kg }).eq("id", exId);
+    if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
     flash("Registro actualizado");
   };
-  const removePesosExercise = (rowerId, exId) => {
+  const removePesosExercise = async (rowerId, exId) => {
     setPesosExercises(prev => ({ ...prev, [rowerId]: (prev[rowerId] || []).filter(ex => ex.id !== exId) }));
+    const { error } = await supabase.from("pesos_exercises").delete().eq("id", exId);
+    if (error) { flash("No se pudo eliminar. Inténtalo de nuevo."); return; }
     flash("Ejercicio eliminado");
   };
 
   const [ergoTestTimes, setErgoTestTimes] = useState({}); // { [rowerId]: "mm:ss" del TEST 1600 }
-  const setErgoTest = (timeStr) => {
+  const setErgoTest = async (timeStr) => {
     setErgoTestTimes(prev => ({ ...prev, [currentUserId]: timeStr }));
+    const { error } = await supabase.from("ergo_tests").upsert(
+      { rower_id: currentUserId, test_time: timeStr, updated_at: new Date().toISOString() },
+      { onConflict: "rower_id" }
+    );
+    if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
     flash("TEST 1600 actualizado");
   };
   const [gymPlans, setGymPlans] = useState({}); // { [teamId]: { [week]: { activeDays: [...], weekAttachment, days: { lun: {content}, ... } } } }
