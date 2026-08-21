@@ -314,7 +314,7 @@ export default function ViradaPrototype() {
       if (!teamsErr && teamsData) {
         setTeams(teamsData.map(t => ({ id: t.id, clubId: t.club_id, name: t.name, code: t.code })));
       }
-      const { data: waterSessionsData, error: waterErr } = await supabase.from("water_sessions").select("*");
+      const { data: waterSessionsData, error: waterErr } = await supabase.from("water_sessions").select("*").order("iso", { ascending: true });
       if (!waterErr && waterSessionsData) {
         setSessions(waterSessionsData.map(s => ({
           id: s.id, teamId: s.team_id, date: new Date(s.date + "T00:00:00"), iso: s.iso, dow: s.dow,
@@ -1234,7 +1234,7 @@ export default function ViradaPrototype() {
                 );
               })()}
               {screen === "teams" && (role === "club" || role === "admin") && (
-                <ClubTeamsScreen teams={clubTeams} onAddTeam={addTeam} onRemoveTeam={removeTeam} teamOf={teamOf} onOpenTeam={(t) => { setOpenTeam(t); setScreen("teamDetail"); }} />
+                <ClubTeamsScreen teams={clubTeams} onAddTeam={addTeam} onRemoveTeam={removeTeam} teamOf={teamOf} roleOf={roleOf} members={clubAssignedUsers} onOpenTeam={(t) => { setOpenTeam(t); setScreen("teamDetail"); }} />
               )}
               {screen === "teamDetail" && (role === "club" || role === "admin") && openTeam && (
                 <TeamDetailScreen
@@ -2545,7 +2545,7 @@ function PendingUserRow({ user, teams, onAssign, onReject }) {
   );
 }
 
-function ClubTeamsScreen({ teams, onAddTeam, onRemoveTeam, onOpenTeam, teamOf }) {
+function ClubTeamsScreen({ teams, onAddTeam, onRemoveTeam, onOpenTeam, teamOf, roleOf, members }) {
   const [name, setName] = useState("");
   const submit = () => {
     const trimmed = name.trim();
@@ -2558,7 +2558,7 @@ function ClubTeamsScreen({ teams, onAddTeam, onRemoveTeam, onOpenTeam, teamOf })
       <SectionTitle sub="Toca una tripulación para ver quién la forma">Tripulaciones y categorías</SectionTitle>
       <div style={{ padding: "10px 16px" }}>
         {teams.map(t => {
-          const count = ROWERS.filter(r => teamOf(r.id) === t.id).length;
+          const count = members.filter(m => roleOf(m.id) === "rower" && teamOf(m.id) === t.id).length;
           return (
             <div key={t.id} className="vir-btn" onClick={() => onOpenTeam(t)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "#404040", border: "1px solid #565656", borderRadius: 12, marginBottom: 10 }}>
               <div>
@@ -3277,7 +3277,7 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
   }
 
   const weeks = {};
-  sessions.forEach(s => {
+  [...sessions].sort((a, b) => a.iso.localeCompare(b.iso)).forEach(s => {
     const key = MONTHS_ES[s.date.getMonth()] + " " + s.date.getFullYear();
     (weeks[key] = weeks[key] || []).push(s);
   });
@@ -3436,7 +3436,7 @@ function ToggleSwitch({ checked, onChange, disabled }) {
 
 function CalendarScreen({ sessions, onOpen, onToggle, myId, teamName, showTeamLabel }) {
   const weeks = {};
-  sessions.forEach(s => {
+  [...sessions].sort((a, b) => a.iso.localeCompare(b.iso)).forEach(s => {
     const key = MONTHS_ES[s.date.getMonth()] + " " + s.date.getFullYear();
     (weeks[key] = weeks[key] || []).push(s);
   });
