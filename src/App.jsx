@@ -1026,7 +1026,7 @@ export default function ViradaPrototype() {
   const myNotifications = notifications.filter(n => n.rowerId === currentUserId);
 
   const Logo = ({ size = 22 }) => (
-    <ViradaMark height={size * 1.8} />
+    <img src="/virada-logo.png" alt="VIRADA" style={{ height: size * 1.8, width: "auto", display: "block" }} />
   );
 
   return (
@@ -1399,6 +1399,7 @@ export default function ViradaPrototype() {
 
 function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser, onRecoverPassword, onClearError, loginError, Logo }) {
   const [view, setView] = useState("menu"); // "menu" | "registerClub" | "registerUser" | "loginClub" | "loginUser"
+  const [showRegisterMenu, setShowRegisterMenu] = useState(false);
   const [regSide, setRegSide] = useState("babor");
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
@@ -1413,6 +1414,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
   const goTo = (v) => {
     setUsernameInput(""); setPasswordInput(""); setApodoInput(""); setClubNameRegInput("");
     setClubCodeInput(""); setShowRecovery(false); setRecoverySent(false); setRegPhoto(null);
+    setShowRegisterMenu(false);
     onClearError();
     setView(v);
   };
@@ -1459,25 +1461,31 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 28px", overflowY: "auto" }}>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 6, marginTop: 24 }}><Logo size={40} /></div>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 6, marginTop: 24 }}><Logo size={50} /></div>
       <p style={{ textAlign: "center", color: "#ADADAD", fontSize: 13, margin: "4px 0 34px", letterSpacing: 1.5, textTransform: "uppercase" }}>Club Manager</p>
 
       {view === "menu" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 2px" }}>Registro</p>
-          <button className="vir-btn" onClick={() => goTo("registerClub")} style={{ ...primaryBtn, textAlign: "left", padding: "14px 16px" }}>
-            Registro del club
-          </button>
-          <button className="vir-btn" onClick={() => goTo("registerUser")} style={{ ...ghostBtn, textAlign: "left", padding: "14px 16px" }}>
-            Registro de usuario
+          <button className="vir-btn" onClick={() => goTo("loginUser")} style={{ ...primaryBtn, textAlign: "center", padding: "16px 16px", fontSize: 14, letterSpacing: 0.5, textTransform: "uppercase", borderRadius: 30 }}>
+            Acceso usuario
           </button>
 
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "18px 0 2px" }}>Acceso</p>
-          <button className="vir-btn" onClick={() => goTo("loginClub")} style={{ ...ghostBtn, textAlign: "left", padding: "14px 16px" }}>
-            Acceso club
+          <button className="vir-btn" onClick={() => setShowRegisterMenu(!showRegisterMenu)} style={{ ...ghostBtn, textAlign: "center", padding: "14px 16px", letterSpacing: 0.5, textTransform: "uppercase", borderRadius: 30 }}>
+            Registro
           </button>
-          <button className="vir-btn" onClick={() => goTo("loginUser")} style={{ ...ghostBtn, textAlign: "left", padding: "14px 16px" }}>
-            Acceso usuario
+          {showRegisterMenu && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="vir-btn" onClick={() => goTo("registerClub")} style={{ ...ghostBtn, flex: 1, padding: "12px 0", fontSize: 11.5, letterSpacing: 0.3, textTransform: "uppercase", borderRadius: 24 }}>
+                Registro de club
+              </button>
+              <button className="vir-btn" onClick={() => goTo("registerUser")} style={{ ...ghostBtn, flex: 1, padding: "12px 0", fontSize: 11.5, letterSpacing: 0.3, textTransform: "uppercase", borderRadius: 24 }}>
+                Registro de usuario
+              </button>
+            </div>
+          )}
+
+          <button className="vir-btn" onClick={() => goTo("loginClub")} style={{ background: "transparent", color: "#8A8A8A", fontSize: 12, textDecoration: "underline", marginTop: 8 }}>
+            ¿Eres el club? Accede aquí
           </button>
         </div>
       )}
