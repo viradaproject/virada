@@ -893,11 +893,23 @@ export default function ViradaPrototype() {
     return null;
   };
 
-  const isAdminLogin = (username, password) => (username || "").trim().toLowerCase() === "admin" && password === "1234";
+  const tryAdminLogin = async (username, password) => {
+    const cleanUsername = (username || "").trim().toLowerCase();
+    if (cleanUsername !== "admin") return false;
+    const authEmail = `${cleanUsername}@virada.app`;
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: authEmail, password });
+    if (authError || !authData?.user) return false;
+    const { data, error } = await supabase.from("admins").select("*").eq("auth_user_id", authData.user.id).maybeSingle();
+    if (error || !data) return false;
+    setRole("admin");
+    setCurrentClubId(null);
+    setScreen("home");
+    return true;
+  };
 
   const loginClub = async (username, password) => {
     setLoginError(null);
-    if (isAdminLogin(username, password)) { setRole("admin"); setCurrentClubId(null); setScreen("home"); return; }
+    if (await tryAdminLogin(username, password)) return;
     const cleanUsername = (username || "").trim().toLowerCase();
     const authEmail = `${cleanUsername}@virada.app`;
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: authEmail, password });
@@ -920,7 +932,7 @@ export default function ViradaPrototype() {
 
   const loginUser = async (username, password) => {
     setLoginError(null);
-    if (isAdminLogin(username, password)) { setRole("admin"); setCurrentClubId(null); setScreen("home"); return; }
+    if (await tryAdminLogin(username, password)) return;
     const cleanUsername = (username || "").trim().toLowerCase();
     const authEmail = `${cleanUsername}@virada.app`;
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: authEmail, password });
