@@ -300,8 +300,22 @@ export default function ViradaPrototype() {
       const { data: teamsData, error: teamsErr } = await supabase.from("teams").select("*");
       if (!teamsErr && teamsData) {
         setTeams(teamsData.map(t => ({ id: t.id, clubId: t.club_id, name: t.name, code: t.code })));
-        // los entrenos de agua siguen generándose en memoria por ahora (todavía no migrados a Supabase)
-        setSessions(teamsData.flatMap(t => buildSessions(t.id)));
+      }
+      const { data: waterSessionsData, error: waterErr } = await supabase.from("water_sessions").select("*");
+      if (!waterErr && waterSessionsData) {
+        setSessions(waterSessionsData.map(s => ({
+          id: s.id, teamId: s.team_id, date: new Date(s.date + "T00:00:00"), iso: s.iso, dow: s.dow,
+          time: s.time, title: s.title, active: s.active, status: s.status,
+          suspendedReason: s.suspended_reason, boat: s.boat, oars: s.oars,
+          signups: new Set(s.signups || []),
+          seats: (s.seats && s.seats.length === 8) ? s.seats : Array(8).fill(null),
+          patron: s.patron || null,
+          reserves: (s.reserves && s.reserves.length === 2) ? s.reserves : [null, null],
+        })));
+      }
+      const { data: notificationsData } = await supabase.from("notifications").select("*").order("created_at", { ascending: false });
+      if (notificationsData) {
+        setNotifications(notificationsData.map(n => ({ id: n.id, rowerId: n.rower_id, text: n.text })));
       }
       const { data: catsData, error: catsErr } = await supabase.from("race_categories").select("*");
       const { data: racesData } = await supabase.from("races").select("*");
@@ -481,7 +495,15 @@ export default function ViradaPrototype() {
     if (error) { flash("No se pudo crear la tripulación. Inténtalo de nuevo."); return; }
     const newTeam = { id: data.id, clubId: data.club_id, name: data.name, code: data.code };
     setTeams(prev => [...prev, newTeam]);
-    setSessions(prev => [...prev, ...buildSessions(data.id)]);
+    const newSessions = buildSessions(data.id);
+    setSessions(prev => [...prev, ...newSessions]);
+    const rows = newSessions.map(s => ({
+      id: s.id, team_id: s.teamId, date: s.iso, iso: s.iso, dow: s.dow, time: s.time, title: s.title,
+      active: s.active, status: s.status, suspended_reason: s.suspendedReason, boat: s.boat, oars: s.oars,
+      signups: [], seats: s.seats, patron: s.patron, reserves: s.reserves,
+    }));
+    const { error: sessErr } = await supabase.from("water_sessions").insert(rows);
+    if (sessErr) { flash("Tripulación creada, pero hubo un problema guardando el calendario."); return; }
     flash(`Tripulación "${name}" creada`);
   };
   const removeTeam = async (id) => {
@@ -544,9 +566,24 @@ export default function ViradaPrototype() {
     return { team: teamName(clash.teamId), time: clash.time, boat: clash.boat };
   };
 
-  const updateSession = (id, patch) => {
+  const updateSession = async (id, patch) => {
     setSessions(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
     if (openSession && openSession.id === id) setOpenSession(prev => ({ ...prev, ...patch }));
+    const dbPatch = {};
+    if ("active" in patch) dbPatch.active = patch.active;
+    if ("suspendedReason" in patch) dbPatch.suspended_reason = patch.suspendedReason;
+    if ("time" in patch) dbPatch.time = patch.time;
+    if ("title" in patch) dbPatch.title = patch.title;
+    if ("boat" in patch) dbPatch.boat = patch.boat;
+    if ("oars" in patch) dbPatch.oars = patch.oars;
+    if ("status" in patch) dbPatch.status = patch.status;
+    if ("signups" in patch) dbPatch.signups = Array.from(patch.signups);
+    if ("seats" in patch) dbPatch.seats = patch.seats;
+    if ("patron" in patch) dbPatch.patron = patch.patron;
+    if ("reserves" in patch) dbPatch.reserves = patch.reserves;
+    if (Object.keys(dbPatch).length === 0) return;
+    const { error } = await supabase.from("water_sessions").update(dbPatch).eq("id", id);
+    if (error) flash("No se pudo guardar el cambio. Inténtalo de nuevo.");
   };
 
   const toggleSignup = (session) => {
@@ -577,7 +614,7 @@ export default function ViradaPrototype() {
     else { const reserves = [...session.reserves]; reserves[slotIndex] = null; updateSession(session.id, { reserves }); }
   };
 
-  const closeCrew = (session) => {
+  const closeCrew = async (session) => {
     const assigned = [...session.seats, session.patron, ...session.reserves].filter(Boolean);
     const notes = assigned.map(rid => {
       let role = "reserva";
@@ -585,11 +622,20 @@ export default function ViradaPrototype() {
       if (seatIdx > -1) role = `puesto ${seatShort(seatIdx)}`;
       else if (session.patron === rid) role = "patrón";
       return {
-        id: `${session.id}-${rid}`, rowerId: rid,
+        rowerId: rid,
         text: `Has sido convocado al entreno de agua del ${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}, ${session.time}. Rol: ${role}.`,
       };
     });
-    setNotifications(prev => [...notes, ...prev]);
+    if (notes.length > 0) {
+      const { data, error } = await supabase.from("notifications").insert(
+        notes.map(n => ({ rower_id: n.rowerId, session_id: session.id, text: n.text }))
+      ).select();
+      if (!error && data) {
+        setNotifications(prev => [...data.map(d => ({ id: d.id, rowerId: d.rower_id, text: d.text })), ...prev]);
+      } else if (error) {
+        flash("Tripulación cerrada, pero hubo un problema guardando las notificaciones.");
+      }
+    }
     updateSession(session.id, { status: "cerrado" });
     flash("Tripulación cerrada y notificaciones enviadas");
   };
