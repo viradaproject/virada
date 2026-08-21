@@ -529,6 +529,20 @@ export default function ViradaPrototype() {
     setCoachTeams(prev => { const next = { ...prev }; delete next[id]; return next; });
     flash(`${p?.apodo || p?.username || "Usuario"} eliminado del club`);
   };
+  const deleteClub = async (clubId) => {
+    const c = clubs.find(cl => cl.id === clubId);
+    const teamIds = teams.filter(t => t.clubId === clubId).map(t => t.id);
+    const { error } = await supabase.from("clubs").delete().eq("id", clubId);
+    if (error) { flash("No se pudo eliminar el club. Inténtalo de nuevo."); return; }
+    setClubs(prev => prev.filter(cl => cl.id !== clubId));
+    setTeams(prev => prev.filter(t => t.clubId !== clubId));
+    setAssignedUsers(prev => prev.filter(u => u.clubId !== clubId));
+    setPendingUsers(prev => prev.filter(u => u.clubId !== clubId));
+    setSessions(prev => prev.filter(s => !teamIds.includes(s.teamId)));
+    setGymPlans(prev => { const next = { ...prev }; teamIds.forEach(id => delete next[id]); return next; });
+    if (currentClubId === clubId) setCurrentClubId(null);
+    flash(`Club "${c?.name}" eliminado junto con todos sus datos`);
+  };
 
   const teamName = (id) => teams.find(t => t.id === id)?.name || "—";
   const teamCode = (id) => teams.find(t => t.id === id)?.code || "—";
@@ -1210,6 +1224,7 @@ export default function ViradaPrototype() {
                   clubs={clubs}
                   currentClubId={currentClubId}
                   onSwitchClub={(id) => setCurrentClubId(id)}
+                  onDeleteClub={deleteClub}
                 />
               )}
               {screen === "regattas" && (
@@ -2021,7 +2036,9 @@ function StatCard({ label, value }) {
   );
 }
 
-function AdminHome({ onOpenRegattas, onOpenUsers, onOpenTeams, onOpenWater, onOpenGym, onOpenStats, clubCode, clubDisplayName, teamsCount, coachCount, rowerCount, clubs, currentClubId, onSwitchClub }) {
+function AdminHome({ onOpenRegattas, onOpenUsers, onOpenTeams, onOpenWater, onOpenGym, onOpenStats, clubCode, clubDisplayName, teamsCount, coachCount, rowerCount, clubs, currentClubId, onSwitchClub, onDeleteClub }) {
+  const [deletingId, setDeletingId] = useState(null);
+  const [confirmText, setConfirmText] = useState("");
   const links = [
     { label: "Usuarios", sub: "Todos los entrenadores y remeros de este club, sin restricción", onClick: onOpenUsers },
     { label: "Tripulaciones", sub: "Crear, eliminar y ver el detalle de cada una", onClick: onOpenTeams },
@@ -2048,12 +2065,58 @@ function AdminHome({ onOpenRegattas, onOpenUsers, onOpenTeams, onOpenWater, onOp
           <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "18px 0 10px" }}>Clubes</p>
           {clubs.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13 }}>Todavía no se ha registrado ningún club en esta sesión.</p>}
           {clubs.map(c => (
-            <div key={c.id} className="vir-btn" onClick={() => onSwitchClub(c.id)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div>
-                <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{c.name}</p>
-                <p className="vir-mono" style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Código {c.code}</p>
+            <div key={c.id} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", marginBottom: 10 }}>
+              <div className="vir-btn" onClick={() => onSwitchClub(c.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{c.name}</p>
+                  <p className="vir-mono" style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Código {c.code}</p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button
+                    className="vir-btn"
+                    onClick={(e) => { e.stopPropagation(); setDeletingId(deletingId === c.id ? null : c.id); setConfirmText(""); }}
+                    style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}
+                    title="Eliminar club"
+                  >
+                    <X size={16} />
+                  </button>
+                  <ChevronRight size={18} color="#8A8A8A" />
+                </div>
               </div>
-              <ChevronRight size={18} color="#8A8A8A" />
+
+              {deletingId === c.id && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #565656" }}>
+                  <p style={{ color: "#FF8890", fontSize: 12, fontWeight: 700, margin: "0 0 6px" }}>⚠ Esto elimina el club por completo</p>
+                  <p style={{ color: "#ADADAD", fontSize: 11.5, lineHeight: 1.5, margin: "0 0 12px" }}>
+                    Se borrarán para siempre el club "{c.name}", todos sus usuarios, tripulaciones, entrenos de agua y plan de gimnasio. No se puede deshacer.
+                  </p>
+                  <label style={{ fontSize: 11.5, color: "#ADADAD", marginBottom: 6, display: "block" }}>
+                    Escribe <span style={{ color: "#F5F5F5", fontWeight: 700 }}>{c.name}</span> para confirmar
+                  </label>
+                  <input
+                    value={confirmText}
+                    onChange={e => setConfirmText(e.target.value)}
+                    style={{ ...inputStyle, padding: "9px 11px", fontSize: 13, marginBottom: 10 }}
+                  />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      className="vir-btn"
+                      disabled={confirmText !== c.name}
+                      onClick={() => { onDeleteClub(c.id); setDeletingId(null); setConfirmText(""); }}
+                      style={{
+                        flex: 1, background: confirmText === c.name ? "#E61E29" : "#565656", color: "#F5F5F5",
+                        fontWeight: 700, fontSize: 12.5, padding: "10px 0", borderRadius: 10,
+                        opacity: confirmText === c.name ? 1 : 0.5, cursor: confirmText === c.name ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      Eliminar definitivamente
+                    </button>
+                    <button className="vir-btn" onClick={() => { setDeletingId(null); setConfirmText(""); }} style={{ ...ghostBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
