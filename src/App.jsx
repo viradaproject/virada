@@ -1664,8 +1664,13 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
     </>
   );
 
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [view]);
+
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 28px", overflowY: "auto" }}>
+    <div ref={scrollRef} style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: view === "menu" ? "center" : "flex-start", padding: "0 28px", overflowY: "auto" }}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 6, marginTop: 24 }}><Logo size={50} /></div>
       <p style={{ textAlign: "center", color: "#ADADAD", fontSize: 13, margin: "4px 0 34px", letterSpacing: 1.5, textTransform: "uppercase" }}>Club Manager</p>
 
