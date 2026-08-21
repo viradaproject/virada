@@ -399,6 +399,47 @@ export default function ViradaPrototype() {
     loadData();
   }, []);
 
+  // Detecta cuando alguien llega desde el enlace de recuperación de contraseña del correo
+  useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setScreen("resetPassword");
+      }
+    });
+    return () => { authListener?.subscription?.unsubscribe(); };
+  }, []);
+
+  const setNewPasswordAfterRecovery = async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) { flash("No se pudo cambiar la contraseña. Inténtalo de nuevo."); return; }
+    const { data: authUser } = await supabase.auth.getUser();
+    const uid = authUser?.user?.id;
+    await loadData();
+    if (uid) {
+      const { data: userRow } = await supabase.from("users").select("*").eq("auth_user_id", uid).maybeSingle();
+      if (userRow) {
+        setCurrentUserId(userRow.id);
+        setCurrentClubId(userRow.club_id ?? null);
+        if (userRow.role) setRoleOverrides(prev => ({ ...prev, [userRow.id]: userRow.role }));
+        setRole(userRow.role || "rower");
+        setScreen("home");
+        flash("Contraseña actualizada");
+        return;
+      }
+      const { data: clubRow } = await supabase.from("clubs").select("*").eq("auth_user_id", uid).maybeSingle();
+      if (clubRow) {
+        setCurrentClubId(clubRow.id);
+        setRole("club");
+        setScreen("home");
+        flash("Contraseña actualizada");
+        return;
+      }
+    }
+    setScreen("login");
+    setRole(null);
+    flash("Contraseña actualizada. Ya puedes iniciar sesión.");
+  };
+
   const teamOf = (id) => teamOverrides[id] ?? ROWER_TEAM[id] ?? null;
   const roleOf = (id) => roleOverrides[id] ?? (id === COACH_ID ? "coach" : "rower");
   const nicknameOf = (id) => nicknameOverrides[id] ?? ROWER_NICKNAME[id] ?? assignedUsers.find(u => u.id === id)?.apodo ?? null;
@@ -1092,7 +1133,15 @@ export default function ViradaPrototype() {
     flash("Información actualizada");
   };
 
-  const recoverPassword = (username) => {
+  const recoverPassword = async (username) => {
+    const cleanUsername = (username || "").trim().toLowerCase();
+    if (cleanUsername) {
+      const { data: email } = await supabase.rpc("resolve_user_login_email", { p_username: cleanUsername });
+      if (email) {
+        await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+      }
+    }
+    // Mismo mensaje exista o no el usuario, para no revelar qué nombres de usuario están en uso
     flash("Si el usuario existe, hemos enviado un enlace a su correo de recuperación.");
   };
 
@@ -1140,11 +1189,15 @@ export default function ViradaPrototype() {
           <LoginScreen onRegisterClub={registerClub} onLoginClub={loginClub} onLoginUser={loginUser} onRegisterUser={registerUser} onRecoverPassword={recoverPassword} onClearError={() => setLoginError(null)} loginError={loginError} Logo={Logo} />
         )}
 
+        {screen === "resetPassword" && (
+          <ResetPasswordScreen onSubmit={setNewPasswordAfterRecovery} Logo={Logo} />
+        )}
+
         {screen === "pendingRole" && (
           <PendingRoleScreen user={lastRegistered} onBack={() => { setLastRegistered(null); setScreen("login"); }} />
         )}
 
-        {screen !== "login" && screen !== "pendingRole" && (
+        {screen !== "login" && screen !== "pendingRole" && screen !== "resetPassword" && (
           <>
             <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid #565656", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Logo size={20} />
@@ -1701,6 +1754,50 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
           <button className="vir-btn" onClick={submitRegisterUser} style={{ ...primaryBtn, marginTop: 22 }}>Crear cuenta</button>
         </>
       )}
+    </div>
+  );
+}
+
+function ResetPasswordScreen({ onSubmit, Logo }) {
+  const [password, setPassword] = useState("");
+  const [passwordRepeat, setPasswordRepeat] = useState("");
+  const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
+    if (password.length < 6) { setError("La contraseña debe tener al menos 6 caracteres."); return; }
+    if (password !== passwordRepeat) { setError("Las contraseñas no coinciden."); return; }
+    setError(null);
+    setSubmitting(true);
+    await onSubmit(password);
+    setSubmitting(false);
+  };
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 28px" }}>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 24, marginTop: 24 }}><Logo size={44} /></div>
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "0 0 4px", textAlign: "center" }}>Nueva contraseña</h2>
+      <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 22px", textAlign: "center", lineHeight: 1.4 }}>
+        Elige tu nueva contraseña para volver a entrar.
+      </p>
+
+      <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nueva contraseña</label>
+      <div style={{ position: "relative" }}>
+        <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} style={{ ...inputStyle, paddingLeft: 34, fontSize: 16, padding: "11px 11px 11px 34px", marginBottom: 14 }} />
+      </div>
+
+      <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Repetir contraseña</label>
+      <div style={{ position: "relative" }}>
+        <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+        <input type="password" value={passwordRepeat} onChange={e => setPasswordRepeat(e.target.value)} style={{ ...inputStyle, paddingLeft: 34, fontSize: 16, padding: "11px 11px 11px 34px" }} />
+      </div>
+
+      {error && <p style={{ color: "#FF8890", fontSize: 11.5, margin: "8px 2px 0" }}>{error}</p>}
+
+      <button className="vir-btn" disabled={submitting} onClick={submit} style={{ ...primaryBtn, marginTop: 22, opacity: submitting ? 0.6 : 1 }}>
+        {submitting ? "Guardando..." : "Guardar contraseña"}
+      </button>
     </div>
   );
 }
