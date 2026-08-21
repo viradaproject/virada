@@ -126,6 +126,14 @@ const raceCountdownLabel = (dateLabel) => {
   if (diff === 0) return "¡Es hoy!";
   return "Ya celebrada";
 };
+const isRacePast = (dateLabel) => {
+  const d = guessRaceDate(dateLabel);
+  if (!d) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
+  return d < today;
+};
 const race = (dateLabel, title) => ({ id: `rc${Math.random().toString(36).slice(2, 9)}`, dateLabel, title, notes: "", docs: [] });
 const RACE_SEED = [
   {
@@ -1903,7 +1911,7 @@ function RegattasScreen({ categories, editable, onBack, onOpenRace, onAddCategor
   const activeCat = categories.find(c => c.id === tab) || categories[0];
   const sortedRaces = activeCat ? [...activeCat.races].sort((a, b) => raceSortKey(a.dateLabel) - raceSortKey(b.dateLabel)) : [];
   const subcats = [...new Set(sortedRaces.map(r => r.subcategory).filter(Boolean))];
-  const orderedSubcats = ["LLAGUT", "LLAÜT I BATEL", ...subcats.filter(s => s !== "LLAGUT" && s !== "LLAÜT I BATEL")];
+  const orderedSubcats = ["LLAGUT", "LLAÜT MEDITERRANEO Y BATEL", ...subcats.filter(s => s !== "LLAGUT" && s !== "LLAÜT MEDITERRANEO Y BATEL")];
 
   const raceRow = (r) => (
     <div key={r.id} className="vir-btn" onClick={() => onOpenRace(activeCat.id, r.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
@@ -1915,7 +1923,14 @@ function RegattasScreen({ categories, editable, onBack, onOpenRace, onAddCategor
           )}
         </div>
         <div>
-          <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{r.title || "Sin título todavía"}</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{r.title || "Sin título todavía"}</p>
+            {isRacePast(r.dateLabel) && (
+              <span style={{ width: 16, height: 16, borderRadius: "50%", background: "#3EA55A", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Check size={11} color="#FFFFFF" />
+              </span>
+            )}
+          </div>
           {r.docs.length > 0 && <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "3px 0 0" }}>📎 {r.docs.length} documento{r.docs.length > 1 ? "s" : ""}</p>}
         </div>
       </div>
@@ -1995,7 +2010,7 @@ function RegattasScreen({ categories, editable, onBack, onOpenRace, onAddCategor
 
               <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Subcategoría (opcional)</label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                {["", "LLAGUT", "LLAÜT I BATEL"].map(sc => (
+                {["", "LLAGUT", "LLAÜT MEDITERRANEO Y BATEL"].map(sc => (
                   <button key={sc || "none"} className="vir-btn" onClick={() => setNewSubcat(sc)} style={{
                     padding: "8px 13px", borderRadius: 20, fontSize: 12,
                     background: newSubcat === sc ? "#E61E29" : "#404040",
