@@ -296,7 +296,7 @@ export default function ViradaPrototype() {
         const assembled = catsData.map(cat => ({
           id: cat.id, name: cat.name,
           races: (racesData || []).filter(r => r.category_id === cat.id).map(r => ({
-            id: r.id, dateLabel: r.date_label, title: r.title || "", notes: r.notes || "",
+            id: r.id, dateLabel: r.date_label, title: r.title || "", notes: r.notes || "", subcategory: r.subcategory || null,
             docs: (docsData || []).filter(d => d.race_id === r.id).map(d => ({
               id: d.id, label: d.title, name: d.file_name, fileType: d.file_type, dataUrl: d.file_url,
             })),
@@ -731,13 +731,13 @@ export default function ViradaPrototype() {
     setRaceCategories(prev => prev.filter(c => c.id !== catId));
     flash("Categoría eliminada");
   };
-  const addRace = async (catId, dateLabel, title) => {
+  const addRace = async (catId, dateLabel, title, subcategory) => {
     if (!dateLabel || !dateLabel.trim()) return;
     const { data, error } = await supabase.from("races").insert({
-      category_id: catId, date_label: dateLabel.trim(), title: (title || "").trim(),
+      category_id: catId, date_label: dateLabel.trim(), title: (title || "").trim(), subcategory: subcategory || null,
     }).select().single();
     if (error) { flash("No se pudo añadir el día. Inténtalo de nuevo."); return; }
-    const newRace = { id: data.id, dateLabel: data.date_label, title: data.title || "", notes: data.notes || "", docs: [] };
+    const newRace = { id: data.id, dateLabel: data.date_label, title: data.title || "", notes: data.notes || "", subcategory: data.subcategory || null, docs: [] };
     setRaceCategories(prev => prev.map(c => c.id === catId ? { ...c, races: [...c.races, newRace] } : c));
     flash("Día de regata añadido");
   };
@@ -1898,9 +1898,37 @@ function RegattasScreen({ categories, editable, onBack, onOpenRace, onAddCategor
   const [newCatName, setNewCatName] = useState("");
   const [newDate, setNewDate] = useState("");
   const [newTitle, setNewTitle] = useState("");
+  const [newSubcat, setNewSubcat] = useState("");
 
   const activeCat = categories.find(c => c.id === tab) || categories[0];
   const sortedRaces = activeCat ? [...activeCat.races].sort((a, b) => raceSortKey(a.dateLabel) - raceSortKey(b.dateLabel)) : [];
+  const subcats = [...new Set(sortedRaces.map(r => r.subcategory).filter(Boolean))];
+  const orderedSubcats = ["LLAGUT", "LLAÜT I BATEL", ...subcats.filter(s => s !== "LLAGUT" && s !== "LLAÜT I BATEL")];
+
+  const raceRow = (r) => (
+    <div key={r.id} className="vir-btn" onClick={() => onOpenRace(activeCat.id, r.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ width: 74, textAlign: "center" }}>
+          <p className="vir-mono" style={{ color: "#E61E29", fontSize: 12.5, fontWeight: 700, margin: 0, lineHeight: 1.2 }}>{r.dateLabel}</p>
+          {raceCountdownLabel(r.dateLabel) && (
+            <p style={{ color: "#8A8A8A", fontSize: 9, margin: "2px 0 0", lineHeight: 1.2 }}>{raceCountdownLabel(r.dateLabel)}</p>
+          )}
+        </div>
+        <div>
+          <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{r.title || "Sin título todavía"}</p>
+          {r.docs.length > 0 && <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "3px 0 0" }}>📎 {r.docs.length} documento{r.docs.length > 1 ? "s" : ""}</p>}
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        {editable && (
+          <button className="vir-btn" onClick={(e) => { e.stopPropagation(); onRemoveRace(activeCat.id, r.id); }} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
+            <X size={15} />
+          </button>
+        )}
+        <ChevronRight size={16} color="#8A8A8A" />
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
@@ -1918,9 +1946,10 @@ function RegattasScreen({ categories, editable, onBack, onOpenRace, onAddCategor
       )}
 
       {editable && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
-          <input value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="Nueva categoría (ej. LLAGUT)" style={{ ...inputStyle, padding: "9px 11px", fontSize: 12.5, flex: 1 }} />
-          <button className="vir-btn" onClick={() => { onAddCategory(newCatName); setNewCatName(""); }} style={{ ...primaryBtn, padding: "9px 16px", fontSize: 12.5 }}>Crear</button>
+        <div style={{ marginBottom: 18 }}>
+          <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Nueva categoría</label>
+          <input value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="Ej. LLAGUT" style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 10 }} />
+          <button className="vir-btn" onClick={() => { onAddCategory(newCatName); setNewCatName(""); }} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13 }}>Crear</button>
         </div>
       )}
 
@@ -1935,37 +1964,48 @@ function RegattasScreen({ categories, editable, onBack, onOpenRace, onAddCategor
 
           {sortedRaces.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 12.5, marginBottom: 14 }}>Sin días de regata todavía.</p>}
 
-          {sortedRaces.map(r => (
-            <div key={r.id} className="vir-btn" onClick={() => onOpenRace(activeCat.id, r.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 74, textAlign: "center" }}>
-                  <p className="vir-mono" style={{ color: "#E61E29", fontSize: 12.5, fontWeight: 700, margin: 0, lineHeight: 1.2 }}>{r.dateLabel}</p>
-                  {raceCountdownLabel(r.dateLabel) && (
-                    <p style={{ color: "#8A8A8A", fontSize: 9, margin: "2px 0 0", lineHeight: 1.2 }}>{raceCountdownLabel(r.dateLabel)}</p>
-                  )}
+          {subcats.length > 0 ? (
+            <>
+              {orderedSubcats.filter(sc => sortedRaces.some(r => r.subcategory === sc)).map(sc => (
+                <div key={sc} style={{ marginBottom: 14 }}>
+                  <p style={{ color: "#ADADAD", fontSize: 11.5, fontWeight: 700, margin: "0 0 8px" }}>{sc}</p>
+                  {sortedRaces.filter(r => r.subcategory === sc).map(raceRow)}
                 </div>
-                <div>
-                  <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{r.title || "Sin título todavía"}</p>
-                  {r.docs.length > 0 && <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "3px 0 0" }}>📎 {r.docs.length} documento{r.docs.length > 1 ? "s" : ""}</p>}
+              ))}
+              {sortedRaces.some(r => !r.subcategory) && (
+                <div style={{ marginBottom: 14 }}>
+                  <p style={{ color: "#ADADAD", fontSize: 11.5, fontWeight: 700, margin: "0 0 8px" }}>Otras</p>
+                  {sortedRaces.filter(r => !r.subcategory).map(raceRow)}
                 </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                {editable && (
-                  <button className="vir-btn" onClick={(e) => { e.stopPropagation(); onRemoveRace(activeCat.id, r.id); }} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
-                    <X size={15} />
-                  </button>
-                )}
-                <ChevronRight size={16} color="#8A8A8A" />
-              </div>
-            </div>
-          ))}
+              )}
+            </>
+          ) : (
+            sortedRaces.map(raceRow)
+          )}
 
           {editable && (
             <div style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 12, padding: 14, marginTop: 6 }}>
               <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Nuevo día de regata</p>
-              <input value={newDate} onChange={e => setNewDate(e.target.value)} placeholder="Fecha (ej. 6 Març)" style={{ ...inputStyle, padding: "9px 11px", fontSize: 12.5, marginBottom: 8 }} />
-              <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Título / lugar (opcional, ej. Roses)" style={{ ...inputStyle, padding: "9px 11px", fontSize: 12.5, marginBottom: 10 }} />
-              <button className="vir-btn" onClick={() => { onAddRace(activeCat.id, newDate, newTitle); setNewDate(""); setNewTitle(""); }} style={{ ...primaryBtn, padding: "9px 0", fontSize: 12.5 }}>Añadir día</button>
+
+              <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Fecha</label>
+              <input value={newDate} onChange={e => setNewDate(e.target.value)} placeholder="Ej. 6 Març" style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 12 }} />
+
+              <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Título / lugar (opcional)</label>
+              <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Ej. Roses" style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 12 }} />
+
+              <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Subcategoría (opcional)</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                {["", "LLAGUT", "LLAÜT I BATEL"].map(sc => (
+                  <button key={sc || "none"} className="vir-btn" onClick={() => setNewSubcat(sc)} style={{
+                    padding: "8px 13px", borderRadius: 20, fontSize: 12,
+                    background: newSubcat === sc ? "#E61E29" : "#404040",
+                    border: `1px solid ${newSubcat === sc ? "#E61E29" : "#565656"}`,
+                    color: "#F5F5F5", fontWeight: newSubcat === sc ? 600 : 400,
+                  }}>{sc || "Ninguna"}</button>
+                ))}
+              </div>
+
+              <button className="vir-btn" onClick={() => { onAddRace(activeCat.id, newDate, newTitle, newSubcat); setNewDate(""); setNewTitle(""); setNewSubcat(""); }} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13 }}>Añadir día</button>
             </div>
           )}
         </>
