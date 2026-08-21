@@ -170,8 +170,11 @@ const RACE_SEED = [
 ];
 const DOC_TYPES = ["Dossier", "Horarios", "Resultados", "Otro"];
 
-const FISICO_SLOTS = ["fisico1", "fisico2", "fisico3", "fisico4", "fisico5"];
-const FISICO_LABELS = { fisico1: "Sesión 1", fisico2: "Sesión 2", fisico3: "Sesión 3", fisico4: "Sesión 4", fisico5: "Sesión 5" };
+// Los días de entreno de gimnasio son ahora variables por semana (de 1 a 7), elegidos por el entrenador
+const WEEK_DAY_KEYS = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
+const WEEK_DAY_LABELS = { lun: "Lunes", mar: "Martes", mie: "Miércoles", jue: "Jueves", vie: "Viernes", sab: "Sábado", dom: "Domingo" };
+const FISICO_SLOTS = WEEK_DAY_KEYS;
+const FISICO_LABELS = WEEK_DAY_LABELS;
 
 const seatFill = (s) => s.seats.filter(Boolean).length + (s.patron ? 1 : 0) + s.reserves.filter(Boolean).length;
 const hasPassed = (s, now) => s.date < now;
@@ -350,6 +353,15 @@ export default function ViradaPrototype() {
     setAssignedUsers(prev => prev.map(u => u.id === currentUserId ? { ...u, apodo, side } : u));
     flash("Perfil actualizado");
   };
+  const [profilePhotos, setProfilePhotos] = useState({}); // { [userId]: dataUrl }
+  const updateMyPhoto = (dataUrl) => {
+    setProfilePhotos(prev => ({ ...prev, [currentUserId]: dataUrl }));
+    flash("Foto de perfil actualizada");
+  };
+  const updateClubPhoto = (dataUrl) => {
+    setClubs(prev => prev.map(c => c.id === currentClubId ? { ...c, photoUrl: dataUrl } : c));
+    flash("Foto del club actualizada");
+  };
   const updateClubName = async (name) => {
     const { error } = await supabase.from("clubs").update({ name }).eq("id", currentClubId);
     if (error) { flash("No se pudo actualizar el nombre del club. Inténtalo de nuevo."); return; }
@@ -402,6 +414,7 @@ export default function ViradaPrototype() {
     const entry = { id: data.id, clubId: data.club_id, username: data.username, apodo: data.nickname, side: data.side };
     setPendingUsers(prev => [...prev, entry]);
     setPasswords(prev => ({ ...prev, [data.id]: passwordHash }));
+    if (person.photo) setProfilePhotos(prev => ({ ...prev, [data.id]: person.photo }));
     setLastRegistered(entry);
     setCurrentClubId(clubRow.id);
     setScreen("pendingRole");
@@ -591,25 +604,56 @@ export default function ViradaPrototype() {
     setErgoTestTimes(prev => ({ ...prev, [currentUserId]: timeStr }));
     flash("TEST 1600 actualizado");
   };
-  const [gymPlans, setGymPlans] = useState({}); // { [teamId]: { [week]: { fisico1..4: content } } }
-  const [gymCompletion, setGymCompletion] = useState({}); // { [rowerId]: { "teamId-week-slot": { done, photo } } }
+  const [gymPlans, setGymPlans] = useState({}); // { [teamId]: { [week]: { activeDays: [...], weekAttachment, days: { lun: {content}, ... } } } }
+  const [gymCompletion, setGymCompletion] = useState({}); // { [rowerId]: { "teamId-week-day": { done, photos: [{dataUrl,kind}] } } }
   const currentWeek = Math.ceil(today.getDate() / 7);
-  const gymWeekPlan = (teamId, week) => (gymPlans[teamId] && gymPlans[teamId][week]) || {};
-  const setGymContent = (teamId, week, slot, content) => {
-    setGymPlans(prev => ({
-      ...prev,
-      [teamId]: { ...(prev[teamId] || {}), [week]: { ...((prev[teamId] || {})[week] || {}), [slot]: content } },
-    }));
+  const gymWeekMeta = (teamId, week) => (gymPlans[teamId] && gymPlans[teamId][week]) || { activeDays: [], weekAttachment: null, days: {} };
+  // vista "plana" por día, para las pantallas que solo necesitan el contenido de texto de cada día
+  const gymWeekPlan = (teamId, week) => gymWeekMeta(teamId, week).days || {};
+  const setGymActiveDays = (teamId, week, activeDays) => {
+    setGymPlans(prev => {
+      const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachment: null, days: {} };
+      return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, activeDays } } };
+    });
+  };
+  const setGymWeekAttachment = (teamId, week, attachment) => {
+    setGymPlans(prev => {
+      const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachment: null, days: {} };
+      return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, weekAttachment: attachment } } };
+    });
+    flash(attachment ? "Archivo de la semana adjuntado" : "Archivo de la semana eliminado");
+  };
+  const setGymContent = (teamId, week, day, content) => {
+    setGymPlans(prev => {
+      const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachment: null, days: {} };
+      return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, days: { ...meta.days, [day]: { ...(meta.days[day] || {}), content } } } } };
+    });
     flash("Entreno de gimnasio guardado");
   };
-  const gymRecordOf = (rowerId, teamId, week, slot) => (gymCompletion[rowerId] && gymCompletion[rowerId][`${teamId}-${week}-${slot}`]) || null;
-  const setGymRecord = (rowerId, teamId, week, slot, photo, photoKind) => {
-    const key = `${teamId}-${week}-${slot}`;
-    setGymCompletion(prev => ({ ...prev, [rowerId]: { ...(prev[rowerId] || {}), [key]: { done: true, photo, photoKind: photoKind || "image" } } }));
-    flash("Entreno marcado como hecho");
+  const gymRecordOf = (rowerId, teamId, week, day) => (gymCompletion[rowerId] && gymCompletion[rowerId][`${teamId}-${week}-${day}`]) || null;
+  const addGymPhoto = (rowerId, teamId, week, day, photo, photoKind) => {
+    const key = `${teamId}-${week}-${day}`;
+    setGymCompletion(prev => {
+      const existing = (prev[rowerId] || {})[key];
+      const photos = [...((existing && existing.photos) || []), { dataUrl: photo, kind: photoKind || "image" }];
+      return { ...prev, [rowerId]: { ...(prev[rowerId] || {}), [key]: { done: true, photos } } };
+    });
+    flash("Foto añadida — entreno marcado como hecho");
   };
-  const clearGymRecord = (rowerId, teamId, week, slot) => {
-    const key = `${teamId}-${week}-${slot}`;
+  const removeGymPhoto = (rowerId, teamId, week, day, photoIndex) => {
+    const key = `${teamId}-${week}-${day}`;
+    setGymCompletion(prev => {
+      const existing = (prev[rowerId] || {})[key];
+      if (!existing) return prev;
+      const photos = existing.photos.filter((_, i) => i !== photoIndex);
+      const mine = { ...(prev[rowerId] || {}) };
+      if (photos.length === 0) delete mine[key];
+      else mine[key] = { done: true, photos };
+      return { ...prev, [rowerId]: mine };
+    });
+  };
+  const clearGymRecord = (rowerId, teamId, week, day) => {
+    const key = `${teamId}-${week}-${day}`;
     setGymCompletion(prev => {
       const mine = { ...(prev[rowerId] || {}) };
       delete mine[key];
@@ -631,11 +675,10 @@ export default function ViradaPrototype() {
   const gymStatsFor = (rowerId, teamId) => {
     let weekDone = 0, weekTotal = 0, monthDone = 0, monthTotal = 0;
     for (let w = 1; w <= currentWeek; w++) {
-      const plan = gymWeekPlan(teamId, w);
-      FISICO_SLOTS.forEach(slot => {
-        if (!plan[slot]) return;
+      const meta = gymWeekMeta(teamId, w);
+      (meta.activeDays || []).forEach(day => {
         monthTotal++;
-        const rec = gymRecordOf(rowerId, teamId, w, slot);
+        const rec = gymRecordOf(rowerId, teamId, w, day);
         const done = !!(rec && rec.done);
         if (done) monthDone++;
         if (w === currentWeek) {
@@ -701,7 +744,7 @@ export default function ViradaPrototype() {
     setScreen("home");
   };
 
-  const registerClub = async (name, username, password) => {
+  const registerClub = async (name, username, password, photo) => {
     setLoginError(null);
     if (!username || !password) { setLoginError("Usuario y contraseña son obligatorios."); return; }
     if (isUsernameTaken(username)) { setLoginError("Ese nombre de usuario ya existe. Elige otro."); return; }
@@ -718,6 +761,7 @@ export default function ViradaPrototype() {
     const newClub = {
       id: data.id, code: data.access_code, name: data.name,
       username: data.username, password: data.password_hash, createdAt: data.created_at,
+      photoUrl: photo || null, // todavía en memoria: la tabla clubs aún no tiene columna de foto
     };
     setClubs(prev => [...prev, newClub]);
     setCurrentClubId(data.id);
@@ -892,8 +936,10 @@ export default function ViradaPrototype() {
                   teams={clubTeams}
                   setScope={setCoachScope}
                   currentWeek={currentWeek}
-                  weekPlanFor={gymWeekPlan}
+                  weekMetaFor={gymWeekMeta}
                   onSaveContent={setGymContent}
+                  onSaveActiveDays={setGymActiveDays}
+                  onSaveWeekAttachment={setGymWeekAttachment}
                   onBack={() => setScreen("home")}
                   editable={role === "admin" ? true : canManage(coachScope)}
                 />
@@ -903,10 +949,10 @@ export default function ViradaPrototype() {
                   teamId={teamOf(currentUserId)}
                   teamName={teamName}
                   currentWeek={currentWeek}
-                  weekPlanFor={gymWeekPlan}
-                  recordFor={(teamId, week, slot) => gymRecordOf(currentUserId, teamId, week, slot)}
-                  onMarkDone={(teamId, week, slot, photo, photoKind) => setGymRecord(currentUserId, teamId, week, slot, photo, photoKind)}
-                  onClearDone={(teamId, week, slot) => clearGymRecord(currentUserId, teamId, week, slot)}
+                  weekMetaFor={gymWeekMeta}
+                  recordFor={(teamId, week, day) => gymRecordOf(currentUserId, teamId, week, day)}
+                  onAddPhoto={(teamId, week, day, photo, photoKind) => addGymPhoto(currentUserId, teamId, week, day, photo, photoKind)}
+                  onRemovePhoto={(teamId, week, day, idx) => removeGymPhoto(currentUserId, teamId, week, day, idx)}
                   onViewPhoto={(photo, caption) => setViewPhoto({ photo, caption })}
                   onBack={() => setScreen("home")}
                 />
@@ -938,8 +984,8 @@ export default function ViradaPrototype() {
                   pesosExercises={pesosExercisesOf(openPerson.id)}
                   ergoTest={ergoTestTimes[openPerson.id] ? Math.round(wattsFromTestTime(ergoTestTimes[openPerson.id])) : null}
                   currentWeek={currentWeek}
-                  weekPlanFor={gymWeekPlan}
-                  recordFor={(teamId, week, slot) => gymRecordOf(openPerson.id, teamId, week, slot)}
+                  weekMetaFor={gymWeekMeta}
+                  recordFor={(teamId, week, day) => gymRecordOf(openPerson.id, teamId, week, day)}
                   waterWeekMonth={waterStatsFor(openPerson.id, teamOf(openPerson.id))}
                   gymWeekMonth={gymStatsFor(openPerson.id, teamOf(openPerson.id))}
                   onViewPhoto={(photo, caption) => setViewPhoto({ photo, caption })}
@@ -1086,10 +1132,14 @@ export default function ViradaPrototype() {
                   myTeam={teamOf(currentUserId)}
                   myEmail={recoveryEmails[currentUserId] || ""}
                   myRowerCode={rowerCodeOf(currentUserId)}
+                  myPhoto={profilePhotos[currentUserId] || null}
+                  onUpdateMyPhoto={updateMyPhoto}
                   clubCode={clubCode}
                   onUpdateMyProfile={updateMyProfile}
                   clubDisplayName={clubDisplayName}
+                  clubPhoto={currentClub?.photoUrl || null}
                   onUpdateClubName={updateClubName}
+                  onUpdateClubPhoto={updateClubPhoto}
                 />
               )}
               {screen === "testPesos" && role === "rower" && (
@@ -1151,21 +1201,22 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
   const [apodoInput, setApodoInput] = useState("");
   const [clubNameRegInput, setClubNameRegInput] = useState("");
   const [clubCodeInput, setClubCodeInput] = useState("");
+  const [regPhoto, setRegPhoto] = useState(null);
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [recoverySent, setRecoverySent] = useState(false);
 
   const goTo = (v) => {
     setUsernameInput(""); setPasswordInput(""); setApodoInput(""); setClubNameRegInput("");
-    setClubCodeInput(""); setShowRecovery(false); setRecoverySent(false);
+    setClubCodeInput(""); setShowRecovery(false); setRecoverySent(false); setRegPhoto(null);
     onClearError();
     setView(v);
   };
 
-  const submitRegisterClub = () => onRegisterClub(clubNameRegInput, usernameInput, passwordInput);
+  const submitRegisterClub = () => onRegisterClub(clubNameRegInput, usernameInput, passwordInput, regPhoto);
 
   const submitRegisterUser = () => {
-    onRegisterUser({ username: usernameInput, apodo: apodoInput, side: regSide, clubCode: clubCodeInput, password: passwordInput });
+    onRegisterUser({ username: usernameInput, apodo: apodoInput, side: regSide, clubCode: clubCodeInput, password: passwordInput, photo: regPhoto });
   };
 
   const sendRecovery = () => {
@@ -1287,6 +1338,9 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
           <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
             Al crear la cuenta, VIRADA generará automáticamente el código de acceso de tu club. Compártelo con tus entrenadores y remeros para que puedan registrarse dentro de tu club y no de otro.
           </p>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+            <AvatarPicker photo={regPhoto} initials="?" onChange={setRegPhoto} size={72} />
+          </div>
           <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nombre del club</label>
           <input value={clubNameRegInput} onChange={e => setClubNameRegInput(e.target.value)} placeholder="Ej. Club Nàutic..." style={inputStyle} />
           <div style={{ marginTop: 14 }}>{usernamePasswordFields}</div>
@@ -1302,6 +1356,9 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
           <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
             Con el código de tu club accedes a su paraguas de gestión. Una vez dentro, será el club quien te asigne el rol — entrenador o remero — y, si corresponde, la tripulación.
           </p>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+            <AvatarPicker photo={regPhoto} initials="?" onChange={setRegPhoto} size={72} />
+          </div>
           {usernamePasswordFields}
           {loginError && <p style={{ color: "#FF8890", fontSize: 11.5, margin: "8px 2px 0" }}>{loginError}</p>}
           <label style={{ fontSize: 12, color: "#ADADAD", margin: "14px 0 6px" }}>Apodo</label>
@@ -1677,7 +1734,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
       </div>
       {weeks.map(week => {
         const plan = weekPlanFor(teamId, week);
-        const items = FISICO_SLOTS.filter(slot => plan[slot]);
+        const items = FISICO_SLOTS.filter(slot => plan[slot] && plan[slot].content);
         if (items.length === 0) return null;
         return (
           <div key={week} style={{ marginBottom: 14 }}>
@@ -1694,13 +1751,25 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
                     {done && <Check size={13} color="#FFFFFF" />}
                   </div>
                   <p style={{ color: "#F5F5F5", fontSize: 12.5, margin: 0, flex: 1 }}>{FISICO_LABELS[slot]}</p>
-                  {done && record.photo && (
-                    <img
-                      src={record.photo}
-                      alt="Toca para ampliar"
-                      onClick={() => onViewPhoto(record.photo, `${FISICO_LABELS[slot]} · Semana ${week} · ${person.name}`)}
-                      style={{ width: 30, height: 30, borderRadius: 6, objectFit: "cover", cursor: "pointer" }}
-                    />
+                  {done && record.photos && record.photos.length > 0 && (
+                    <div style={{ display: "flex", gap: 3 }}>
+                      {record.photos.slice(0, 3).map((p, i) => (
+                        p.kind === "pdf" ? (
+                          <div key={i} onClick={() => window.open(p.dataUrl, "_blank")} style={{ width: 30, height: 30, borderRadius: 6, background: "#333333", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                            <KeyRound size={13} color="#ADADAD" />
+                          </div>
+                        ) : (
+                          <img
+                            key={i}
+                            src={p.dataUrl}
+                            alt="Toca para ampliar"
+                            onClick={() => onViewPhoto(p.dataUrl, `${FISICO_LABELS[slot]} · Semana ${week} · ${person.name}`)}
+                            style={{ width: 30, height: 30, borderRadius: 6, objectFit: "cover", cursor: "pointer", flexShrink: 0 }}
+                          />
+                        )
+                      ))}
+                      {record.photos.length > 3 && <span style={{ color: "#8A8A8A", fontSize: 10, alignSelf: "center" }}>+{record.photos.length - 3}</span>}
+                    </div>
                   )}
                 </div>
               );
@@ -2417,13 +2486,13 @@ function SeasonExportScreen({ team, sessions, gymPlanForTeam, currentWeek, membe
         <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>Plan de gimnasio por semana</h3>
         {Array.from({ length: currentWeek }, (_, i) => currentWeek - i).map(week => {
           const plan = gymPlanForTeam(week);
-          const items = FISICO_SLOTS.filter(slot => plan[slot]);
+          const items = FISICO_SLOTS.filter(slot => plan[slot] && plan[slot].content);
           return (
             <div key={week} style={{ marginBottom: 10 }}>
               <p style={{ fontSize: 12, fontWeight: 700, margin: "0 0 4px" }}>Semana {week}</p>
               {items.length === 0 && <p style={{ fontSize: 11, margin: "0 0 4px" }}>Sin plan subido.</p>}
               {items.map(slot => (
-                <p key={slot} style={{ fontSize: 11, margin: "0 0 2px" }}>{FISICO_LABELS[slot]}: {plan[slot]}</p>
+                <p key={slot} style={{ fontSize: 11, margin: "0 0 2px" }}>{FISICO_LABELS[slot]}: {plan[slot].content}{plan[slot].attachment ? " (+ archivo adjunto)" : ""}</p>
               ))}
             </div>
           );
@@ -2433,7 +2502,7 @@ function SeasonExportScreen({ team, sessions, gymPlanForTeam, currentWeek, membe
   );
 }
 
-function CoachGymPlanScreen({ teamId, teams, setScope, currentWeek, weekPlanFor, onSaveContent, onBack, editable }) {
+function CoachGymPlanScreen({ teamId, teams, setScope, currentWeek, weekMetaFor, onSaveContent, onSaveActiveDays, onSaveWeekAttachment, onBack, editable }) {
   const [week, setWeek] = useState(currentWeek);
   const dirtyRef = useRef(new Set());
   const markDirty = (slot, isDirty) => {
@@ -2462,7 +2531,24 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentWeek, weekPlanFor,
   }
 
   const teamLabel = teams.find(t => t.id === teamId)?.name || "";
-  const plan = weekPlanFor(teamId, week);
+  const meta = weekMetaFor(teamId, week);
+  const activeDays = meta.activeDays || [];
+  const toggleDay = (day) => {
+    const next = activeDays.includes(day) ? activeDays.filter(d => d !== day) : [...activeDays, day];
+    onSaveActiveDays(teamId, week, next);
+  };
+  const handleWeekFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const okType = file.type === "application/pdf" || file.type === "image/jpeg" || /\.(pdf|jpe?g)$/i.test(file.name || "");
+    if (!okType) { e.target.value = ""; return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      onSaveWeekAttachment(teamId, week, { name: file.name, fileType: file.type.includes("pdf") ? "pdf" : "jpg", dataUrl: reader.result });
+      e.target.value = "";
+    };
+    reader.readAsDataURL(file);
+  };
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
@@ -2483,8 +2569,60 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentWeek, weekPlanFor,
         <button className="vir-btn" onClick={() => guardNavigation(() => setWeek(w => w + 1))} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronRight size={16} /></button>
       </div>
 
-      {FISICO_SLOTS.map(slot => (
-        <GymSlotEditor key={`${week}-${slot}`} slot={slot} value={plan[slot] || ""} onSave={(content) => onSaveContent(teamId, week, slot, content)} editable={editable} onDirtyChange={(isDirty) => markDirty(slot, isDirty)} />
+      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Días de entreno esta semana ({activeDays.length}/7)</p>
+      {editable ? (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
+          {WEEK_DAY_KEYS.map(day => {
+            const active = activeDays.includes(day);
+            return (
+              <button key={day} className="vir-btn" onClick={() => toggleDay(day)} style={{
+                padding: "9px 12px", borderRadius: 10, fontSize: 12, fontWeight: active ? 700 : 400,
+                background: active ? "#E61E29" : "#404040",
+                border: `1px solid ${active ? "#E61E29" : "#565656"}`,
+                color: "#F5F5F5",
+              }}>{WEEK_DAY_LABELS[day].slice(0, 3)}</button>
+            );
+          })}
+        </div>
+      ) : (
+        <p style={{ color: "#8A8A8A", fontSize: 12.5, marginBottom: 18 }}>
+          {activeDays.length === 0 ? "Sin días de entreno marcados esta semana." : activeDays.map(d => WEEK_DAY_LABELS[d]).join(", ")}
+        </p>
+      )}
+
+      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Archivo de la semana (PDF o JPG, opcional)</p>
+      {meta.weekAttachment ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "10px 12px", marginBottom: 18 }}>
+          <span className="vir-btn" onClick={() => window.open(meta.weekAttachment.dataUrl, "_blank")} style={{ color: "#ADADAD", fontSize: 12.5, cursor: "pointer" }}>
+            📎 {meta.weekAttachment.name}
+          </span>
+          {editable && (
+            <button className="vir-btn" onClick={() => onSaveWeekAttachment(teamId, week, null)} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
+              <X size={15} />
+            </button>
+          )}
+        </div>
+      ) : editable ? (
+        <label className="vir-btn" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#404040", border: "1px dashed #565656", borderRadius: 10, padding: "11px 0", color: "#ADADAD", fontSize: 12.5, cursor: "pointer", marginBottom: 18 }}>
+          <Camera size={15} />
+          Subir archivo de la semana
+          <input type="file" accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg" style={{ display: "none" }} onChange={handleWeekFile} />
+        </label>
+      ) : (
+        <p style={{ color: "#8A8A8A", fontSize: 12.5, marginBottom: 18 }}>Sin archivo esta semana.</p>
+      )}
+
+      {activeDays.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 12.5 }}>Marca los días de entreno de esta semana para poder escribir el contenido de cada uno.</p>}
+
+      {WEEK_DAY_KEYS.filter(day => activeDays.includes(day)).map(day => (
+        <GymSlotEditor
+          key={`${week}-${day}`}
+          slot={day}
+          value={(meta.days[day] && meta.days[day].content) || ""}
+          onSave={(content) => onSaveContent(teamId, week, day, content)}
+          editable={editable}
+          onDirtyChange={(isDirty) => markDirty(day, isDirty)}
+        />
       ))}
     </div>
   );
@@ -2530,10 +2668,10 @@ function GymSlotEditor({ slot, value, onSave, editable, onDirtyChange }) {
         onChange={e => setText(e.target.value)}
         placeholder="Ej. Sentadillas 4x10, remo en polea 3x12, plancha 3x40s..."
         rows={3}
-        style={{ ...inputStyle, fontSize: 12.5, padding: "9px 11px", resize: "vertical", width: "100%" }}
+        style={{ ...inputStyle, fontSize: 16, padding: "11px", resize: "vertical", width: "100%" }}
       />
       <button className="vir-btn" onClick={save} disabled={!dirty} style={{
-        ...primaryBtn, marginTop: 8, padding: "9px 0", fontSize: 12.5,
+        ...primaryBtn, marginTop: 8, padding: "11px 0", fontSize: 13,
         opacity: dirty ? 1 : 0.4, background: dirty ? "#E61E29" : "#565656",
       }}>
         Guardar
@@ -2545,9 +2683,10 @@ function GymSlotEditor({ slot, value, onSave, editable, onDirtyChange }) {
   );
 }
 
-function RowerGymPlanScreen({ teamId, teamName, currentWeek, weekPlanFor, recordFor, onMarkDone, onClearDone, onViewPhoto, onBack }) {
+function RowerGymPlanScreen({ teamId, teamName, currentWeek, weekMetaFor, recordFor, onAddPhoto, onRemovePhoto, onViewPhoto, onBack }) {
   const [week, setWeek] = useState(currentWeek);
-  const plan = weekPlanFor(teamId, week);
+  const meta = weekMetaFor(teamId, week);
+  const activeDays = meta.activeDays || [];
   const overdue = week < currentWeek;
 
   return (
@@ -2564,40 +2703,52 @@ function RowerGymPlanScreen({ teamId, teamName, currentWeek, weekPlanFor, record
         <button className="vir-btn" onClick={() => setWeek(w => Math.min(currentWeek, w + 1))} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronRight size={16} /></button>
       </div>
 
-      {FISICO_SLOTS.map(slot => plan[slot] ? (
-        <FisicoRecordRow
-          key={slot}
-          slot={slot}
-          content={plan[slot]}
-          record={recordFor(teamId, week, slot)}
-          overdue={overdue}
-          onMarkDone={(photo, kind) => onMarkDone(teamId, week, slot, photo, kind)}
-          onClearDone={() => onClearDone(teamId, week, slot)}
-          onViewPhoto={(photo) => onViewPhoto(photo, `${FISICO_LABELS[slot]} · Semana ${week}`)}
-        />
-      ) : (
-        <div key={slot} style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
-          <p style={{ color: "#8A8A8A", fontSize: 13, fontWeight: 700, margin: 0 }}>{FISICO_LABELS[slot]}</p>
-          <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "4px 0 0" }}>El entrenador no ha asignado entreno esta sesión.</p>
+      {meta.weekAttachment && (
+        <div
+          className="vir-btn"
+          onClick={() => window.open(meta.weekAttachment.dataUrl, "_blank")}
+          style={{ display: "flex", alignItems: "center", gap: 8, background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "11px 12px", marginBottom: 16, cursor: "pointer" }}
+        >
+          <KeyRound size={15} color="#ADADAD" />
+          <span style={{ color: "#ADADAD", fontSize: 12.5, flex: 1 }}>📎 {meta.weekAttachment.name}</span>
+          <span style={{ color: "#8A8A8A", fontSize: 10.5 }}>Ver / descargar</span>
         </div>
+      )}
+
+      {activeDays.length === 0 && (
+        <p style={{ color: "#8A8A8A", fontSize: 12.5 }}>El entrenador todavía no ha marcado días de entreno esta semana.</p>
+      )}
+
+      {WEEK_DAY_KEYS.filter(day => activeDays.includes(day)).map(day => (
+        (meta.days[day] && meta.days[day].content) ? (
+          <FisicoRecordRow
+            key={day}
+            slot={day}
+            content={meta.days[day].content}
+            record={recordFor(teamId, week, day)}
+            overdue={overdue}
+            onAddPhoto={(photo, kind) => onAddPhoto(teamId, week, day, photo, kind)}
+            onRemovePhoto={(idx) => onRemovePhoto(teamId, week, day, idx)}
+            onViewPhoto={(photo) => onViewPhoto(photo, `${FISICO_LABELS[day]} · Semana ${week}`)}
+          />
+        ) : (
+          <div key={day} style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+            <p style={{ color: "#8A8A8A", fontSize: 13, fontWeight: 700, margin: 0 }}>{FISICO_LABELS[day]}</p>
+            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "4px 0 0" }}>El entrenador todavía no ha escrito el contenido de este día.</p>
+          </div>
+        )
       ))}
     </div>
   );
 }
 
-function FisicoRecordRow({ slot, content, record, overdue, onMarkDone, onClearDone, onViewPhoto }) {
+function FisicoRecordRow({ slot, content, record, overdue, onAddPhoto, onRemovePhoto, onViewPhoto }) {
   const [uploading, setUploading] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState(null);
   const [pendingKind, setPendingKind] = useState(null);
-  const done = !!(record && record.done);
-  const missed = !done && overdue; // ha pasado el día y no se subió justificante
-
-  const confirm = () => {
-    if (!pendingPhoto) return;
-    onMarkDone(pendingPhoto);
-    setUploading(false);
-    setPendingPhoto(null);
-  };
+  const photos = (record && record.photos) || [];
+  const done = !!(record && record.done && photos.length > 0);
+  const missed = !done && overdue; // ha pasado el día y no se subió ningún justificante
 
   const badgeStyle = {
     width: 56, height: 56, borderRadius: 12, flexShrink: 0, display: "flex",
@@ -2605,6 +2756,7 @@ function FisicoRecordRow({ slot, content, record, overdue, onMarkDone, onClearDo
     background: done ? "#3EA55A" : missed ? "#7A1F1F" : "#565656",
     border: `1px solid ${done ? "#3EA55A" : missed ? "#E24B4A" : "#565656"}`,
   };
+  const firstImg = photos.find(p => p.kind !== "pdf");
 
   return (
     <div style={{ background: "#404040", border: `1px solid ${done ? "#3EA55A" : missed ? "#E24B4A" : "#565656"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
@@ -2613,21 +2765,11 @@ function FisicoRecordRow({ slot, content, record, overdue, onMarkDone, onClearDo
           <p style={{ color: "#F5F5F5", fontSize: 13, fontWeight: 700, margin: 0 }}>{FISICO_LABELS[slot]}</p>
           <p style={{ color: "#ADADAD", fontSize: 12, margin: "4px 0 0", lineHeight: 1.4 }}>{content}</p>
           {missed && <p style={{ color: "#F09595", fontSize: 11, margin: "6px 0 0", fontWeight: 600 }}>✕ Entreno no realizado</p>}
-          {done && <p style={{ color: "#9FE1CB", fontSize: 11, margin: "6px 0 0", fontWeight: 600 }}>✓ Entreno hecho</p>}
+          {done && <p style={{ color: "#9FE1CB", fontSize: 11, margin: "6px 0 0", fontWeight: 600 }}>✓ Entreno hecho · {photos.length} foto{photos.length > 1 ? "s" : ""}</p>}
         </div>
-        <div
-          style={badgeStyle}
-          onClick={() => {
-            if (!done) { setUploading(u => !u); return; }
-            if (!record.photo) return;
-            if (record.photoKind === "pdf") window.open(record.photo, "_blank");
-            else onViewPhoto(record.photo);
-          }}
-        >
+        <div style={badgeStyle} onClick={() => setUploading(u => !u)}>
           {done ? (
-            record.photo && record.photoKind !== "pdf"
-              ? <img src={record.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              : <Check size={22} color="#FFFFFF" />
+            firstImg ? <img src={firstImg.dataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Check size={22} color="#FFFFFF" />
           ) : missed ? (
             <X size={22} color="#FFFFFF" />
           ) : (
@@ -2636,9 +2778,37 @@ function FisicoRecordRow({ slot, content, record, overdue, onMarkDone, onClearDo
         </div>
       </div>
 
-      {!done && uploading && (
+      {photos.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+          {photos.map((p, i) => (
+            <div key={i} style={{ position: "relative" }}>
+              {p.kind === "pdf" ? (
+                <div onClick={() => window.open(p.dataUrl, "_blank")} style={{ width: 44, height: 44, borderRadius: 8, background: "#333333", border: "1px solid #565656", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <KeyRound size={16} color="#ADADAD" />
+                </div>
+              ) : (
+                <img
+                  src={p.dataUrl}
+                  onClick={() => onViewPhoto(p.dataUrl)}
+                  alt=""
+                  style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover", border: "1px solid #565656", cursor: "pointer" }}
+                />
+              )}
+              <button
+                className="vir-btn"
+                onClick={() => onRemovePhoto(i)}
+                style={{ position: "absolute", top: -6, right: -6, width: 17, height: 17, borderRadius: "50%", background: "#333333", border: "1px solid #565656", color: "#ADADAD", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {uploading && (
         <div style={{ marginTop: 10 }}>
-          <p style={{ color: "#8A8A8A", fontSize: 11, margin: "0 0 6px" }}>Foto del ergómetro/GPS, o PDF del entreno</p>
+          <p style={{ color: "#8A8A8A", fontSize: 11, margin: "0 0 6px" }}>Foto del ergómetro/GPS, o PDF del entreno — puedes subir varias</p>
           <PhotoField
             photo={pendingPhoto}
             onChange={(dataUrl, kind) => { setPendingPhoto(dataUrl); setPendingKind(kind); }}
@@ -2646,19 +2816,14 @@ function FisicoRecordRow({ slot, content, record, overdue, onMarkDone, onClearDo
             allowPdf
           />
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button className="vir-btn" disabled={!pendingPhoto} onClick={() => { onMarkDone(pendingPhoto, pendingKind); setUploading(false); setPendingPhoto(null); setPendingKind(null); }} style={{ ...primaryBtn, flex: 1, padding: "9px 0", fontSize: 12.5, opacity: pendingPhoto ? 1 : 0.4 }}>
-              Marcar como hecho
+            <button className="vir-btn" disabled={!pendingPhoto} onClick={() => { onAddPhoto(pendingPhoto, pendingKind); setPendingPhoto(null); setPendingKind(null); }} style={{ ...primaryBtn, flex: 1, padding: "9px 0", fontSize: 12.5, opacity: pendingPhoto ? 1 : 0.4 }}>
+              Añadir foto
             </button>
             <button className="vir-btn" onClick={() => { setUploading(false); setPendingPhoto(null); setPendingKind(null); }} style={{ ...ghostBtn, flex: 1, padding: "9px 0", fontSize: 12.5 }}>
-              Cancelar
+              Cerrar
             </button>
           </div>
         </div>
-      )}
-      {done && (
-        <button className="vir-btn" onClick={onClearDone} style={{ background: "transparent", color: "#8A8A8A", fontSize: 10.5, textDecoration: "underline", marginTop: 8 }}>
-          Deshacer
-        </button>
       )}
     </div>
   );
@@ -3129,9 +3294,11 @@ function NotificationsScreen({ items, role, nameOf }) {
   );
 }
 
-function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, teamCode, onOpenTraining, myId, myDisplayName, myNickname, mySide, myTeam, myEmail, myRowerCode, onUpdateMyProfile, clubDisplayName, clubCode, onUpdateClubName }) {
+function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, teamCode, onOpenTraining, myId, myDisplayName, myNickname, mySide, myTeam, myEmail, myRowerCode, myPhoto, onUpdateMyProfile, onUpdateMyPhoto, clubDisplayName, clubCode, clubPhoto, onUpdateClubName, onUpdateClubPhoto }) {
   const name = role === "coach" ? myDisplayName : role === "club" ? clubDisplayName : myDisplayName;
   const roleLabel = role === "coach" ? "Entrenador" : role === "club" ? "Club" : "Remero";
+  const photo = role === "club" ? clubPhoto : myPhoto;
+  const onChangePhoto = role === "club" ? onUpdateClubPhoto : onUpdateMyPhoto;
   const [editing, setEditing] = useState(false);
   const [apodoInput, setApodoInput] = useState(myNickname);
   const [sideInput, setSideInput] = useState(mySide);
@@ -3161,9 +3328,7 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
     <div style={{ padding: "24px 20px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 28, background: "#454545", display: "flex", alignItems: "center", justifyContent: "center", color: "#E61E29", fontWeight: 700, fontSize: 20, fontFamily: "'Big Shoulders Display', sans-serif" }}>
-            {name.split(" ").map(n => n[0]).join("")}
-          </div>
+          <AvatarPicker photo={photo} initials={name.split(" ").map(n => n[0]).join("")} onChange={onChangePhoto} />
           <div>
             <p style={{ color: "#F5F5F5", fontWeight: 600, fontSize: 16, margin: 0 }}>{name}</p>
             <p style={{ color: "#ADADAD", fontSize: 12.5, margin: "3px 0 0" }}>{roleLabel}{role !== "club" ? ` · ${clubDisplayName}` : ""}</p>
@@ -3296,6 +3461,44 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
         </>
       ) : null}
       <InfoRow icon={<Anchor size={15} />} label="Rol" value={roleLabel} />
+    </div>
+  );
+}
+
+function AvatarPicker({ photo, initials, onChange, size = 56 }) {
+  const inputRef = useRef(null);
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => onChange(reader.result);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <div
+        className="vir-btn"
+        onClick={() => inputRef.current?.click()}
+        style={{
+          width: size, height: size, borderRadius: size / 2, background: "#454545", overflow: "hidden",
+          display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+          color: "#E61E29", fontWeight: 700, fontSize: size * 0.36, fontFamily: "'Big Shoulders Display', sans-serif",
+        }}
+      >
+        {photo ? <img src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : initials}
+      </div>
+      <div
+        className="vir-btn"
+        onClick={() => inputRef.current?.click()}
+        style={{
+          position: "absolute", bottom: -2, right: -2, width: size * 0.36, height: size * 0.36, borderRadius: "50%",
+          background: "#E61E29", border: "2px solid #333333", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+        }}
+      >
+        <Camera size={size * 0.19} color="#FFFFFF" />
+      </div>
+      <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
     </div>
   );
 }
