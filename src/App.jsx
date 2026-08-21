@@ -22,6 +22,13 @@ const SIDE_META = {
   ambos: { label: "AMBOS", letter: "B+E", color: "#E67E22" },
   patron: { label: "PATRÓN", letter: "P", color: "#22B8CF" },
 };
+// Etiquetas completas para el formulario de registro ("Función en el equipo")
+const REGISTER_SIDE_OPTIONS = [
+  { key: "babor", label: "Remero de Babor", letter: "B", color: "#E61E29" },
+  { key: "estribor", label: "Remero de Estribor", letter: "E", color: "#3EA55A" },
+  { key: "ambos", label: "Remero de ambos lados", letter: "B+E", color: "#E67E22" },
+  { key: "patron", label: "Patrón", letter: "P", color: "#22B8CF" },
+];
 const TEAMS_SEED = [];
 const ME_ROWER = "r1";
 const ME_TEAM = ROWER_TEAM[ME_ROWER];
@@ -484,25 +491,38 @@ export default function ViradaPrototype() {
 
   const registerUser = async (person) => {
     setLoginError(null);
+    if (!person.firstName?.trim() || !person.lastName?.trim() || !person.apodo?.trim() || !person.birthDate || !person.email?.trim()) {
+      setLoginError("Rellena todos los campos obligatorios.");
+      return;
+    }
+    if (!person.side) { setLoginError("Elige tu función en el equipo."); return; }
+    if (person.password !== person.passwordRepeat) { setLoginError("Las contraseñas no coinciden."); return; }
     const code = (person.clubCode || "").trim();
     const { data: clubRow, error: clubErr } = await supabase.from("clubs").select("*").eq("access_code", code).maybeSingle();
     if (clubErr || !clubRow) { setLoginError(clubs.length === 0 ? "Todavía no se ha registrado ningún club." : "Código de club incorrecto."); return; }
     if (isUsernameTaken(person.username)) { setLoginError("Ese nombre de usuario ya existe. Elige otro."); return; }
     const cleanUsername = person.username.trim().toLowerCase();
-    const authEmail = `${cleanUsername}@virada.app`;
-    const { data: authData, error: authError } = await supabase.auth.signUp({ email: authEmail, password: person.password || "1234" });
+    const cleanEmail = person.email.trim().toLowerCase();
+    const { data: authData, error: authError } = await supabase.auth.signUp({ email: cleanEmail, password: person.password || "1234" });
     if (authError || !authData?.user) {
-      setLoginError(authError?.message === "Password should be at least 6 characters"
-        ? "La contraseña debe tener al menos 6 caracteres."
-        : "No se pudo completar el registro. Inténtalo de nuevo.");
+      setLoginError(
+        authError?.message === "Password should be at least 6 characters" ? "La contraseña debe tener al menos 6 caracteres."
+        : authError?.message?.includes("already registered") ? "Ese correo electrónico ya está registrado."
+        : "No se pudo completar el registro. Inténtalo de nuevo."
+      );
       return;
     }
     const { data, error } = await supabase.from("users").insert({
       club_id: clubRow.id,
       username: cleanUsername,
       auth_user_id: authData.user.id,
-      nickname: person.apodo || null,
-      side: person.side || null,
+      first_name: person.firstName.trim(),
+      last_name: person.lastName.trim(),
+      nickname: person.apodo.trim(),
+      birth_date: person.birthDate,
+      email: cleanEmail,
+      phone: person.phone?.trim() || null,
+      side: person.side,
       status: "pending",
       photo_url: person.photo || null,
     }).select().single();
@@ -942,8 +962,12 @@ export default function ViradaPrototype() {
     setLoginError(null);
     if (await tryAdminLogin(username, password)) return;
     const cleanUsername = (username || "").trim().toLowerCase();
-    const authEmail = `${cleanUsername}@virada.app`;
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: authEmail, password });
+    const { data: resolvedEmail, error: resolveError } = await supabase.rpc("resolve_user_login_email", { p_username: cleanUsername });
+    if (resolveError || !resolvedEmail) {
+      setLoginError("Usuario o contraseña incorrectos.");
+      return;
+    }
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: resolvedEmail, password });
     if (authError || !authData?.user) {
       setLoginError("Usuario o contraseña incorrectos.");
       return;
@@ -1449,13 +1473,19 @@ export default function ViradaPrototype() {
 function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser, onRecoverPassword, onClearError, loginError, Logo }) {
   const [view, setView] = useState("menu"); // "menu" | "registerClub" | "registerUser" | "loginClub" | "loginUser"
   const [showRegisterMenu, setShowRegisterMenu] = useState(false);
-  const [regSide, setRegSide] = useState("babor");
+  const [regSide, setRegSide] = useState(null); // obligatorio: no viene preseleccionado
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [apodoInput, setApodoInput] = useState("");
   const [clubNameRegInput, setClubNameRegInput] = useState("");
   const [clubCodeInput, setClubCodeInput] = useState("");
   const [regPhoto, setRegPhoto] = useState(null);
+  const [passwordRepeatInput, setPasswordRepeatInput] = useState("");
+  const [firstNameInput, setFirstNameInput] = useState("");
+  const [lastNameInput, setLastNameInput] = useState("");
+  const [birthDateInput, setBirthDateInput] = useState("");
+  const [emailInput, setEmailInput] = useState("");
+  const [phoneInput, setPhoneInput] = useState("");
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [recoverySent, setRecoverySent] = useState(false);
@@ -1463,6 +1493,8 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
   const goTo = (v) => {
     setUsernameInput(""); setPasswordInput(""); setApodoInput(""); setClubNameRegInput("");
     setClubCodeInput(""); setShowRecovery(false); setRecoverySent(false); setRegPhoto(null);
+    setPasswordRepeatInput(""); setFirstNameInput(""); setLastNameInput(""); setBirthDateInput("");
+    setEmailInput(""); setPhoneInput(""); setRegSide(null);
     setShowRegisterMenu(false);
     onClearError();
     setView(v);
@@ -1471,7 +1503,12 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
   const submitRegisterClub = () => onRegisterClub(clubNameRegInput, usernameInput, passwordInput, regPhoto);
 
   const submitRegisterUser = () => {
-    onRegisterUser({ username: usernameInput, apodo: apodoInput, side: regSide, clubCode: clubCodeInput, password: passwordInput, photo: regPhoto });
+    onRegisterUser({
+      username: usernameInput, password: passwordInput, passwordRepeat: passwordRepeatInput,
+      firstName: firstNameInput, lastName: lastNameInput, apodo: apodoInput,
+      birthDate: birthDateInput, email: emailInput, phone: phoneInput,
+      side: regSide, clubCode: clubCodeInput, photo: regPhoto,
+    });
   };
 
   const sendRecovery = () => {
@@ -1588,42 +1625,78 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
             <AvatarPicker photo={regPhoto} initials="?" onChange={setRegPhoto} size={72} />
           </div>
-          {usernamePasswordFields}
-          {loginError && <p style={{ color: "#FF8890", fontSize: 11.5, margin: "8px 2px 0" }}>{loginError}</p>}
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "14px 0 6px" }}>Apodo</label>
-          <input value={apodoInput} onChange={e => setApodoInput(e.target.value)} placeholder="Como quieres que te vean en el bote" style={inputStyle} />
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "16px 0 8px" }}>¿Dónde remas?</label>
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Número de club</label>
+          <div style={{ position: "relative", marginBottom: 14 }}>
+            <KeyRound size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+            <input
+              value={clubCodeInput}
+              onChange={e => setClubCodeInput(e.target.value.replace(/\D/g, "").slice(0, 3))}
+              placeholder="Ej. 452"
+              maxLength={3}
+              inputMode="numeric"
+              style={{ ...inputStyle, paddingLeft: 34 }}
+            />
+          </div>
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nombre de usuario</label>
+          <input value={usernameInput} onChange={e => setUsernameInput(e.target.value)} placeholder="Acceso a la plataforma" style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Contraseña</label>
+          <div style={{ position: "relative", marginBottom: 14 }}>
+            <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+            <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} style={{ ...inputStyle, paddingLeft: 34 }} />
+          </div>
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Repetir contraseña</label>
+          <div style={{ position: "relative" }}>
+            <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+            <input type="password" value={passwordRepeatInput} onChange={e => setPasswordRepeatInput(e.target.value)} style={{ ...inputStyle, paddingLeft: 34 }} />
+          </div>
+
+          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>Datos personales</p>
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nombre</label>
+          <input value={firstNameInput} onChange={e => setFirstNameInput(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Apellido</label>
+          <input value={lastNameInput} onChange={e => setLastNameInput(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Apodo</label>
+          <input value={apodoInput} onChange={e => setApodoInput(e.target.value)} placeholder="Aparecerá en las tripulaciones" style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Fecha de nacimiento</label>
+          <input type="date" value={birthDateInput} onChange={e => setBirthDateInput(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Correo electrónico <span style={{ color: "#8A8A8A", fontWeight: 400, textTransform: "none" }}>(recuperación de acceso)</span></label>
+          <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nº Teléfono <span style={{ color: "#8A8A8A", fontWeight: 400, textTransform: "none" }}>(opcional)</span></label>
+          <input type="tel" value={phoneInput} onChange={e => setPhoneInput(e.target.value)} style={{ ...inputStyle, marginBottom: 4 }} />
+
+          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>Función en el equipo</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {Object.entries(SIDE_META).map(([key, meta]) => {
+            {REGISTER_SIDE_OPTIONS.map(({ key, label, color, letter }) => {
               const active = regSide === key;
               return (
                 <button key={key} className="vir-btn" onClick={() => setRegSide(key)} style={{
-                  display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 10,
-                  background: active ? meta.color : "#404040",
-                  border: `1px solid ${active ? meta.color : "#565656"}`,
+                  display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 10,
+                  background: active ? color : "#404040",
+                  border: `1px solid ${active ? color : "#565656"}`,
                 }}>
                   <span style={{
                     width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
                     background: active ? "rgba(0,0,0,0.2)" : "#565656", color: active ? "#FFFFFF" : "#ADADAD",
                     fontSize: 10, fontWeight: 800,
-                  }}>{meta.letter}</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: active ? "#FFFFFF" : "#E8E8E8" }}>{meta.label}</span>
+                  }}>{letter}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: active ? "#FFFFFF" : "#E8E8E8", textAlign: "left", lineHeight: 1.2 }}>{label}</span>
                 </button>
               );
             })}
           </div>
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "14px 0 6px" }}>Código de club</label>
-          <div style={{ position: "relative" }}>
-            <KeyRound size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
-            <input
-              value={clubCodeInput}
-              onChange={e => setClubCodeInput(e.target.value)}
-              placeholder="Ej. 452"
-              style={{ ...inputStyle, paddingLeft: 34 }}
-            />
-          </div>
+
           {loginError && (
-            <p style={{ color: "#FF8890", fontSize: 11.5, margin: "8px 2px 0" }}>{loginError}</p>
+            <p style={{ color: "#FF8890", fontSize: 11.5, margin: "14px 2px 0" }}>{loginError}</p>
           )}
           <button className="vir-btn" onClick={submitRegisterUser} style={{ ...primaryBtn, marginTop: 22 }}>Crear cuenta</button>
         </>
