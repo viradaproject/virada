@@ -276,7 +276,7 @@ export default function ViradaPrototype() {
       if (!clubsErr && clubsData) {
         setClubs(clubsData.map(c => ({
           id: c.id, name: c.name, code: c.access_code,
-          username: c.username, password: c.password_hash, createdAt: c.created_at,
+          username: c.username, createdAt: c.created_at,
           photoUrl: c.photo_url || null,
         })));
       }
@@ -889,15 +889,20 @@ export default function ViradaPrototype() {
   const loginClub = async (username, password) => {
     setLoginError(null);
     if (isAdminLogin(username, password)) { setRole("admin"); setCurrentClubId(null); setScreen("home"); return; }
-    const u = (username || "").trim().toLowerCase();
-    const passwordHash = await hashPassword(password);
-    const { data, error } = await supabase.from("clubs").select("*").ilike("username", u).maybeSingle();
-    if (error || !data || data.password_hash !== passwordHash) {
+    const cleanUsername = (username || "").trim().toLowerCase();
+    const authEmail = `${cleanUsername}@virada.app`;
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: authEmail, password });
+    if (authError || !authData?.user) {
+      setLoginError("Usuario o contraseña incorrectos.");
+      return;
+    }
+    const { data, error } = await supabase.from("clubs").select("*").eq("auth_user_id", authData.user.id).maybeSingle();
+    if (error || !data) {
       setLoginError("Usuario o contraseña incorrectos.");
       return;
     }
     setClubs(prev => prev.some(c => c.id === data.id) ? prev : [...prev, {
-      id: data.id, code: data.access_code, name: data.name, username: data.username, password: data.password_hash, createdAt: data.created_at,
+      id: data.id, code: data.access_code, name: data.name, username: data.username, createdAt: data.created_at, photoUrl: data.photo_url || null,
     }]);
     setCurrentClubId(data.id);
     setRole("club");
@@ -932,20 +937,28 @@ export default function ViradaPrototype() {
     setLoginError(null);
     if (!username || !password) { setLoginError("Usuario y contraseña son obligatorios."); return; }
     if (isUsernameTaken(username)) { setLoginError("Ese nombre de usuario ya existe. Elige otro."); return; }
+    const cleanUsername = username.trim().toLowerCase();
+    const authEmail = `${cleanUsername}@virada.app`;
+    const { data: authData, error: authError } = await supabase.auth.signUp({ email: authEmail, password });
+    if (authError || !authData?.user) {
+      setLoginError(authError?.message === "Password should be at least 6 characters"
+        ? "La contraseña debe tener al menos 6 caracteres."
+        : "No se pudo registrar el club. Inténtalo de nuevo.");
+      return;
+    }
     let code = randomClubCode();
     while (clubs.some(c => c.code === code)) code = randomClubCode(); // cada club tiene un código único, propio y exclusivo
-    const passwordHash = await hashPassword(password);
     const { data, error } = await supabase.from("clubs").insert({
       name: name && name.trim() ? name.trim() : "Tu club",
       access_code: code,
-      username: username.trim().toLowerCase(),
-      password_hash: passwordHash,
+      username: cleanUsername,
+      auth_user_id: authData.user.id,
       photo_url: photo || null,
     }).select().single();
     if (error) { setLoginError("No se pudo registrar el club. Inténtalo de nuevo."); return; }
     const newClub = {
       id: data.id, code: data.access_code, name: data.name,
-      username: data.username, password: data.password_hash, createdAt: data.created_at,
+      username: data.username, createdAt: data.created_at,
       photoUrl: data.photo_url || null,
     };
     setClubs(prev => [...prev, newClub]);
