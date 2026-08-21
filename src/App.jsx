@@ -777,7 +777,7 @@ export default function ViradaPrototype() {
     else { const reserves = [...session.reserves]; reserves[slotIndex] = null; updateSession(session.id, { reserves }); }
   };
 
-  const closeCrew = async (session) => {
+  const closeCrew = async (session, previousRoster) => {
     const assigned = [...session.seats, session.patron, ...session.reserves].filter(Boolean);
     const notes = assigned.map(rid => {
       let role = "reserva";
@@ -789,6 +789,18 @@ export default function ViradaPrototype() {
         text: `Has sido convocado al entreno de agua del ${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}, ${session.time}. Rol: ${role}.`,
       };
     });
+    // Si venimos de reabrir y modificar una convocatoria ya cerrada, avisamos aparte
+    // a quien haya quedado fuera, con un mensaje distinto al de "convocado"
+    if (previousRoster) {
+      const prevAssigned = [...previousRoster.seats, previousRoster.patron, ...previousRoster.reserves].filter(Boolean);
+      const removed = prevAssigned.filter(rid => !assigned.includes(rid));
+      removed.forEach(rid => {
+        notes.push({
+          rowerId: rid,
+          text: `Ya no estás convocado/a al entreno de agua del ${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}, ${session.time}. La convocatoria ha cambiado.`,
+        });
+      });
+    }
     if (notes.length > 0) {
       const { data, error } = await supabase.from("notifications").insert(
         notes.map(n => ({ rower_id: n.rowerId, session_id: session.id, text: n.text }))
@@ -2015,11 +2027,14 @@ function SectionTitle({ children, sub }) {
   );
 }
 
-function SessionRow({ s, onOpen, right, teamLabel }) {
+function SessionRow({ s, onOpen, right, teamLabel, semaphore }) {
   const dow = DAYS_ES[s.dow];
   return (
     <div className="vir-btn" onClick={() => onOpen(s)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "#404040", border: "1px solid #565656", borderRadius: 12, marginBottom: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {semaphore && (
+          <span title={semaphore.label} style={{ width: 10, height: 10, borderRadius: "50%", background: semaphore.color, flexShrink: 0 }} />
+        )}
         <div style={{ width: 42, textAlign: "center" }}>
           <div className="vir-mono" style={{ color: "#E61E29", fontSize: 18, lineHeight: 1 }}>{s.date.getDate()}</div>
           <div style={{ color: "#8A8A8A", fontSize: 10, textTransform: "uppercase" }}>{dow}</div>
@@ -2033,6 +2048,17 @@ function SessionRow({ s, onOpen, right, teamLabel }) {
     </div>
   );
 }
+
+// Semáforo del remero para una sesión de agua: rojo = tripulación aún por cerrar o no convocado,
+// naranja = de reserva, verde = convocado para remar
+const rowerSemaphore = (s, myId) => {
+  const isCalled = s.seats.includes(myId) || s.patron === myId;
+  const isReserve = !isCalled && s.reserves.includes(myId);
+  if (s.status !== "cerrado") return { color: "#E24B4A", label: "Tripulación aún por cerrar" };
+  if (isCalled) return { color: "#3EA55A", label: "Convocado/a para remar" };
+  if (isReserve) return { color: "#E67E22", label: "De reserva" };
+  return { color: "#E24B4A", label: "No convocado/a" };
+};
 
 function Badge({ text, tone, onClick }) {
   const tones = {
@@ -2135,7 +2161,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
       </div>
       <div style={{ padding: "0 16px" }}>
         {sessions.map(s => (
-          <SessionRow key={s.id} s={s} onOpen={onOpen} right={
+          <SessionRow key={s.id} s={s} onOpen={onOpen} semaphore={rowerSemaphore(s, myId)} right={
             s.status === "cerrado"
               ? <Badge text={[...s.seats, s.patron, ...s.reserves].includes(myId) ? "Seleccionado" : "Cerrado"} tone={[...s.seats, s.patron, ...s.reserves].includes(myId) ? "selected" : "closed"} />
               : <Badge text={s.signups.has(myId) ? "Apuntado ✓" : "Apuntarse"} tone={s.signups.has(myId) ? "signed" : "action"} onClick={() => onToggle(s)} />
@@ -3950,7 +3976,7 @@ function CalendarScreen({ sessions, onOpen, onToggle, myId, teamName, showTeamLa
                 const signed = s.signups.has(myId);
                 right = <Badge text={signed ? "Apuntado ✓" : "Apuntarse"} tone={signed ? "signed" : "action"} onClick={() => onToggle(s)} />;
               }
-              return <SessionRow key={s.id} s={s} onOpen={onOpen} right={right} teamLabel={showTeamLabel && teamName ? teamName(s.teamId) : null} />;
+              return <SessionRow key={s.id} s={s} onOpen={onOpen} right={right} teamLabel={showTeamLabel && teamName ? teamName(s.teamId) : null} semaphore={onToggle ? rowerSemaphore(s, myId) : null} />;
             })}
           </div>
         ))}
@@ -4032,6 +4058,15 @@ function SessionRowerScreen({ session, onBack, onToggle, myId, nameOf, nicknameO
 }
 
 function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable }) {
+  const [preEditRoster, setPreEditRoster] = useState(null);
+  const handleReopen = () => {
+    setPreEditRoster({ seats: [...session.seats], patron: session.patron, reserves: [...session.reserves] });
+    onReopen(session);
+  };
+  const handleClose = () => {
+    onClose(session, preEditRoster);
+    setPreEditRoster(null);
+  };
   const inScope = (id) => teamOf(id) === session.teamId;
   const available = [...session.signups].filter(id => !session.seats.includes(id) && session.patron !== id && !session.reserves.includes(id) && inScope(id));
   const filled = seatFill(session);
@@ -4111,7 +4146,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
           <BoatDiagram session={session} selected={selected} onAssign={onAssign} onClear={onClear} readOnly={!editable} nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} />
 
           {editable && (
-            <button className="vir-btn" disabled={filled === 0} onClick={() => onClose(session)} style={{
+            <button className="vir-btn" disabled={filled === 0} onClick={handleClose} style={{
               ...primaryBtn, marginTop: 20, opacity: filled === 0 ? 0.4 : 1,
             }}>
               Cerrar tripulación y notificar
@@ -4123,7 +4158,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
           <Badge text="Tripulación cerrada" tone="closed" />
           <div style={{ marginTop: 16 }}><BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} /></div>
           {editable && (
-            <button className="vir-btn" onClick={() => onReopen(session)} style={{ ...ghostBtn, marginTop: 18 }}>
+            <button className="vir-btn" onClick={handleReopen} style={{ ...ghostBtn, marginTop: 18 }}>
               Reabrir para modificar
             </button>
           )}
