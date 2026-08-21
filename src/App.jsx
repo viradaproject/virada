@@ -2289,7 +2289,7 @@ function RegattasScreen({ categories, editable, onBack, onOpenRace, onAddCategor
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         {editable && (
-          <button className="vir-btn" onClick={(e) => { e.stopPropagation(); onRemoveRace(activeCat.id, r.id); }} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
+          <button className="vir-btn" onClick={(e) => { e.stopPropagation(); if (window.confirm(`¿Eliminar el día "${r.dateLabel}${r.title ? " · " + r.title : ""}"? Se perderán también sus documentos.`)) onRemoveRace(activeCat.id, r.id); }} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
             <X size={15} />
           </button>
         )}
@@ -2326,7 +2326,7 @@ function RegattasScreen({ categories, editable, onBack, onOpenRace, onAddCategor
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: 0 }}>{activeCat.name}</p>
             {editable && (
-              <button className="vir-btn" onClick={() => onRemoveCategory(activeCat.id)} style={{ background: "transparent", color: "#8A8A8A", fontSize: 10.5, textDecoration: "underline" }}>Eliminar categoría</button>
+              <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar la categoría "${activeCat.name}" entera? Se perderán todos sus días de regata y documentos.`)) onRemoveCategory(activeCat.id); }} style={{ background: "transparent", color: "#8A8A8A", fontSize: 10.5, textDecoration: "underline" }}>Eliminar categoría</button>
             )}
           </div>
 
@@ -2473,7 +2473,7 @@ function RaceDetailScreen({ race: r, editable, onBack, onUpdateTitle, onUpdateNo
             </div>
           </div>
           {editable && (
-            <button className="vir-btn" onClick={(e) => { e.stopPropagation(); onRemoveDoc(d.id); }} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
+            <button className="vir-btn" onClick={(e) => { e.stopPropagation(); if (window.confirm(`¿Eliminar el documento "${d.label}"?`)) onRemoveDoc(d.id); }} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
               <X size={15} />
             </button>
           )}
@@ -2673,7 +2673,7 @@ function PendingUserRow({ user, teams, onAssign, onReject }) {
         <button className="vir-btn" onClick={() => onAssign(user.id, role, role === "rower" ? team : null)} style={{ ...primaryBtn, flex: 1, padding: "9px 0", fontSize: 12.5 }}>
           Aceptar y asignar rol
         </button>
-        <button className="vir-btn" onClick={() => onReject(user.id)} style={{ background: "transparent", border: "1px solid #565656", borderRadius: 10, color: "#FF8890", padding: "9px 14px", fontSize: 12.5 }}>
+        <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar la solicitud de "${user.username}"? Tendría que registrarse de nuevo para volver a pedir acceso.`)) onReject(user.id); }} style={{ background: "transparent", border: "1px solid #565656", borderRadius: 10, color: "#FF8890", padding: "9px 14px", fontSize: 12.5 }}>
           Eliminar
         </button>
       </div>
@@ -2703,7 +2703,7 @@ function ClubTeamsScreen({ teams, onAddTeam, onRemoveTeam, onOpenTeam, teamOf, r
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span className="vir-mono" style={{ color: "#ADADAD", fontSize: 12 }}>{t.code}</span>
-                <button className="vir-btn" onClick={(e) => { e.stopPropagation(); onRemoveTeam(t.id); }} style={{ background: "transparent", color: "#8A8A8A", padding: 4, borderRadius: 8 }} title="Eliminar tripulación">
+                <button className="vir-btn" onClick={(e) => { e.stopPropagation(); if (window.confirm(`¿Eliminar la tripulación "${t.name}"? Se perderán sus entrenos de agua, plan de gimnasio y remeros dejarán de tenerla asignada.`)) onRemoveTeam(t.id); }} style={{ background: "transparent", color: "#8A8A8A", padding: 4, borderRadius: 8 }} title="Eliminar tripulación">
                   <X size={16} />
                 </button>
                 <ChevronRight size={16} color="#8A8A8A" />
@@ -3161,7 +3161,7 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentWeek, weekMetaFor,
             📎 {meta.weekAttachment.name}
           </span>
           {editable && (
-            <button className="vir-btn" onClick={() => onSaveWeekAttachment(teamId, week, null)} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
+            <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar el archivo "${meta.weekAttachment.name}" de esta semana?`)) onSaveWeekAttachment(teamId, week, null); }} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
               <X size={15} />
             </button>
           )}
@@ -3360,7 +3360,7 @@ function FisicoRecordRow({ slot, content, record, overdue, onAddPhoto, onRemoveP
               )}
               <button
                 className="vir-btn"
-                onClick={() => onRemovePhoto(i)}
+                onClick={() => { if (window.confirm("¿Eliminar esta foto de justificante?")) onRemovePhoto(i); }}
                 style={{ position: "absolute", top: -6, right: -6, width: 17, height: 17, borderRadius: "50%", background: "#333333", border: "1px solid #565656", color: "#ADADAD", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
               >
                 <X size={10} />
