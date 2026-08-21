@@ -521,6 +521,14 @@ export default function ViradaPrototype() {
     setPendingUsers(prev => prev.filter(u => u.id !== id));
     flash(`Solicitud de ${p?.username || "usuario"} eliminada`);
   };
+  const removeAssignedUser = async (id) => {
+    const p = assignedUsers.find(u => u.id === id);
+    const { error } = await supabase.from("users").delete().eq("id", id);
+    if (error) { flash("No se pudo eliminar el usuario. Inténtalo de nuevo."); return; }
+    setAssignedUsers(prev => prev.filter(u => u.id !== id));
+    setCoachTeams(prev => { const next = { ...prev }; delete next[id]; return next; });
+    flash(`${p?.apodo || p?.username || "Usuario"} eliminado del club`);
+  };
 
   const teamName = (id) => teams.find(t => t.id === id)?.name || "—";
   const teamCode = (id) => teams.find(t => t.id === id)?.code || "—";
@@ -1263,7 +1271,7 @@ export default function ViradaPrototype() {
                 />
               )}
               {screen === "users" && (role === "club" || role === "admin") && (
-                <ClubUsersScreen teams={clubTeams} teamName={teamName} teamOf={teamOf} roleOf={roleOf} onAssignTeam={assignTeam} onSetRole={setPersonRole} pendingUsers={clubPendingUsers} assignedUsers={clubAssignedUsers} onAssignPending={assignPendingUser} onRejectPending={rejectPendingUser} managedTeamsOf={managedTeamsOf} onToggleCoachTeam={toggleCoachTeam} />
+                <ClubUsersScreen teams={clubTeams} teamName={teamName} teamOf={teamOf} roleOf={roleOf} onAssignTeam={assignTeam} onSetRole={setPersonRole} pendingUsers={clubPendingUsers} assignedUsers={clubAssignedUsers} onAssignPending={assignPendingUser} onRejectPending={rejectPendingUser} onRemoveUser={removeAssignedUser} managedTeamsOf={managedTeamsOf} onToggleCoachTeam={toggleCoachTeam} />
               )}
               {screen === "calendar" && role === "rower" && (
                 <CalendarScreen sessions={rowerUpcoming} onOpen={(s) => { setOpenSession(s); setScreen("sessionRower"); }} onToggle={toggleSignup} myId={currentUserId} />
@@ -1376,7 +1384,6 @@ export default function ViradaPrototype() {
 
 function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser, onRecoverPassword, onClearError, loginError, Logo }) {
   const [view, setView] = useState("menu"); // "menu" | "registerClub" | "registerUser" | "loginClub" | "loginUser"
-  const [quickRole, setQuickRole] = useState(null); // "coach" | "rower" | null — desplegable de acceso directo
   const [regSide, setRegSide] = useState("babor");
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
@@ -1437,8 +1444,8 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 28px", overflowY: "auto" }}>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 6, marginTop: 24 }}><Logo size={34} /></div>
-      <p style={{ textAlign: "center", color: "#ADADAD", fontSize: 13, margin: "4px 0 34px" }}>Central de reservas de club de remo</p>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 6, marginTop: 24 }}><Logo size={40} /></div>
+      <p style={{ textAlign: "center", color: "#ADADAD", fontSize: 13, margin: "4px 0 34px", letterSpacing: 1.5, textTransform: "uppercase" }}>Club Manager</p>
 
       {view === "menu" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1457,38 +1464,6 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
           <button className="vir-btn" onClick={() => goTo("loginUser")} style={{ ...ghostBtn, textAlign: "left", padding: "14px 16px" }}>
             Acceso usuario
           </button>
-
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "18px 0 2px" }}>Acceso directo de pruebas</p>
-          <button className="vir-btn" onClick={() => { onLoginClub("CLUB", "1234"); }} style={{ ...ghostBtn, textAlign: "left", padding: "14px 16px" }}>
-            Club <span style={{ color: "#8A8A8A", fontWeight: 400 }}> · CLUB / 1234 · código 001</span>
-          </button>
-          <button className="vir-btn" onClick={() => setQuickRole(quickRole === "coach" ? null : "coach")} style={{ ...ghostBtn, textAlign: "left", padding: "14px 16px" }}>
-            Entrenador <span style={{ color: "#8A8A8A", fontWeight: 400 }}> · elige un usuario</span>
-          </button>
-          {quickRole === "coach" && (
-            <div style={{ display: "flex", gap: 8 }}>
-              {DEMO_COACHES.map(u => (
-                <button key={u.id} className="vir-btn" onClick={() => onLoginUser(u.username, "1234")} style={{ ...ghostBtn, flex: 1, padding: "10px 0", fontSize: 12 }}>
-                  {u.username}
-                </button>
-              ))}
-            </div>
-          )}
-          <button className="vir-btn" onClick={() => setQuickRole(quickRole === "rower" ? null : "rower")} style={{ ...ghostBtn, textAlign: "left", padding: "14px 16px" }}>
-            Remero <span style={{ color: "#8A8A8A", fontWeight: 400 }}> · elige un usuario</span>
-          </button>
-          {quickRole === "rower" && (
-            <div style={{ display: "flex", gap: 8 }}>
-              {DEMO_ROWERS.map(u => (
-                <button key={u.id} className="vir-btn" onClick={() => onLoginUser(u.username, "1234")} style={{ ...ghostBtn, flex: 1, padding: "10px 0", fontSize: 12 }}>
-                  {u.username}
-                </button>
-              ))}
-            </div>
-          )}
-          <p style={{ color: "#8A8A8A", fontSize: 10, margin: "4px 2px 0", lineHeight: 1.4 }}>
-            Solo para revisar el prototipo. El administrador sigue accediendo con usuario ADMIN y contraseña 1234 desde "Acceso club" o "Acceso usuario".
-          </p>
         </div>
       )}
 
@@ -2394,7 +2369,7 @@ function RaceDetailScreen({ race: r, editable, onBack, onUpdateTitle, onUpdateNo
   );
 }
 
-function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetRole, pendingUsers, assignedUsers, onAssignPending, onRejectPending, managedTeamsOf, onToggleCoachTeam }) {
+function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetRole, pendingUsers, assignedUsers, onAssignPending, onRejectPending, onRemoveUser, managedTeamsOf, onToggleCoachTeam }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
 
@@ -2500,6 +2475,15 @@ function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetR
                   </p>
                 </div>
               )}
+              <button
+                className="vir-btn"
+                onClick={() => {
+                  if (window.confirm(`¿Eliminar a ${p.nickname || p.name} del club? Perderá el acceso y no podrá deshacerse.`)) onRemoveUser(p.id);
+                }}
+                style={{ background: "transparent", color: "#F09595", fontSize: 11, textDecoration: "underline", marginTop: 10 }}
+              >
+                Eliminar usuario del club
+              </button>
             </div>
           );
         })}
