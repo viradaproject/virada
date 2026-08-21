@@ -1549,6 +1549,23 @@ export default function ViradaPrototype() {
 }
 
 // "Club Rem Lloret" -> "ADMINCRL" (sugerencia, el club puede cambiarla libremente)
+// Etiqueta de campo con indicador dinámico: (opcional) en gris, * roja si falta por rellenar, ✓ verde si ya está
+function FieldLabel({ text, required, filled, hint }) {
+  return (
+    <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px", display: "flex", alignItems: "center", gap: 5 }}>
+      <span>{text}</span>
+      {required ? (
+        filled
+          ? <Check size={13} color="#3EA55A" />
+          : <span style={{ color: "#E61E29", fontWeight: 800, fontSize: 14 }}>*</span>
+      ) : (
+        <span style={{ color: "#8A8A8A", fontWeight: 400, fontSize: 11 }}>(opcional)</span>
+      )}
+      {hint && <span style={{ color: "#8A8A8A", fontWeight: 400, fontSize: 11 }}>{hint}</span>}
+    </label>
+  );
+}
+
 const suggestClubUsername = (clubName) => {
   const words = (clubName || "").trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return "";
@@ -1702,16 +1719,17 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
       {view === "registerClub" && (
         <>
           <BackRow onBack={() => goTo("menu")} />
-          <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "10px 0 4px" }}>Registro del club</h2>
-          <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
+          <div style={{ display: "flex", justifyContent: "center", margin: "18px 0 22px" }}><Logo size={38} /></div>
+          <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "0 0 4px" }}>Registro del club</h2>
+          <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "0 0 18px", lineHeight: 1.4 }}>
             Al crear la cuenta, VIRADA generará automáticamente el código de acceso de tu club. Compártelo con tus entrenadores y remeros para que puedan registrarse dentro de tu club y no de otro.
           </p>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 18 }}>
             <AvatarPicker photo={regPhoto} initials="?" onChange={setRegPhoto} size={72} />
-            <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "8px 0 0" }}>Toca la foto para {regPhoto ? "cambiarla" : "añadirla"}</p>
+            <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "8px 0 0" }}>Logo del club — toca para {regPhoto ? "cambiarlo" : "añadirlo"} (podrás cambiarlo luego desde el perfil)</p>
           </div>
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nombre del club</label>
+          <FieldLabel text="Nombre del club" required={false} />
           <input
             value={clubNameRegInput}
             onChange={e => {
@@ -1723,7 +1741,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
             style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }}
           />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Usuario del club</label>
+          <FieldLabel text="Usuario del club" required filled={!!usernameInput.trim()} />
           <input
             value={usernameInput}
             onChange={e => { setUsernameInput(e.target.value); setUsernameTouched(true); }}
@@ -1734,51 +1752,50 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
             Te sugerimos "ADMIN" + las iniciales del nombre del club, pero puedes usar el que prefieras para entrar.
           </p>
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Contraseña</label>
+          <FieldLabel text="Contraseña" required filled={!!passwordInput} />
           <div style={{ position: "relative", marginBottom: 14 }}>
             <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
             <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", paddingLeft: 34 }} />
           </div>
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Repetir contraseña</label>
+          <FieldLabel text="Repetir contraseña" required filled={!!passwordRepeatInput && passwordRepeatInput === passwordInput} />
           <div style={{ position: "relative" }}>
             <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
             <input type="password" value={passwordRepeatInput} onChange={e => setPasswordRepeatInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", paddingLeft: 34 }} />
           </div>
 
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 2px", borderTop: "1px solid #565656", paddingTop: 18 }}>Datos del club <span style={{ fontWeight: 400, textTransform: "none" }}>(opcional, puedes completarlo más adelante)</span></p>
-          <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "0 0 12px" }}>El correo electrónico sí es obligatorio: lo necesitamos para poder recuperar la contraseña.</p>
+          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>Datos del club</p>
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nombre fiscal del club</label>
+          <FieldLabel text="Nombre fiscal del club" required={false} />
           <input value={legalNameInput} onChange={e => setLegalNameInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>NIF</label>
+          <FieldLabel text="NIF" required={false} />
           <input value={nifInput} onChange={e => setNifInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Correo electrónico <span style={{ color: "#E67E22", fontWeight: 400, textTransform: "none" }}>(obligatorio)</span></label>
+          <FieldLabel text="Correo electrónico" required filled={!!emailInput.trim()} hint="lo necesitamos para recuperar la contraseña" />
           <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Dirección</label>
+          <FieldLabel text="Dirección" required={false} />
           <input value={addressInput} onChange={e => setAddressInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Población</label>
+          <FieldLabel text="Población" required={false} />
           <input value={cityInput} onChange={e => setCityInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Código postal</label>
+          <FieldLabel text="Código postal" required={false} />
           <input value={postalCodeInput} onChange={e => setPostalCodeInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 4 }} />
 
           <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>Persona de contacto</p>
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nombre</label>
+          <FieldLabel text="Nombre" required filled={!!contactFirstNameInput.trim()} />
           <input value={contactFirstNameInput} onChange={e => setContactFirstNameInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Apellido</label>
+          <FieldLabel text="Apellido" required filled={!!contactLastNameInput.trim()} />
           <input value={contactLastNameInput} onChange={e => setContactLastNameInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Cargo en el club</label>
+          <FieldLabel text="Cargo en el club" required filled={!!contactRoleInput.trim()} />
           <input value={contactRoleInput} onChange={e => setContactRoleInput(e.target.value)} placeholder="Ej. Presidente, Secretaría, Coordinador..." style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nº Teléfono <span style={{ color: "#8A8A8A", fontWeight: 400, textTransform: "none" }}>(opcional)</span></label>
+          <FieldLabel text="Nº Teléfono" required={false} />
           <input type="tel" value={contactPhoneInput} onChange={e => setContactPhoneInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 4 }} />
 
           {loginError && <p style={{ color: "#FF8890", fontSize: 11.5, margin: "14px 2px 0" }}>{loginError}</p>}
