@@ -189,6 +189,7 @@ const crewStatsFor = (sessions, id, now) => {
   return { convocado, entrenado };
 };
 const weekOfDate = (date) => Math.ceil(date.getDate() / 7);
+const JS_DOW_TO_WEEK_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"]; // Date.getDay(): 0=domingo..6=sábado
 // Posiciones del bote: patrón (0) al frente, luego 4 filas de BABOR/ESTRIBOR (1 a 4)
 const SEAT_LABELS = [
   { side: "BABOR", num: 1 }, { side: "ESTRIBOR", num: 1 },
@@ -914,7 +915,7 @@ export default function ViradaPrototype() {
                 />
               )}
               {screen === "home" && role === "coach" && (
-                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} />
+                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} />
               )}
               {screen === "coachPlan" && (role === "coach" || role === "admin") && (
                 <CoachPlanScreen
@@ -955,6 +956,25 @@ export default function ViradaPrototype() {
                   onRemovePhoto={(teamId, week, day, idx) => removeGymPhoto(currentUserId, teamId, week, day, idx)}
                   onViewPhoto={(photo, caption) => setViewPhoto({ photo, caption })}
                   onBack={() => setScreen("home")}
+                />
+              )}
+              {screen === "informes" && (role === "coach" || role === "admin") && (
+                <InformesScreen
+                  teamId={coachScope}
+                  teams={clubTeams}
+                  setScope={setCoachScope}
+                  sessions={coachScope === "club" ? [] : sessions.filter(s => s.teamId === coachScope)}
+                  gymWeekMetaFor={gymWeekMeta}
+                  gymRecordFor={gymRecordOf}
+                  members={[...ROWERS, ...clubAssignedUsers]
+                    .filter(p => roleOf(p.id) === "rower" && teamOf(p.id) === coachScope)
+                    .map(p => ({ id: p.id, name: p.name || p.username, nickname: nicknameOf(p.id) }))}
+                  currentWeek={currentWeek}
+                  waterStatsFor={waterStatsFor}
+                  gymStatsFor={gymStatsFor}
+                  today={today}
+                  onBack={() => setScreen("home")}
+                  onViewPhoto={(photo, caption) => setViewPhoto({ photo, caption })}
                 />
               )}
               {screen === "coachTeamStats" && (role === "coach" || role === "admin") && (
@@ -1561,7 +1581,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
   );
 }
 
-function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, coachName, teamName, showTeamLabel }) {
+function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenInformes, coachName, teamName, showTeamLabel }) {
   return (
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={`Hola, ${coachName} · ${CLUB_NAME}`}>Planificación de botes</SectionTitle>
@@ -1585,7 +1605,7 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
         <div className="vir-btn" onClick={onGymPlan} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
             <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Plan de gimnasio semanal</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Sube las 5 sesiones de cada semana</p>
+            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Marca los días de la semana y sube el contenido</p>
           </div>
           <ChevronRight size={18} color="#8A8A8A" />
         </div>
@@ -1593,6 +1613,13 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
           <div>
             <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Estadísticas de tripulación</p>
             <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Frecuencia, convocatorias y entrenos de agua</p>
+          </div>
+          <ChevronRight size={18} color="#8A8A8A" />
+        </div>
+        <div className="vir-btn" onClick={onOpenInformes} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div>
+            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Informes</p>
+            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Diario, semanal y mensual · exportables a PDF</p>
           </div>
           <ChevronRight size={18} color="#8A8A8A" />
         </div>
@@ -2433,6 +2460,245 @@ function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended
           {m.side && <SideBadge side={m.side} />}
         </div>
       ))}
+    </div>
+  );
+}
+
+function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gymRecordFor, members, currentWeek, waterStatsFor, gymStatsFor, today, onBack, onViewPhoto }) {
+  const [tab, setTab] = useState("diario");
+  const [day, setDay] = useState(today);
+  const [week, setWeek] = useState(currentWeek);
+
+  if (teamId === "club") {
+    return (
+      <div style={{ padding: "16px 20px 28px" }}>
+        <BackRow onBack={onBack} />
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Informes</h2>
+        <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Elige una tripulación para sacar sus informes.</p>
+        {teams.map(t => (
+          <div key={t.id} className="vir-btn" onClick={() => setScope(t.id)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.name}</p>
+            <ChevronRight size={18} color="#8A8A8A" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const team = teams.find(t => t.id === teamId);
+
+  // --- datos de un día concreto ---
+  const sessionForDay = (date) => sessions.find(s => s.iso === date.toISOString().slice(0, 10));
+  const dayRow = (rower, date) => {
+    const s = sessionForDay(date);
+    const swam = !!(s && s.active && s.status === "cerrado" && inCrew(s, rower.id));
+    const wk = weekOfDate(date);
+    const dayKey = JS_DOW_TO_WEEK_KEY[date.getDay()];
+    const meta = gymWeekMetaFor(teamId, wk);
+    const isGymDay = (meta.activeDays || []).includes(dayKey);
+    const rec = isGymDay ? gymRecordFor(rower.id, teamId, wk, dayKey) : null;
+    const gymDone = !!(rec && rec.done);
+    const photos = (rec && rec.photos) || [];
+    return { swam, isGymDay, gymDone, photos, dayLabel: WEEK_DAY_LABELS[dayKey] };
+  };
+
+  // --- datos de una semana completa ---
+  const weekDates = Array.from({ length: 7 }, (_, i) => {
+    // aproximación: días 1-7 de la semana del mes = (week-1)*7+1 .. +7, acotado al mes
+    const d = new Date(2026, 7, Math.min(31, (week - 1) * 7 + 1 + i));
+    return d;
+  }).filter(d => d.getMonth() === 7 && weekOfDate(d) === week);
+  const weekMeta = gymWeekMetaFor(teamId, week);
+  const weekActiveDays = weekMeta.activeDays || [];
+
+  // --- datos del mes (todas las semanas hasta la actual) ---
+  const monthlyRows = members.map(m => {
+    const water = waterStatsFor(m.id, teamId);
+    const gym = gymStatsFor(m.id, teamId);
+    const commitment = Math.round((
+      (water.monthTotal > 0 ? water.monthDone / water.monthTotal : 0) +
+      (gym.monthTotal > 0 ? gym.monthDone / gym.monthTotal : 0)
+    ) / 2 * 100);
+    return { member: m, water, gym, commitment };
+  });
+
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Informes</h2>
+      <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 16px" }}>{team?.name}</p>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+        {[{ id: "diario", label: "Diario" }, { id: "semanal", label: "Semanal" }, { id: "mensual", label: "Mensual" }].map(t => (
+          <ScopeChip key={t.id} active={tab === t.id} onClick={() => setTab(t.id)} label={t.label} />
+        ))}
+      </div>
+
+      <button className="vir-btn" onClick={() => window.print()} style={{ ...primaryBtn, marginBottom: 20 }}>
+        Exportar / Guardar como PDF
+      </button>
+
+      {tab === "diario" && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <button className="vir-btn" onClick={() => setDay(d => new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1))} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronLeft size={16} /></button>
+            <p style={{ color: "#F5F5F5", fontSize: 14, fontWeight: 700, margin: 0 }}>{DAYS_ES[day.getDay()]} {day.getDate()} {MONTHS_ES[day.getMonth()]}</p>
+            <button className="vir-btn" onClick={() => setDay(d => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1))} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronRight size={16} /></button>
+          </div>
+
+          <div className="vir-print-area">
+            <h1 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 18, margin: "0 0 2px" }}>Informe diario · {team?.name}</h1>
+            <p style={{ fontSize: 12, margin: "0 0 16px" }}>{DAYS_ES[day.getDay()]} {day.getDate()} {MONTHS_ES[day.getMonth()]} de {day.getFullYear()}</p>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid #999" }}>
+                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Remero/a</th>
+                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Agua</th>
+                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Sesión de gim</th>
+                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Fotos</th>
+                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Evolución</th>
+                </tr>
+              </thead>
+              <tbody>
+                {members.map(m => {
+                  const row = dayRow(m, day);
+                  const commitment = monthlyRows.find(r => r.member.id === m.id)?.commitment ?? 0;
+                  return (
+                    <tr key={m.id} style={{ borderBottom: "1px solid #DDD" }}>
+                      <td style={{ padding: "4px 6px" }}>{m.name}{m.nickname ? ` "${m.nickname}"` : ""}</td>
+                      <td style={{ padding: "4px 6px" }}>{row.swam ? "✓ Entrenó" : "—"}</td>
+                      <td style={{ padding: "4px 6px" }}>{!row.isGymDay ? "Sin sesión" : row.gymDone ? `✓ ${row.dayLabel}` : "✕ No hecho"}</td>
+                      <td style={{ padding: "4px 6px" }}>{row.photos.length}</td>
+                      <td style={{ padding: "4px 6px" }}>{commitment}% compromiso</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {members.some(m => dayRow(m, day).photos.length > 0) && (
+            <div style={{ marginTop: 18 }}>
+              <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Fotos subidas ese día</p>
+              {members.map(m => {
+                const row = dayRow(m, day);
+                if (row.photos.length === 0) return null;
+                return (
+                  <div key={m.id} style={{ marginBottom: 12 }}>
+                    <p style={{ color: "#ADADAD", fontSize: 12, margin: "0 0 6px" }}>{m.nickname || m.name}</p>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {row.photos.map((p, i) => p.kind === "pdf" ? (
+                        <div key={i} onClick={() => window.open(p.dataUrl, "_blank")} style={{ width: 48, height: 48, borderRadius: 8, background: "#333333", border: "1px solid #565656", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                          <KeyRound size={16} color="#ADADAD" />
+                        </div>
+                      ) : (
+                        <img key={i} src={p.dataUrl} onClick={() => onViewPhoto(p.dataUrl, `${m.nickname || m.name} · ${DAYS_ES[day.getDay()]} ${day.getDate()}`)} alt="" style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover", border: "1px solid #565656", cursor: "pointer" }} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "semanal" && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <button className="vir-btn" onClick={() => setWeek(w => Math.max(1, w - 1))} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronLeft size={16} /></button>
+            <p style={{ color: "#F5F5F5", fontSize: 14, fontWeight: 700, margin: 0 }}>Semana {week}{week === currentWeek ? " · actual" : ""}</p>
+            <button className="vir-btn" onClick={() => setWeek(w => w + 1)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronRight size={16} /></button>
+          </div>
+
+          <div className="vir-print-area">
+            <h1 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 18, margin: "0 0 2px" }}>Informe semanal · {team?.name}</h1>
+            <p style={{ fontSize: 12, margin: "0 0 16px" }}>Semana {week}</p>
+
+            <h3 style={{ fontSize: 13, margin: "0 0 8px" }}>Entrenos de agua</h3>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, marginBottom: 16 }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid #999" }}>
+                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Fecha</th>
+                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Estado</th>
+                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Tripulación embarcada</th>
+                </tr>
+              </thead>
+              <tbody>
+                {weekDates.map(d => {
+                  const s = sessionForDay(d);
+                  const crew = s ? members.filter(m => inCrew(s, m.id)).map(m => m.nickname || m.name).join(", ") : "";
+                  return (
+                    <tr key={d.toISOString()} style={{ borderBottom: "1px solid #DDD" }}>
+                      <td style={{ padding: "4px 6px" }}>{DAYS_ES[d.getDay()]} {d.getDate()}</td>
+                      <td style={{ padding: "4px 6px" }}>{!s || !s.active ? "Sin entreno" : s.status === "cerrado" ? "Cerrado" : "Abierto"}</td>
+                      <td style={{ padding: "4px 6px" }}>{crew || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            <h3 style={{ fontSize: 13, margin: "0 0 8px" }}>Gimnasio — días de esta semana: {weekActiveDays.map(d => WEEK_DAY_LABELS[d]).join(", ") || "ninguno"}</h3>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid #999" }}>
+                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Remero/a</th>
+                  {weekActiveDays.map(d => <th key={d} style={{ textAlign: "left", padding: "4px 6px" }}>{WEEK_DAY_LABELS[d].slice(0, 3)}</th>)}
+                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Total semana</th>
+                </tr>
+              </thead>
+              <tbody>
+                {members.map(m => {
+                  const doneCount = weekActiveDays.filter(d => { const r = gymRecordFor(m.id, teamId, week, d); return !!(r && r.done); }).length;
+                  return (
+                    <tr key={m.id} style={{ borderBottom: "1px solid #DDD" }}>
+                      <td style={{ padding: "4px 6px" }}>{m.nickname || m.name}</td>
+                      {weekActiveDays.map(d => {
+                        const r = gymRecordFor(m.id, teamId, week, d);
+                        return <td key={d} style={{ padding: "4px 6px" }}>{r && r.done ? "✓" : "✕"}</td>;
+                      })}
+                      <td style={{ padding: "4px 6px" }}>{doneCount}/{weekActiveDays.length}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {tab === "mensual" && (
+        <div className="vir-print-area">
+          <h1 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 18, margin: "0 0 2px" }}>Informe mensual · {team?.name}</h1>
+          <p style={{ fontSize: 12, margin: "0 0 16px" }}>{MONTHS_ES[7]} de 2026 · semanas 1 a {currentWeek}</p>
+
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid #999" }}>
+                <th style={{ textAlign: "left", padding: "4px 6px" }}>Remero/a</th>
+                <th style={{ textAlign: "left", padding: "4px 6px" }}>Días de agua</th>
+                <th style={{ textAlign: "left", padding: "4px 6px" }}>Sesiones de gim</th>
+                <th style={{ textAlign: "left", padding: "4px 6px" }}>% compromiso</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthlyRows.map(r => (
+                <tr key={r.member.id} style={{ borderBottom: "1px solid #DDD" }}>
+                  <td style={{ padding: "4px 6px" }}>{r.member.nickname || r.member.name}</td>
+                  <td style={{ padding: "4px 6px" }}>{r.water.monthDone} / {r.water.monthTotal}</td>
+                  <td style={{ padding: "4px 6px" }}>{r.gym.monthDone} / {r.gym.monthTotal}</td>
+                  <td style={{ padding: "4px 6px" }}>{r.commitment}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <p style={{ fontSize: 10, color: "#666", marginTop: 16 }}>
+            El % de compromiso combina a partes iguales la asistencia a agua y la constancia en gimnasio. Iremos ampliando este informe con más datos.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -3967,7 +4233,7 @@ function TabBar({ screen, setScreen, notifCount, role }) {
         { id: "notifications", icon: Bell, label: "Avisos", badge: notifCount },
         { id: "profile", icon: User, label: "Perfil" },
       ];
-  const homeGroup = ["sessionRower", "sessionCoach", "coachPlan", "coachGymPlan"];
+  const homeGroup = ["sessionRower", "sessionCoach", "coachPlan", "coachGymPlan", "informes"];
   const profileGroup = ["testPesos", "zonasErgo", "estadisticas", "rowerGymPlan"];
   const active = homeGroup.includes(screen) ? "home"
     : (screen === "coachRowerDetail" || screen === "coachPesos") ? "coachTeamStats"
