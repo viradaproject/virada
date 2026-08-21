@@ -269,9 +269,10 @@ export default function ViradaPrototype() {
   const clubAssignedUsers = useMemo(() => assignedUsers.filter(u => u.clubId === currentClubId), [assignedUsers, currentClubId]);
   const clubPendingUsers = useMemo(() => pendingUsers.filter(u => u.clubId === currentClubId), [pendingUsers, currentClubId]);
 
-  // Carga inicial desde Supabase: clubes y usuarios (activos y pendientes) guardados de verdad
-  useEffect(() => {
-    const loadData = async () => {
+  // Carga desde Supabase: clubes y usuarios (activos y pendientes) guardados de verdad.
+  // Se llama al arrancar la app, y se vuelve a llamar justo después de iniciar sesión,
+  // porque con RLS activado la base de datos solo devuelve los datos del club/usuario ya autenticado.
+  const loadData = async () => {
       const { data: clubsData, error: clubsErr } = await supabase.from("clubs").select("*");
       if (!clubsErr && clubsData) {
         setClubs(clubsData.map(c => ({
@@ -385,7 +386,9 @@ export default function ViradaPrototype() {
         ergoData.forEach(row => { byRower[row.rower_id] = row.test_time; });
         setErgoTestTimes(byRower);
       }
-    };
+  };
+
+  useEffect(() => {
     loadData();
   }, []);
 
@@ -901,6 +904,7 @@ export default function ViradaPrototype() {
     if (authError || !authData?.user) return false;
     const { data, error } = await supabase.from("admins").select("*").eq("auth_user_id", authData.user.id).maybeSingle();
     if (error || !data) return false;
+    await loadData();
     setRole("admin");
     setCurrentClubId(null);
     setScreen("home");
@@ -922,6 +926,7 @@ export default function ViradaPrototype() {
       setLoginError("Usuario o contraseña incorrectos.");
       return;
     }
+    await loadData();
     setClubs(prev => prev.some(c => c.id === data.id) ? prev : [...prev, {
       id: data.id, code: data.access_code, name: data.name, username: data.username, createdAt: data.created_at, photoUrl: data.photo_url || null,
     }]);
@@ -952,6 +957,7 @@ export default function ViradaPrototype() {
       setScreen("pendingRole");
       return;
     }
+    await loadData();
     setCurrentUserId(data.id);
     setCurrentClubId(data.club_id ?? null);
     if (data.role) setRoleOverrides(prev => ({ ...prev, [data.id]: data.role }));
@@ -982,6 +988,7 @@ export default function ViradaPrototype() {
       photo_url: photo || null,
     }).select().single();
     if (error) { setLoginError("No se pudo registrar el club. Inténtalo de nuevo."); return; }
+    await loadData();
     const newClub = {
       id: data.id, code: data.access_code, name: data.name,
       username: data.username, createdAt: data.created_at,
