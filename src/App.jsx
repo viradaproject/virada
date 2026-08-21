@@ -1670,7 +1670,11 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
   }, [view]);
 
   return (
-    <div ref={scrollRef} style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: view === "menu" ? "center" : "flex-start", padding: "0 28px", overflowY: "auto" }}>
+    <div ref={scrollRef} style={{
+      flex: 1, display: "flex", flexDirection: "column", overflowY: "auto",
+      justifyContent: (view === "menu" || view === "loginClub" || view === "loginUser") ? "center" : "flex-start",
+      padding: (view === "menu" || view === "loginClub" || view === "loginUser") ? "0 28px" : "28px 28px 0",
+    }}>
       {view === "menu" && (
         <>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 6, marginTop: 24 }}><Logo size={50} /></div>
