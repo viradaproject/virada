@@ -780,6 +780,11 @@ export default function ViradaPrototype() {
     flash("Tripulación cerrada y notificaciones enviadas");
   };
 
+  const reopenCrew = (session) => {
+    updateSession(session.id, { status: "abierto" });
+    flash("Tripulación reabierta — modifica lo que haga falta y vuelve a cerrarla para notificar");
+  };
+
   const toggleActive = (session) => {
     if (session.active) { setSuspendTarget(session); return; } // desactivar un día activo pide motivo
     updateSession(session.id, { active: true, suspendedReason: null });
@@ -1462,6 +1467,7 @@ export default function ViradaPrototype() {
                   onAssign={assign}
                   onClear={clearSlot}
                   onClose={closeCrew}
+                  onReopen={reopenCrew}
                   teamName={teamName}
                   teamOf={teamOf}
                   nameOf={nameOf}
@@ -4002,7 +4008,7 @@ function SessionRowerScreen({ session, onBack, onToggle, myId, nameOf, nicknameO
   );
 }
 
-function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable }) {
+function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable }) {
   const inScope = (id) => teamOf(id) === session.teamId;
   const available = [...session.signups].filter(id => !session.seats.includes(id) && session.patron !== id && !session.reserves.includes(id) && inScope(id));
   const filled = seatFill(session);
@@ -4093,6 +4099,11 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
         <>
           <Badge text="Tripulación cerrada" tone="closed" />
           <div style={{ marginTop: 16 }}><BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} /></div>
+          {editable && (
+            <button className="vir-btn" onClick={() => onReopen(session)} style={{ ...ghostBtn, marginTop: 18 }}>
+              Reabrir para modificar
+            </button>
+          )}
         </>
       )}
     </div>
