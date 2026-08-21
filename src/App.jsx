@@ -290,12 +290,25 @@ export default function ViradaPrototype() {
         }));
         setAssignedUsers(activeUsers);
         setPendingUsers(pendingList);
-        const roles = {}, pwds = {}, emails = {}, photos = {};
-        usersData.forEach(u => { if (u.role) roles[u.id] = u.role; pwds[u.id] = u.password_hash; if (u.recovery_email) emails[u.id] = u.recovery_email; if (u.photo_url) photos[u.id] = u.photo_url; });
+        const roles = {}, pwds = {}, emails = {}, photos = {}, teamsById = {};
+        usersData.forEach(u => {
+          if (u.role) roles[u.id] = u.role;
+          pwds[u.id] = u.password_hash;
+          if (u.recovery_email) emails[u.id] = u.recovery_email;
+          if (u.photo_url) photos[u.id] = u.photo_url;
+          if (u.team_id) teamsById[u.id] = u.team_id;
+        });
         setRoleOverrides(prev => ({ ...prev, ...roles }));
         setPasswords(prev => ({ ...prev, ...pwds }));
         setRecoveryEmails(prev => ({ ...prev, ...emails }));
         setProfilePhotos(prev => ({ ...prev, ...photos }));
+        setTeamOverrides(prev => ({ ...prev, ...teamsById }));
+      }
+      const { data: permsData } = await supabase.from("coach_team_permissions").select("*");
+      if (permsData) {
+        const byCoach = {};
+        permsData.forEach(p => { byCoach[p.coach_id] = [...(byCoach[p.coach_id] || []), p.team_id]; });
+        setCoachTeams(byCoach);
       }
       const { data: teamsData, error: teamsErr } = await supabase.from("teams").select("*");
       if (!teamsErr && teamsData) {
@@ -415,8 +428,10 @@ export default function ViradaPrototype() {
     setClubs(prev => prev.map(c => c.id === currentClubId ? { ...c, name } : c));
     flash("Nombre del club actualizado");
   };
-  const assignTeam = (id, teamId) => {
+  const assignTeam = async (id, teamId) => {
     setTeamOverrides(prev => ({ ...prev, [id]: teamId }));
+    const { error } = await supabase.from("users").update({ team_id: teamId }).eq("id", id);
+    if (error) { flash("No se pudo guardar la tripulación. Inténtalo de nuevo."); return; }
     flash(`${displayNameOf(id)} asignado a ${teamName(teamId)}`);
   };
   const setPersonRole = (id, role) => {
@@ -424,12 +439,18 @@ export default function ViradaPrototype() {
     flash(`Rol actualizado a ${role === "coach" ? "Entrenador" : "Remero"}`);
   };
   const managedTeamsOf = (coachId) => coachTeams[coachId] || [];
-  const toggleCoachTeam = (coachId, teamId) => {
-    setCoachTeams(prev => {
-      const cur = prev[coachId] || [];
-      const next = cur.includes(teamId) ? cur.filter(id => id !== teamId) : [...cur, teamId];
-      return { ...prev, [coachId]: next };
-    });
+  const toggleCoachTeam = async (coachId, teamId) => {
+    const cur = coachTeams[coachId] || [];
+    const granting = !cur.includes(teamId);
+    const next = granting ? [...cur, teamId] : cur.filter(id => id !== teamId);
+    setCoachTeams(prev => ({ ...prev, [coachId]: next }));
+    if (granting) {
+      const { error } = await supabase.from("coach_team_permissions").insert({ coach_id: coachId, team_id: teamId });
+      if (error) { flash("No se pudo guardar el permiso. Inténtalo de nuevo."); return; }
+    } else {
+      const { error } = await supabase.from("coach_team_permissions").delete().eq("coach_id", coachId).eq("team_id", teamId);
+      if (error) { flash("No se pudo quitar el permiso. Inténtalo de nuevo."); return; }
+    }
     flash("Permisos de gestión actualizados");
   };
   const isUsernameTaken = (username) => {
@@ -470,7 +491,9 @@ export default function ViradaPrototype() {
   const assignPendingUser = async (id, role, teamId) => {
     const p = pendingUsers.find(u => u.id === id);
     if (!p) return;
-    const { error } = await supabase.from("users").update({ status: "active", role, activated_at: new Date().toISOString() }).eq("id", id);
+    const updates = { status: "active", role, activated_at: new Date().toISOString() };
+    if (role === "rower" && teamId) updates.team_id = teamId;
+    const { error } = await supabase.from("users").update(updates).eq("id", id);
     if (error) { flash("No se pudo asignar el rol. Inténtalo de nuevo."); return; }
     setPendingUsers(prev => prev.filter(u => u.id !== id));
     setAssignedUsers(prev => [...prev, p]);
