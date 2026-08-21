@@ -413,13 +413,15 @@ export default function ViradaPrototype() {
   const updateMyProfile = async ({ apodo, side, email, newPassword }) => {
     const updates = { nickname: apodo, side };
     if (email !== undefined) updates.recovery_email = email;
-    if (newPassword) updates.password_hash = await hashPassword(newPassword);
     const { error } = await supabase.from("users").update(updates).eq("id", currentUserId);
     if (error) { flash("No se pudo actualizar el perfil. Inténtalo de nuevo."); return; }
+    if (newPassword) {
+      const { error: pwError } = await supabase.auth.updateUser({ password: newPassword });
+      if (pwError) { flash("Perfil actualizado, pero no se pudo cambiar la contraseña. Inténtalo de nuevo."); return; }
+    }
     setNicknameOverrides(prev => ({ ...prev, [currentUserId]: apodo }));
     setSideOverrides(prev => ({ ...prev, [currentUserId]: side }));
     if (email !== undefined) setRecoveryEmails(prev => ({ ...prev, [currentUserId]: email }));
-    if (newPassword) setPasswords(prev => ({ ...prev, [currentUserId]: updates.password_hash }));
     setAssignedUsers(prev => prev.map(u => u.id === currentUserId ? { ...u, apodo, side } : u));
     flash("Perfil actualizado");
   };
@@ -483,11 +485,19 @@ export default function ViradaPrototype() {
     const { data: clubRow, error: clubErr } = await supabase.from("clubs").select("*").eq("access_code", code).maybeSingle();
     if (clubErr || !clubRow) { setLoginError(clubs.length === 0 ? "Todavía no se ha registrado ningún club." : "Código de club incorrecto."); return; }
     if (isUsernameTaken(person.username)) { setLoginError("Ese nombre de usuario ya existe. Elige otro."); return; }
-    const passwordHash = await hashPassword(person.password || "1234");
+    const cleanUsername = person.username.trim().toLowerCase();
+    const authEmail = `${cleanUsername}@virada.app`;
+    const { data: authData, error: authError } = await supabase.auth.signUp({ email: authEmail, password: person.password || "1234" });
+    if (authError || !authData?.user) {
+      setLoginError(authError?.message === "Password should be at least 6 characters"
+        ? "La contraseña debe tener al menos 6 caracteres."
+        : "No se pudo completar el registro. Inténtalo de nuevo.");
+      return;
+    }
     const { data, error } = await supabase.from("users").insert({
       club_id: clubRow.id,
-      username: person.username.trim().toLowerCase(),
-      password_hash: passwordHash,
+      username: cleanUsername,
+      auth_user_id: authData.user.id,
       nickname: person.apodo || null,
       side: person.side || null,
       status: "pending",
@@ -496,7 +506,6 @@ export default function ViradaPrototype() {
     if (error) { setLoginError("No se pudo completar el registro. Inténtalo de nuevo."); return; }
     const entry = { id: data.id, clubId: data.club_id, username: data.username, apodo: data.nickname, side: data.side };
     setPendingUsers(prev => [...prev, entry]);
-    setPasswords(prev => ({ ...prev, [data.id]: passwordHash }));
     if (person.photo) setProfilePhotos(prev => ({ ...prev, [data.id]: person.photo }));
     setLastRegistered(entry);
     setCurrentClubId(clubRow.id);
@@ -912,10 +921,15 @@ export default function ViradaPrototype() {
   const loginUser = async (username, password) => {
     setLoginError(null);
     if (isAdminLogin(username, password)) { setRole("admin"); setCurrentClubId(null); setScreen("home"); return; }
-    const u = (username || "").trim().toLowerCase();
-    const passwordHash = await hashPassword(password);
-    const { data, error } = await supabase.from("users").select("*").ilike("username", u).maybeSingle();
-    if (error || !data || data.password_hash !== passwordHash) {
+    const cleanUsername = (username || "").trim().toLowerCase();
+    const authEmail = `${cleanUsername}@virada.app`;
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: authEmail, password });
+    if (authError || !authData?.user) {
+      setLoginError("Usuario o contraseña incorrectos.");
+      return;
+    }
+    const { data, error } = await supabase.from("users").select("*").eq("auth_user_id", authData.user.id).maybeSingle();
+    if (error || !data) {
       setLoginError("Usuario o contraseña incorrectos.");
       return;
     }
