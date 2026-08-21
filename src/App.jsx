@@ -277,6 +277,7 @@ export default function ViradaPrototype() {
         setClubs(clubsData.map(c => ({
           id: c.id, name: c.name, code: c.access_code,
           username: c.username, password: c.password_hash, createdAt: c.created_at,
+          photoUrl: c.photo_url || null,
         })));
       }
       const { data: usersData, error: usersErr } = await supabase.from("users").select("*");
@@ -289,11 +290,12 @@ export default function ViradaPrototype() {
         }));
         setAssignedUsers(activeUsers);
         setPendingUsers(pendingList);
-        const roles = {}, pwds = {}, emails = {};
-        usersData.forEach(u => { if (u.role) roles[u.id] = u.role; pwds[u.id] = u.password_hash; if (u.recovery_email) emails[u.id] = u.recovery_email; });
+        const roles = {}, pwds = {}, emails = {}, photos = {};
+        usersData.forEach(u => { if (u.role) roles[u.id] = u.role; pwds[u.id] = u.password_hash; if (u.recovery_email) emails[u.id] = u.recovery_email; if (u.photo_url) photos[u.id] = u.photo_url; });
         setRoleOverrides(prev => ({ ...prev, ...roles }));
         setPasswords(prev => ({ ...prev, ...pwds }));
         setRecoveryEmails(prev => ({ ...prev, ...emails }));
+        setProfilePhotos(prev => ({ ...prev, ...photos }));
       }
       const { data: teamsData, error: teamsErr } = await supabase.from("teams").select("*");
       if (!teamsErr && teamsData) {
@@ -315,6 +317,32 @@ export default function ViradaPrototype() {
           })),
         }));
         setRaceCategories(assembled);
+      }
+      const { data: gymWeeksData } = await supabase.from("gym_weeks").select("*");
+      const { data: gymDaysData } = await supabase.from("gym_days").select("*");
+      if (gymWeeksData || gymDaysData) {
+        const plans = {};
+        (gymWeeksData || []).forEach(w => {
+          plans[w.team_id] = plans[w.team_id] || {};
+          plans[w.team_id][w.week_number] = plans[w.team_id][w.week_number] || { activeDays: [], weekAttachment: null, days: {} };
+          plans[w.team_id][w.week_number].activeDays = w.active_days || [];
+          plans[w.team_id][w.week_number].weekAttachment = w.attachment_url ? { name: w.attachment_name, fileType: w.attachment_type, dataUrl: w.attachment_url } : null;
+        });
+        (gymDaysData || []).forEach(d => {
+          plans[d.team_id] = plans[d.team_id] || {};
+          plans[d.team_id][d.week_number] = plans[d.team_id][d.week_number] || { activeDays: [], weekAttachment: null, days: {} };
+          plans[d.team_id][d.week_number].days[d.day_key] = { content: d.content || "" };
+        });
+        setGymPlans(plans);
+      }
+      const { data: gymCompletionsData } = await supabase.from("gym_completions").select("*");
+      if (gymCompletionsData) {
+        const completion = {};
+        gymCompletionsData.forEach(c => {
+          completion[c.rower_id] = completion[c.rower_id] || {};
+          completion[c.rower_id][`${c.team_id}-${c.week_number}-${c.day_key}`] = { done: c.done, photos: c.photos || [] };
+        });
+        setGymCompletion(completion);
       }
     };
     loadData();
@@ -355,11 +383,15 @@ export default function ViradaPrototype() {
     flash("Perfil actualizado");
   };
   const [profilePhotos, setProfilePhotos] = useState({}); // { [userId]: dataUrl }
-  const updateMyPhoto = (dataUrl) => {
+  const updateMyPhoto = async (dataUrl) => {
+    const { error } = await supabase.from("users").update({ photo_url: dataUrl }).eq("id", currentUserId);
+    if (error) { flash("No se pudo guardar la foto. Inténtalo de nuevo."); return; }
     setProfilePhotos(prev => ({ ...prev, [currentUserId]: dataUrl }));
     flash("Foto de perfil actualizada");
   };
-  const updateClubPhoto = (dataUrl) => {
+  const updateClubPhoto = async (dataUrl) => {
+    const { error } = await supabase.from("clubs").update({ photo_url: dataUrl }).eq("id", currentClubId);
+    if (error) { flash("No se pudo guardar la foto. Inténtalo de nuevo."); return; }
     setClubs(prev => prev.map(c => c.id === currentClubId ? { ...c, photoUrl: dataUrl } : c));
     flash("Foto del club actualizada");
   };
@@ -410,6 +442,7 @@ export default function ViradaPrototype() {
       nickname: person.apodo || null,
       side: person.side || null,
       status: "pending",
+      photo_url: person.photo || null,
     }).select().single();
     if (error) { setLoginError("No se pudo completar el registro. Inténtalo de nuevo."); return; }
     const entry = { id: data.id, clubId: data.club_id, username: data.username, apodo: data.nickname, side: data.side };
@@ -611,55 +644,89 @@ export default function ViradaPrototype() {
   const gymWeekMeta = (teamId, week) => (gymPlans[teamId] && gymPlans[teamId][week]) || { activeDays: [], weekAttachment: null, days: {} };
   // vista "plana" por día, para las pantallas que solo necesitan el contenido de texto de cada día
   const gymWeekPlan = (teamId, week) => gymWeekMeta(teamId, week).days || {};
-  const setGymActiveDays = (teamId, week, activeDays) => {
+  const setGymActiveDays = async (teamId, week, activeDays) => {
     setGymPlans(prev => {
       const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachment: null, days: {} };
       return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, activeDays } } };
     });
+    const { error } = await supabase.from("gym_weeks").upsert(
+      { team_id: teamId, week_number: week, active_days: activeDays },
+      { onConflict: "team_id,week_number" }
+    );
+    if (error) flash("No se pudo guardar. Inténtalo de nuevo.");
   };
-  const setGymWeekAttachment = (teamId, week, attachment) => {
+  const setGymWeekAttachment = async (teamId, week, attachment) => {
     setGymPlans(prev => {
       const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachment: null, days: {} };
       return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, weekAttachment: attachment } } };
     });
+    const { error } = await supabase.from("gym_weeks").upsert(
+      {
+        team_id: teamId, week_number: week,
+        attachment_name: attachment ? attachment.name : null,
+        attachment_type: attachment ? attachment.fileType : null,
+        attachment_url: attachment ? attachment.dataUrl : null,
+      },
+      { onConflict: "team_id,week_number" }
+    );
+    if (error) { flash("No se pudo guardar el archivo. Inténtalo de nuevo."); return; }
     flash(attachment ? "Archivo de la semana adjuntado" : "Archivo de la semana eliminado");
   };
-  const setGymContent = (teamId, week, day, content) => {
+  const setGymContent = async (teamId, week, day, content) => {
     setGymPlans(prev => {
       const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachment: null, days: {} };
       return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, days: { ...meta.days, [day]: { ...(meta.days[day] || {}), content } } } } };
     });
+    const { error } = await supabase.from("gym_days").upsert(
+      { team_id: teamId, week_number: week, day_key: day, content },
+      { onConflict: "team_id,week_number,day_key" }
+    );
+    if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
     flash("Entreno de gimnasio guardado");
   };
   const gymRecordOf = (rowerId, teamId, week, day) => (gymCompletion[rowerId] && gymCompletion[rowerId][`${teamId}-${week}-${day}`]) || null;
-  const addGymPhoto = (rowerId, teamId, week, day, photo, photoKind) => {
+  const addGymPhoto = async (rowerId, teamId, week, day, photo, photoKind) => {
     const key = `${teamId}-${week}-${day}`;
-    setGymCompletion(prev => {
-      const existing = (prev[rowerId] || {})[key];
-      const photos = [...((existing && existing.photos) || []), { dataUrl: photo, kind: photoKind || "image" }];
-      return { ...prev, [rowerId]: { ...(prev[rowerId] || {}), [key]: { done: true, photos } } };
-    });
+    const existing = (gymCompletion[rowerId] || {})[key];
+    const photos = [...((existing && existing.photos) || []), { dataUrl: photo, kind: photoKind || "image" }];
+    setGymCompletion(prev => ({ ...prev, [rowerId]: { ...(prev[rowerId] || {}), [key]: { done: true, photos } } }));
+    const { error } = await supabase.from("gym_completions").upsert(
+      { rower_id: rowerId, team_id: teamId, week_number: week, day_key: day, done: true, photos },
+      { onConflict: "rower_id,team_id,week_number,day_key" }
+    );
+    if (error) { flash("No se pudo guardar la foto. Inténtalo de nuevo."); return; }
     flash("Foto añadida — entreno marcado como hecho");
   };
-  const removeGymPhoto = (rowerId, teamId, week, day, photoIndex) => {
+  const removeGymPhoto = async (rowerId, teamId, week, day, photoIndex) => {
     const key = `${teamId}-${week}-${day}`;
+    const existing = (gymCompletion[rowerId] || {})[key];
+    if (!existing) return;
+    const photos = existing.photos.filter((_, i) => i !== photoIndex);
     setGymCompletion(prev => {
-      const existing = (prev[rowerId] || {})[key];
-      if (!existing) return prev;
-      const photos = existing.photos.filter((_, i) => i !== photoIndex);
       const mine = { ...(prev[rowerId] || {}) };
       if (photos.length === 0) delete mine[key];
       else mine[key] = { done: true, photos };
       return { ...prev, [rowerId]: mine };
     });
+    if (photos.length === 0) {
+      await supabase.from("gym_completions").delete()
+        .eq("rower_id", rowerId).eq("team_id", teamId).eq("week_number", week).eq("day_key", day);
+    } else {
+      await supabase.from("gym_completions").upsert(
+        { rower_id: rowerId, team_id: teamId, week_number: week, day_key: day, done: true, photos },
+        { onConflict: "rower_id,team_id,week_number,day_key" }
+      );
+    }
   };
-  const clearGymRecord = (rowerId, teamId, week, day) => {
+  const clearGymRecord = async (rowerId, teamId, week, day) => {
     const key = `${teamId}-${week}-${day}`;
     setGymCompletion(prev => {
       const mine = { ...(prev[rowerId] || {}) };
       delete mine[key];
       return { ...prev, [rowerId]: mine };
     });
+    await supabase.from("gym_completions").delete()
+      .eq("rower_id", rowerId).eq("team_id", teamId).eq("week_number", week).eq("day_key", day);
   };
 
   const waterStatsFor = (rowerId, teamId) => {
@@ -757,12 +824,13 @@ export default function ViradaPrototype() {
       access_code: code,
       username: username.trim().toLowerCase(),
       password_hash: passwordHash,
+      photo_url: photo || null,
     }).select().single();
     if (error) { setLoginError("No se pudo registrar el club. Inténtalo de nuevo."); return; }
     const newClub = {
       id: data.id, code: data.access_code, name: data.name,
       username: data.username, password: data.password_hash, createdAt: data.created_at,
-      photoUrl: photo || null, // todavía en memoria: la tabla clubs aún no tiene columna de foto
+      photoUrl: data.photo_url || null,
     };
     setClubs(prev => [...prev, newClub]);
     setCurrentClubId(data.id);
