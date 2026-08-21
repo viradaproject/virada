@@ -1671,8 +1671,12 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
 
   return (
     <div ref={scrollRef} style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: view === "menu" ? "center" : "flex-start", padding: "0 28px", overflowY: "auto" }}>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 6, marginTop: 24 }}><Logo size={50} /></div>
-      <p style={{ textAlign: "center", color: "#ADADAD", fontSize: 13, margin: "4px 0 34px", letterSpacing: 1.5, textTransform: "uppercase" }}>Club Manager</p>
+      {view === "menu" && (
+        <>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 6, marginTop: 24 }}><Logo size={50} /></div>
+          <p style={{ textAlign: "center", color: "#ADADAD", fontSize: 13, margin: "4px 0 34px", letterSpacing: 1.5, textTransform: "uppercase" }}>Club Manager</p>
+        </>
+      )}
 
       {view === "menu" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1703,6 +1707,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
       {view === "loginClub" && (
         <>
           <BackRow onBack={() => goTo("menu")} />
+          <div style={{ display: "flex", justifyContent: "center", margin: "18px 0 22px" }}><Logo size={38} /></div>
           <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "10px 0 18px" }}>Acceso club</h2>
           {usernamePasswordFields}
           {recoveryBlock}
@@ -1713,6 +1718,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
       {view === "loginUser" && (
         <>
           <BackRow onBack={() => goTo("menu")} />
+          <div style={{ display: "flex", justifyContent: "center", margin: "18px 0 22px" }}><Logo size={38} /></div>
           <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "10px 0 4px" }}>Acceso usuario</h2>
           <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>Entras con el rol que el club te haya asignado (entrenador o remero).</p>
           {usernamePasswordFields}
@@ -1811,6 +1817,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
       {view === "registerUser" && (
         <>
           <BackRow onBack={() => goTo("menu")} />
+          <div style={{ display: "flex", justifyContent: "center", margin: "18px 0 22px" }}><Logo size={38} /></div>
           <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "10px 0 4px" }}>Registro de usuario</h2>
           <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
             Con el código de tu club accedes a su paraguas de gestión. Una vez dentro, será el club quien te asigne el rol — entrenador o remero — y, si corresponde, la tripulación.
