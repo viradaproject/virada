@@ -657,10 +657,13 @@ export default function ViradaPrototype() {
     if (error) flash("No se pudo guardar el cambio. Inténtalo de nuevo.");
   };
 
-  const toggleSignup = (session) => {
+  const toggleSignup = async (session) => {
     const next = new Set(session.signups);
     if (next.has(currentUserId)) next.delete(currentUserId); else next.add(currentUserId);
-    updateSession(session.id, { signups: next });
+    setSessions(prev => prev.map(s => s.id === session.id ? { ...s, signups: next } : s));
+    if (openSession && openSession.id === session.id) setOpenSession(prev => ({ ...prev, signups: next }));
+    const { error } = await supabase.rpc("toggle_water_signup", { p_session_id: session.id });
+    if (error) flash("No se pudo actualizar. Inténtalo de nuevo.");
   };
 
   const assign = (session, slotType, slotIndex) => {
