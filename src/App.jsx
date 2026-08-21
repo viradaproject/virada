@@ -979,8 +979,12 @@ export default function ViradaPrototype() {
     setLoginError(null);
     if (await tryAdminLogin(username, password)) return;
     const cleanUsername = (username || "").trim().toLowerCase();
-    const authEmail = `${cleanUsername}@virada.app`;
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: authEmail, password });
+    const { data: resolvedEmail, error: resolveError } = await supabase.rpc("resolve_club_login_email", { p_username: cleanUsername });
+    if (resolveError || !resolvedEmail) {
+      setLoginError("Usuario o contraseña incorrectos.");
+      return;
+    }
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: resolvedEmail, password });
     if (authError || !authData?.user) {
       setLoginError("Usuario o contraseña incorrectos.");
       return;
@@ -1033,27 +1037,43 @@ export default function ViradaPrototype() {
     setScreen("home");
   };
 
-  const registerClub = async (name, username, password, photo) => {
+  const registerClub = async (club) => {
     setLoginError(null);
-    if (!username || !password) { setLoginError("Usuario y contraseña son obligatorios."); return; }
-    if (isUsernameTaken(username)) { setLoginError("Ese nombre de usuario ya existe. Elige otro."); return; }
-    const cleanUsername = username.trim().toLowerCase();
-    const authEmail = `${cleanUsername}@virada.app`;
-    const { data: authData, error: authError } = await supabase.auth.signUp({ email: authEmail, password });
+    if (!club.username || !club.password) { setLoginError("Usuario y contraseña son obligatorios."); return; }
+    if (club.password !== club.passwordRepeat) { setLoginError("Las contraseñas no coinciden."); return; }
+    if (!club.legalName?.trim() || !club.nif?.trim() || !club.email?.trim() || !club.address?.trim() || !club.city?.trim() || !club.postalCode?.trim() || !club.contactFirstName?.trim() || !club.contactLastName?.trim()) {
+      setLoginError("Rellena todos los campos obligatorios.");
+      return;
+    }
+    if (isUsernameTaken(club.username)) { setLoginError("Ese nombre de usuario ya existe. Elige otro."); return; }
+    const cleanUsername = club.username.trim().toLowerCase();
+    const cleanEmail = club.email.trim().toLowerCase();
+    const { data: authData, error: authError } = await supabase.auth.signUp({ email: cleanEmail, password: club.password });
     if (authError || !authData?.user) {
-      setLoginError(authError?.message === "Password should be at least 6 characters"
-        ? "La contraseña debe tener al menos 6 caracteres."
-        : "No se pudo registrar el club. Inténtalo de nuevo.");
+      setLoginError(
+        authError?.message === "Password should be at least 6 characters" ? "La contraseña debe tener al menos 6 caracteres."
+        : authError?.message?.includes("already registered") ? "Ese correo electrónico ya está registrado."
+        : "No se pudo registrar el club. Inténtalo de nuevo."
+      );
       return;
     }
     let code = randomClubCode();
     while (clubs.some(c => c.code === code)) code = randomClubCode(); // cada club tiene un código único, propio y exclusivo
     const { data, error } = await supabase.from("clubs").insert({
-      name: name && name.trim() ? name.trim() : "Tu club",
+      name: club.name && club.name.trim() ? club.name.trim() : "Tu club",
       access_code: code,
       username: cleanUsername,
       auth_user_id: authData.user.id,
-      photo_url: photo || null,
+      photo_url: club.photo || null,
+      legal_name: club.legalName.trim(),
+      nif: club.nif.trim(),
+      email: cleanEmail,
+      address: club.address.trim(),
+      city: club.city.trim(),
+      postal_code: club.postalCode.trim(),
+      contact_first_name: club.contactFirstName.trim(),
+      contact_last_name: club.contactLastName.trim(),
+      contact_phone: club.contactPhone?.trim() || null,
     }).select().single();
     if (error) { setLoginError("No se pudo registrar el club. Inténtalo de nuevo."); return; }
     await loadData();
@@ -1523,6 +1543,14 @@ export default function ViradaPrototype() {
   );
 }
 
+// "Club Rem Lloret" -> "ADMINCRL" (sugerencia, el club puede cambiarla libremente)
+const suggestClubUsername = (clubName) => {
+  const words = (clubName || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "";
+  const initials = words.map(w => w[0].toUpperCase()).join("");
+  return `ADMIN${initials}`;
+};
+
 function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser, onRecoverPassword, onClearError, loginError, Logo }) {
   const [view, setView] = useState("menu"); // "menu" | "registerClub" | "registerUser" | "loginClub" | "loginUser"
   const [showRegisterMenu, setShowRegisterMenu] = useState(false);
@@ -1539,6 +1567,15 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
   const [birthDateInput, setBirthDateInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
+  const [usernameTouched, setUsernameTouched] = useState(false);
+  const [legalNameInput, setLegalNameInput] = useState("");
+  const [nifInput, setNifInput] = useState("");
+  const [addressInput, setAddressInput] = useState("");
+  const [cityInput, setCityInput] = useState("");
+  const [postalCodeInput, setPostalCodeInput] = useState("");
+  const [contactFirstNameInput, setContactFirstNameInput] = useState("");
+  const [contactLastNameInput, setContactLastNameInput] = useState("");
+  const [contactPhoneInput, setContactPhoneInput] = useState("");
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [recoverySent, setRecoverySent] = useState(false);
@@ -1547,13 +1584,19 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
     setUsernameInput(""); setPasswordInput(""); setApodoInput(""); setClubNameRegInput("");
     setClubCodeInput(""); setShowRecovery(false); setRecoverySent(false); setRegPhoto(null);
     setPasswordRepeatInput(""); setFirstNameInput(""); setLastNameInput(""); setBirthDateInput("");
-    setEmailInput(""); setPhoneInput(""); setRegSide(null);
+    setEmailInput(""); setPhoneInput(""); setRegSide(null); setUsernameTouched(false);
+    setLegalNameInput(""); setNifInput(""); setAddressInput(""); setCityInput(""); setPostalCodeInput("");
+    setContactFirstNameInput(""); setContactLastNameInput(""); setContactPhoneInput("");
     setShowRegisterMenu(false);
     onClearError();
     setView(v);
   };
 
-  const submitRegisterClub = () => onRegisterClub(clubNameRegInput, usernameInput, passwordInput, regPhoto);
+  const submitRegisterClub = () => onRegisterClub({
+    name: clubNameRegInput, username: usernameInput, password: passwordInput, passwordRepeat: passwordRepeatInput, photo: regPhoto,
+    legalName: legalNameInput, nif: nifInput, email: emailInput, address: addressInput, city: cityInput, postalCode: postalCodeInput,
+    contactFirstName: contactFirstNameInput, contactLastName: contactLastNameInput, contactPhone: contactPhoneInput,
+  });
 
   const submitRegisterUser = () => {
     onRegisterUser({
@@ -1660,10 +1703,74 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
             <AvatarPicker photo={regPhoto} initials="?" onChange={setRegPhoto} size={72} />
           </div>
+
           <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nombre del club</label>
-          <input value={clubNameRegInput} onChange={e => setClubNameRegInput(e.target.value)} placeholder="Ej. Club Nàutic..." style={inputStyle} />
-          <div style={{ marginTop: 14 }}>{usernamePasswordFields}</div>
-          {loginError && <p style={{ color: "#FF8890", fontSize: 11.5, margin: "8px 2px 0" }}>{loginError}</p>}
+          <input
+            value={clubNameRegInput}
+            onChange={e => {
+              const v = e.target.value;
+              setClubNameRegInput(v);
+              if (!usernameTouched) setUsernameInput(suggestClubUsername(v));
+            }}
+            placeholder="Ej. Club Rem Lloret"
+            style={{ ...inputStyle, marginBottom: 14 }}
+          />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Usuario del club</label>
+          <input
+            value={usernameInput}
+            onChange={e => { setUsernameInput(e.target.value); setUsernameTouched(true); }}
+            placeholder="Ej. ADMINCRL"
+            style={{ ...inputStyle, marginBottom: 4 }}
+          />
+          <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "0 0 14px", lineHeight: 1.4 }}>
+            Te sugerimos "ADMIN" + las iniciales del nombre del club, pero puedes usar el que prefieras para entrar.
+          </p>
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Contraseña</label>
+          <div style={{ position: "relative", marginBottom: 14 }}>
+            <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+            <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} style={{ ...inputStyle, paddingLeft: 34 }} />
+          </div>
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Repetir contraseña</label>
+          <div style={{ position: "relative" }}>
+            <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+            <input type="password" value={passwordRepeatInput} onChange={e => setPasswordRepeatInput(e.target.value)} style={{ ...inputStyle, paddingLeft: 34 }} />
+          </div>
+
+          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>Datos del club</p>
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nombre fiscal del club</label>
+          <input value={legalNameInput} onChange={e => setLegalNameInput(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>NIF</label>
+          <input value={nifInput} onChange={e => setNifInput(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Correo electrónico</label>
+          <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Dirección</label>
+          <input value={addressInput} onChange={e => setAddressInput(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Población</label>
+          <input value={cityInput} onChange={e => setCityInput(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Código postal</label>
+          <input value={postalCodeInput} onChange={e => setPostalCodeInput(e.target.value)} style={{ ...inputStyle, marginBottom: 4 }} />
+
+          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>Persona de contacto</p>
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nombre</label>
+          <input value={contactFirstNameInput} onChange={e => setContactFirstNameInput(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Apellido</label>
+          <input value={contactLastNameInput} onChange={e => setContactLastNameInput(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nº Teléfono <span style={{ color: "#8A8A8A", fontWeight: 400, textTransform: "none" }}>(opcional)</span></label>
+          <input type="tel" value={contactPhoneInput} onChange={e => setContactPhoneInput(e.target.value)} style={{ ...inputStyle, marginBottom: 4 }} />
+
+          {loginError && <p style={{ color: "#FF8890", fontSize: 11.5, margin: "14px 2px 0" }}>{loginError}</p>}
           <button className="vir-btn" onClick={submitRegisterClub} style={{ ...primaryBtn, marginTop: 22 }}>Registrar club</button>
         </>
       )}
