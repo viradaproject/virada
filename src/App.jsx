@@ -1188,7 +1188,7 @@ export default function ViradaPrototype() {
                   pesosExercises={pesosExercisesOf(openPerson.id)}
                   ergoTest={ergoTestTimes[openPerson.id] ? Math.round(wattsFromTestTime(ergoTestTimes[openPerson.id])) : null}
                   currentWeek={currentWeek}
-                  weekMetaFor={gymWeekMeta}
+                  weekPlanFor={gymWeekPlan}
                   recordFor={(teamId, week, day) => gymRecordOf(openPerson.id, teamId, week, day)}
                   waterWeekMonth={waterStatsFor(openPerson.id, teamOf(openPerson.id))}
                   gymWeekMonth={gymStatsFor(openPerson.id, teamOf(openPerson.id))}
@@ -2435,6 +2435,7 @@ function RaceDetailScreen({ race: r, editable, onBack, onUpdateTitle, onUpdateNo
 function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetRole, pendingUsers, assignedUsers, onAssignPending, onRejectPending, onRemoveUser, managedTeamsOf, onToggleCoachTeam }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [openId, setOpenId] = useState(null);
 
   const people = [
     ...ROWERS.map(r => ({ id: r.id, name: r.name, nickname: r.nickname })),
@@ -2451,9 +2452,84 @@ function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetR
     return true;
   });
 
+  const openPerson = openId ? people.find(p => p.id === openId) : null;
+
+  if (openPerson) {
+    const role = roleOf(openPerson.id);
+    return (
+      <div style={{ paddingBottom: 20 }}>
+        <div style={{ padding: "16px 20px 0" }}>
+          <BackRow onBack={() => setOpenId(null)} />
+        </div>
+        <SectionTitle sub={openPerson.nickname ? `"${openPerson.nickname}"` : undefined}>{openPerson.name}</SectionTitle>
+        <div style={{ padding: "10px 16px" }}>
+          <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "14px 16px" }}>
+            <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Rol</p>
+            <div style={{ display: "flex", borderRadius: 20, overflow: "hidden", border: "1px solid #565656", marginBottom: 16 }}>
+              {[{ id: "coach", label: "Entrenador" }, { id: "rower", label: "Remero" }].map(r => (
+                <button key={r.id} className="vir-btn" onClick={() => onSetRole(openPerson.id, r.id)} style={{
+                  flex: 1, padding: "9px 0", fontSize: 12, fontWeight: 600,
+                  background: role === r.id ? "#E61E29" : "transparent",
+                  color: role === r.id ? "#F5F5F5" : "#8A8A8A", border: "none",
+                }}>{r.label}</button>
+              ))}
+            </div>
+
+            {role === "rower" ? (
+              <div>
+                <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 6px" }}>Categoría</p>
+                <select
+                  value={teamOf(openPerson.id) || ""}
+                  onChange={e => onAssignTeam(openPerson.id, e.target.value)}
+                  style={{ ...inputStyle, padding: "10px 11px", fontSize: 13 }}
+                >
+                  <option value="" disabled>Sin asignar</option>
+                  {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Tripulaciones que puede gestionar</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
+                  {teams.map(t => {
+                    const managed = managedTeamsOf(openPerson.id).includes(t.id);
+                    return (
+                      <button key={t.id} className="vir-btn" onClick={() => onToggleCoachTeam(openPerson.id, t.id)} style={{
+                        padding: "6px 12px", borderRadius: 20, fontSize: 11.5, fontWeight: 600,
+                        background: managed ? "#3EA55A" : "#404040",
+                        border: `1px solid ${managed ? "#3EA55A" : "#565656"}`,
+                        color: managed ? "#FFFFFF" : "#ADADAD",
+                      }}>{managed ? "✓ " : ""}{t.name}</button>
+                    );
+                  })}
+                </div>
+                <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "6px 0 0", lineHeight: 1.4 }}>
+                  Puede ver el calendario de todas las tripulaciones, pero solo editar y montar botes en las que tenga marcadas aquí.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <button
+            className="vir-btn"
+            onClick={() => {
+              if (window.confirm(`¿Eliminar a ${openPerson.nickname || openPerson.name} del club? Perderá el acceso y no podrá deshacerse.`)) {
+                onRemoveUser(openPerson.id);
+                setOpenId(null);
+              }
+            }}
+            style={{ background: "transparent", color: "#F09595", fontSize: 12, textDecoration: "underline", marginTop: 16 }}
+          >
+            Eliminar usuario del club
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ paddingBottom: 20 }}>
-      <SectionTitle sub="Filtra por categoría, reasigna tripulaciones y cambia roles">Usuarios del club</SectionTitle>
+      <SectionTitle sub="Toca un usuario para ver toda su información">Usuarios del club</SectionTitle>
 
       <div style={{ padding: "10px 16px 0" }}>
         <div style={{ position: "relative" }}>
@@ -2486,67 +2562,23 @@ function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetR
       </div>
 
       <div style={{ padding: "10px 16px" }}>
+        {visible.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13 }}>Sin usuarios que coincidan.</p>}
         {visible.map(p => {
           const role = roleOf(p.id);
           return (
-            <div key={p.id} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                <div>
-                  <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{p.name}</p>
-                  {p.nickname && <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "2px 0 0" }}>"{p.nickname}"</p>}
-                </div>
-                <div style={{ display: "flex", borderRadius: 20, overflow: "hidden", border: "1px solid #565656" }}>
-                  {[{ id: "coach", label: "Entrenador" }, { id: "rower", label: "Remero" }].map(r => (
-                    <button key={r.id} className="vir-btn" onClick={() => onSetRole(p.id, r.id)} style={{
-                      padding: "5px 10px", fontSize: 10.5, fontWeight: 600,
-                      background: role === r.id ? "#E61E29" : "transparent",
-                      color: role === r.id ? "#F5F5F5" : "#8A8A8A", border: "none",
-                    }}>{r.label}</button>
-                  ))}
-                </div>
+            <div key={p.id} className="vir-btn" onClick={() => setOpenId(p.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 8 }}>
+              <div>
+                <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{p.name}</p>
+                {p.nickname && <p style={{ color: "#8A8A8A", fontSize: 11, margin: "2px 0 0" }}>"{p.nickname}"</p>}
               </div>
-              {role === "rower" ? (
-                <div>
-                  <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 6px" }}>Categoría</p>
-                  <select
-                    value={teamOf(p.id) || ""}
-                    onChange={e => onAssignTeam(p.id, e.target.value)}
-                    style={{ ...inputStyle, padding: "8px 10px", fontSize: 12.5 }}
-                  >
-                    <option value="" disabled>Sin asignar</option>
-                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Tripulaciones que puede gestionar</p>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
-                    {teams.map(t => {
-                      const managed = managedTeamsOf(p.id).includes(t.id);
-                      return (
-                        <button key={t.id} className="vir-btn" onClick={() => onToggleCoachTeam(p.id, t.id)} style={{
-                          padding: "6px 12px", borderRadius: 20, fontSize: 11.5, fontWeight: 600,
-                          background: managed ? "#3EA55A" : "#404040",
-                          border: `1px solid ${managed ? "#3EA55A" : "#565656"}`,
-                          color: managed ? "#FFFFFF" : "#ADADAD",
-                        }}>{managed ? "✓ " : ""}{t.name}</button>
-                      );
-                    })}
-                  </div>
-                  <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "6px 0 0", lineHeight: 1.4 }}>
-                    Puede ver el calendario de todas las tripulaciones, pero solo editar y montar botes en las que tenga marcadas aquí.
-                  </p>
-                </div>
-              )}
-              <button
-                className="vir-btn"
-                onClick={() => {
-                  if (window.confirm(`¿Eliminar a ${p.nickname || p.name} del club? Perderá el acceso y no podrá deshacerse.`)) onRemoveUser(p.id);
-                }}
-                style={{ background: "transparent", color: "#F09595", fontSize: 11, textDecoration: "underline", marginTop: 10 }}
-              >
-                Eliminar usuario del club
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{
+                  padding: "4px 10px", borderRadius: 20, fontSize: 10.5, fontWeight: 600,
+                  background: role === "coach" ? "#22B8CF22" : "#3EA55A22",
+                  color: role === "coach" ? "#22B8CF" : "#3EA55A",
+                }}>{role === "coach" ? "Entrenador" : "Remero"}</span>
+                <ChevronRight size={16} color="#8A8A8A" />
+              </div>
             </div>
           );
         })}
@@ -3515,13 +3547,15 @@ function CalendarScreen({ sessions, onOpen, onToggle, myId, teamName, showTeamLa
 }
 
 function SessionRowerScreen({ session, onBack, onToggle, myId, nameOf, nicknameOf }) {
-  const iAmSelected = [...session.seats, session.patron, ...session.reserves].includes(myId);
+  const seatIdx = session.seats.indexOf(myId);
+  const isPatron = session.patron === myId;
+  const reserveIdx = session.reserves.indexOf(myId);
+  const isCalled = seatIdx > -1 || isPatron;
+  const isReserve = !isCalled && reserveIdx > -1;
   const mySeatLabel = () => {
-    const idx = session.seats.indexOf(myId);
-    if (idx > -1) return seatLabel(idx);
-    if (session.patron === myId) return "0 · Patrón";
-    const rIdx = session.reserves.indexOf(myId);
-    if (rIdx > -1) return `Reserva R${rIdx + 1}`;
+    if (seatIdx > -1) return seatLabel(seatIdx);
+    if (isPatron) return "0 · Patrón";
+    if (reserveIdx > -1) return `Reserva R${reserveIdx + 1}`;
     return null;
   };
   return (
@@ -3556,16 +3590,27 @@ function SessionRowerScreen({ session, onBack, onToggle, myId, nameOf, nicknameO
         </>
       ) : (
         <div>
-          {iAmSelected ? (
-            <div style={{ background: "#F5F5F5", border: "1px solid #E61E29", borderRadius: 12, padding: 16, marginBottom: 18 }}>
-              <p style={{ color: "#B5151E", fontWeight: 600, fontSize: 14, margin: 0 }}>Has sido seleccionado</p>
-              <p className="vir-mono" style={{ color: "#7A1015", fontSize: 13, margin: "6px 0 0" }}>{mySeatLabel()}</p>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 12, borderRadius: 12, padding: 16, marginBottom: 18,
+            background: isCalled ? "#1E3A2A" : isReserve ? "#3D2E17" : "#3A1E1E",
+            border: `1px solid ${isCalled ? "#3EA55A" : isReserve ? "#E67E22" : "#E24B4A"}`,
+          }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              background: isCalled ? "#3EA55A" : isReserve ? "transparent" : "#E24B4A",
+              border: isReserve ? "2px solid #E67E22" : "none",
+            }}>
+              {isCalled ? <Check size={19} color="#FFFFFF" /> : isReserve ? (
+                <span style={{ color: "#E67E22", fontWeight: 800, fontSize: 16, fontFamily: "'Big Shoulders Display', sans-serif" }}>R</span>
+              ) : <X size={19} color="#FFFFFF" />}
             </div>
-          ) : (
-            <div style={{ background: "#454545", border: "1px solid #565656", borderRadius: 12, padding: 16, marginBottom: 18 }}>
-              <p style={{ color: "#ADADAD", fontSize: 13, margin: 0 }}>Tripulación cerrada. Esta vez no has sido seleccionado.</p>
+            <div>
+              <p style={{ color: "#F5F5F5", fontWeight: 700, fontSize: 14, margin: 0 }}>
+                {isCalled ? "Convocado/a" : isReserve ? "Estás de reserva" : "No convocado/a"}
+              </p>
+              {mySeatLabel() && <p className="vir-mono" style={{ color: "#ADADAD", fontSize: 12.5, margin: "3px 0 0" }}>{mySeatLabel()}</p>}
             </div>
-          )}
+          </div>
           <BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} />
         </div>
       )}
