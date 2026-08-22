@@ -340,6 +340,14 @@ export default function ViradaPrototype() {
       if (notificationsData) {
         setNotifications(notificationsData.map(n => ({ id: n.id, rowerId: n.rower_id, text: n.text })));
       }
+      const { data: alertsData } = await supabase.from("session_alerts").select("*").order("created_at", { ascending: false });
+      if (alertsData) {
+        const bySession = {};
+        alertsData.forEach(a => {
+          bySession[a.session_id] = [...(bySession[a.session_id] || []), { id: a.id, rowerId: a.rower_id, text: a.text, resolved: a.resolved }];
+        });
+        setSessionAlerts(bySession);
+      }
       const { data: catsData, error: catsErr } = await supabase.from("race_categories").select("*");
       const { data: racesData } = await supabase.from("races").select("*");
       const { data: docsData } = await supabase.from("race_documents").select("*");
@@ -417,6 +425,33 @@ export default function ViradaPrototype() {
           return exists ? prev.map(s => s.id === updated.id ? updated : s) : [...prev, updated];
         });
         setOpenSession(prev => (prev && prev.id === updated.id) ? updated : prev);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  // Tiempo real: si un remero avisa que no puede venir, el entrenador lo ve al instante
+  useEffect(() => {
+    const channel = supabase
+      .channel("session_alerts_live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "session_alerts" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          setSessionAlerts(prev => {
+            const next = { ...prev };
+            Object.keys(next).forEach(sid => { next[sid] = next[sid].filter(a => a.id !== payload.old.id); });
+            return next;
+          });
+          return;
+        }
+        const a = payload.new;
+        setSessionAlerts(prev => {
+          const list = prev[a.session_id] || [];
+          const exists = list.some(x => x.id === a.id);
+          const nextList = exists
+            ? list.map(x => x.id === a.id ? { id: a.id, rowerId: a.rower_id, text: a.text, resolved: a.resolved } : x)
+            : [...list, { id: a.id, rowerId: a.rower_id, text: a.text, resolved: a.resolved }];
+          return { ...prev, [a.session_id]: nextList };
+        });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -741,9 +776,11 @@ export default function ViradaPrototype() {
     if ("seats" in patch) dbPatch.seats = patch.seats;
     if ("patron" in patch) dbPatch.patron = patch.patron;
     if ("reserves" in patch) dbPatch.reserves = patch.reserves;
-    if (Object.keys(dbPatch).length === 0) return;
-    const { error } = await supabase.from("water_sessions").update(dbPatch).eq("id", id);
-    if (error) flash("No se pudo guardar el cambio. Inténtalo de nuevo.");
+    if (Object.keys(dbPatch).length === 0) return true;
+    const { data, error } = await supabase.from("water_sessions").update(dbPatch).eq("id", id).select();
+    if (error) { flash("No se pudo guardar el cambio. Inténtalo de nuevo."); return false; }
+    if (!data || data.length === 0) { flash("No se pudo guardar: no tienes permiso sobre esta tripulación."); return false; }
+    return true;
   };
 
   const toggleSignup = async (session) => {
@@ -753,6 +790,20 @@ export default function ViradaPrototype() {
     if (openSession && openSession.id === session.id) setOpenSession(prev => ({ ...prev, signups: next }));
     const { error } = await supabase.rpc("toggle_water_signup", { p_session_id: session.id });
     if (error) flash("No se pudo actualizar. Inténtalo de nuevo.");
+  };
+
+  const [sessionAlerts, setSessionAlerts] = useState({}); // { [sessionId]: [{id, rowerId, text, resolved}] }
+  const alertsFor = (sessionId) => (sessionAlerts[sessionId] || []).filter(a => !a.resolved);
+  const sendCantComeAlert = async (session) => {
+    const text = `${displayNameOf(currentUserId)} avisa que no puede venir al entreno del ${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}.`;
+    const { data, error } = await supabase.from("session_alerts").insert({ session_id: session.id, rower_id: currentUserId, text }).select().single();
+    if (error) { flash("No se pudo enviar el aviso. Inténtalo de nuevo."); return; }
+    setSessionAlerts(prev => ({ ...prev, [session.id]: [...(prev[session.id] || []), { id: data.id, rowerId: data.rower_id, text: data.text, resolved: false }] }));
+    flash("Aviso enviado al entrenador");
+  };
+  const resolveAlert = async (sessionId, alertId) => {
+    setSessionAlerts(prev => ({ ...prev, [sessionId]: (prev[sessionId] || []).map(a => a.id === alertId ? { ...a, resolved: true } : a) }));
+    await supabase.from("session_alerts").update({ resolved: true }).eq("id", alertId);
   };
 
   const assign = (session, slotType, slotIndex) => {
@@ -778,6 +829,8 @@ export default function ViradaPrototype() {
   };
 
   const closeCrew = async (session, previousRoster) => {
+    const ok = await updateSession(session.id, { status: "cerrado" });
+    if (!ok) return; // si no se pudo cerrar de verdad, no mandamos notificaciones con datos que no cuadran
     const assigned = [...session.seats, session.patron, ...session.reserves].filter(Boolean);
     const notes = assigned.map(rid => {
       let role = "reserva";
@@ -809,9 +862,9 @@ export default function ViradaPrototype() {
         setNotifications(prev => [...data.map(d => ({ id: d.id, rowerId: d.rower_id, text: d.text })), ...prev]);
       } else if (error) {
         flash("Tripulación cerrada, pero hubo un problema guardando las notificaciones.");
+        return;
       }
     }
-    updateSession(session.id, { status: "cerrado" });
     flash("Tripulación cerrada y notificaciones enviadas");
   };
 
@@ -1491,7 +1544,7 @@ export default function ViradaPrototype() {
                 <CalendarScreen sessions={coachUpcoming} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} myId={currentUserId} teamName={teamName} showTeamLabel={coachScope === "club"} />
               )}
               {screen === "sessionRower" && openSession && (
-                <SessionRowerScreen session={openSession} onBack={() => setScreen(role === "rower" ? "home" : "calendar")} onToggle={toggleSignup} myId={currentUserId} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} />
+                <SessionRowerScreen session={openSession} onBack={() => setScreen(role === "rower" ? "home" : "calendar")} onToggle={toggleSignup} onSendAlert={sendCantComeAlert} myAlerts={openSession ? alertsFor(openSession.id).filter(a => a.rowerId === currentUserId) : []} myId={currentUserId} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} />
               )}
               {screen === "sessionCoach" && openSession && (
                 <SessionCoachScreen
@@ -1512,6 +1565,8 @@ export default function ViradaPrototype() {
                   gymStatsFor={gymStatsFor}
                   onUpdateSession={updateSession}
                   editable={role === "admin" ? true : canManage(openSession.teamId)}
+                  alerts={alertsFor(openSession.id)}
+                  onResolveAlert={(alertId) => resolveAlert(openSession.id, alertId)}
                 />
               )}
               {screen === "notifications" && (
@@ -3985,7 +4040,7 @@ function CalendarScreen({ sessions, onOpen, onToggle, myId, teamName, showTeamLa
   );
 }
 
-function SessionRowerScreen({ session, onBack, onToggle, myId, nameOf, nicknameOf, sideOf }) {
+function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, myId, nameOf, nicknameOf, sideOf }) {
   const seatIdx = session.seats.indexOf(myId);
   const isPatron = session.patron === myId;
   const reserveIdx = session.reserves.indexOf(myId);
@@ -4051,13 +4106,30 @@ function SessionRowerScreen({ session, onBack, onToggle, myId, nameOf, nicknameO
             </div>
           </div>
           <BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} />
+          {(isCalled || isReserve) && (
+            myAlerts && myAlerts.length > 0 ? (
+              <p style={{ color: "#8A8A8A", fontSize: 12, marginTop: 16, textAlign: "center" }}>
+                Ya has avisado al entrenador de que no puedes venir.
+              </p>
+            ) : (
+              <button
+                className="vir-btn"
+                onClick={() => {
+                  if (window.confirm("¿Avisar al entrenador de que no puedes venir a este entreno? La tripulación ya cerrada no cambia sola — el entrenador tendrá que reabrirla y buscar un sustituto.")) onSendAlert(session);
+                }}
+                style={{ ...ghostBtn, marginTop: 18, borderColor: "#E24B4A", color: "#FF8890" }}
+              >
+                Avisar que no puedo venir
+              </button>
+            )
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable }) {
+function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert }) {
   const [preEditRoster, setPreEditRoster] = useState(null);
   const handleReopen = () => {
     setPreEditRoster({ seats: [...session.seats], patron: session.patron, reserves: [...session.reserves] });
@@ -4098,6 +4170,25 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
         </p>
       )}
       {editable && <div style={{ marginBottom: 16 }} />}
+
+      {alerts && alerts.length > 0 && (
+        <div style={{ background: "#402226", border: "1px solid #E61E29", borderRadius: 12, padding: "12px 14px", marginBottom: 18 }}>
+          <p style={{ color: "#FF8890", fontSize: 11.5, fontWeight: 700, margin: "0 0 8px" }}>⚠ Avisos de baja</p>
+          {alerts.map(a => (
+            <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+              <p style={{ color: "#F5F5F5", fontSize: 12.5, margin: 0, lineHeight: 1.4 }}>{a.text}</p>
+              {editable && (
+                <button className="vir-btn" onClick={() => onResolveAlert(a.id)} style={{ background: "transparent", color: "#8A8A8A", fontSize: 10.5, textDecoration: "underline", whiteSpace: "nowrap", flexShrink: 0 }}>
+                  Ya lo he visto
+                </button>
+              )}
+            </div>
+          ))}
+          <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "6px 0 0", lineHeight: 1.4 }}>
+            Reabre la tripulación para hacer los cambios necesarios y vuelve a cerrarla para notificar.
+          </p>
+        </div>
+      )}
 
       <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: 14, marginBottom: 18 }}>
         <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Bote y rems</p>
