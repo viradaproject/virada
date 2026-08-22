@@ -606,19 +606,37 @@ export default function ViradaPrototype() {
     if (isUsernameTaken(person.username)) { setLoginError("Ese nombre de usuario ya existe. Elige otro."); return; }
     const cleanUsername = person.username.trim().toLowerCase();
     const cleanEmail = person.email.trim().toLowerCase();
-    const { data: authData, error: authError } = await supabase.auth.signUp({ email: cleanEmail, password: person.password || "1234" });
+    const password = person.password || "1234";
+
+    let authUserId;
+    const { data: authData, error: authError } = await supabase.auth.signUp({ email: cleanEmail, password });
     if (authError || !authData?.user) {
-      setLoginError(
-        authError?.message === "Password should be at least 6 characters" ? "La contraseña debe tener al menos 6 caracteres."
-        : authError?.message?.includes("already registered") ? "Ese correo electrónico ya está registrado."
-        : "No se pudo completar el registro. Inténtalo de nuevo."
-      );
-      return;
+      // Si el correo ya existe, puede ser un registro anterior que se quedó a medias (creó la cuenta de acceso
+      // pero no llegó a guardar sus datos). Probamos a entrar con lo mismo que acaba de escribir para completarlo.
+      if (authError?.message?.includes("already registered")) {
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+        if (signInError || !signInData?.user) {
+          setLoginError("Ese correo ya está registrado con otra contraseña. Si es tuyo, entra con 'Acceso usuario'.");
+          return;
+        }
+        const { data: existingRow } = await supabase.from("users").select("id").eq("auth_user_id", signInData.user.id).maybeSingle();
+        if (existingRow) {
+          setLoginError("Ya existe una cuenta completa con ese correo. Entra con 'Acceso usuario'.");
+          return;
+        }
+        authUserId = signInData.user.id; // cuenta a medias: seguimos para completarla
+      } else {
+        setLoginError(authError?.message === "Password should be at least 6 characters" ? "La contraseña debe tener al menos 6 caracteres." : "No se pudo completar el registro. Inténtalo de nuevo.");
+        return;
+      }
+    } else {
+      authUserId = authData.user.id;
     }
+
     const { data, error } = await supabase.from("users").insert({
       club_id: clubRow.id,
       username: cleanUsername,
-      auth_user_id: authData.user.id,
+      auth_user_id: authUserId,
       first_name: person.firstName.trim(),
       last_name: person.lastName.trim(),
       nickname: person.apodo.trim(),
@@ -629,7 +647,13 @@ export default function ViradaPrototype() {
       status: "pending",
       photo_url: person.photo || null,
     }).select().single();
-    if (error) { setLoginError("No se pudo completar el registro. Inténtalo de nuevo."); return; }
+    if (error) {
+      // No dejamos una cuenta de acceso a medias sin cerrar: si no se pudo guardar, cerramos la sesión
+      // recién creada para no quedarnos "a medio registrar" y poder reintentarlo limpio.
+      await supabase.auth.signOut();
+      setLoginError("No se pudo completar el registro. Vuelve a intentarlo en un momento.");
+      return;
+    }
     const entry = { id: data.id, clubId: data.club_id, username: data.username, apodo: data.nickname, side: data.side };
     setPendingUsers(prev => [...prev, entry]);
     if (person.photo) setProfilePhotos(prev => ({ ...prev, [data.id]: person.photo }));
@@ -1150,22 +1174,39 @@ export default function ViradaPrototype() {
     if (isUsernameTaken(club.username)) { setLoginError("Ese nombre de usuario ya existe. Elige otro."); return; }
     const cleanUsername = club.username.trim().toLowerCase();
     const cleanEmail = club.email.trim().toLowerCase();
+
+    let authUserId;
     const { data: authData, error: authError } = await supabase.auth.signUp({ email: cleanEmail, password: club.password });
     if (authError || !authData?.user) {
-      setLoginError(
-        authError?.message === "Password should be at least 6 characters" ? "La contraseña debe tener al menos 6 caracteres."
-        : authError?.message?.includes("already registered") ? "Ese correo electrónico ya está registrado."
-        : "No se pudo registrar el club. Inténtalo de nuevo."
-      );
-      return;
+      // Si el correo ya existe, puede ser un registro anterior que se quedó a medias (creó la cuenta de acceso
+      // pero no llegó a guardar el club). Probamos a entrar con lo mismo que acaba de escribir para completarlo.
+      if (authError?.message?.includes("already registered")) {
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: club.password });
+        if (signInError || !signInData?.user) {
+          setLoginError("Ese correo ya está registrado con otra contraseña. Si es tuyo, entra con 'Acceso club'.");
+          return;
+        }
+        const { data: existingRow } = await supabase.from("clubs").select("id").eq("auth_user_id", signInData.user.id).maybeSingle();
+        if (existingRow) {
+          setLoginError("Ya existe un club completo con ese correo. Entra con 'Acceso club'.");
+          return;
+        }
+        authUserId = signInData.user.id; // cuenta a medias: seguimos para completarla
+      } else {
+        setLoginError(authError?.message === "Password should be at least 6 characters" ? "La contraseña debe tener al menos 6 caracteres." : "No se pudo registrar el club. Inténtalo de nuevo.");
+        return;
+      }
+    } else {
+      authUserId = authData.user.id;
     }
+
     let code = randomClubCode();
     while (clubs.some(c => c.code === code)) code = randomClubCode(); // cada club tiene un código único, propio y exclusivo
     const { data, error } = await supabase.from("clubs").insert({
       name: club.name && club.name.trim() ? club.name.trim() : "Tu club",
       access_code: code,
       username: cleanUsername,
-      auth_user_id: authData.user.id,
+      auth_user_id: authUserId,
       photo_url: club.photo || null,
       legal_name: club.legalName?.trim() || null,
       nif: club.nif?.trim() || null,
@@ -1178,7 +1219,13 @@ export default function ViradaPrototype() {
       contact_role: club.contactRole.trim(),
       contact_phone: club.contactPhone?.trim() || null,
     }).select().single();
-    if (error) { setLoginError("No se pudo registrar el club. Inténtalo de nuevo."); return; }
+    if (error) {
+      // No dejamos una cuenta de acceso a medias sin cerrar: si no se pudo guardar, cerramos la sesión
+      // recién creada para no quedarnos "a medio registrar" y poder reintentarlo limpio.
+      await supabase.auth.signOut();
+      setLoginError("No se pudo registrar el club. Vuelve a intentarlo en un momento.");
+      return;
+    }
     await loadData();
     const newClub = {
       id: data.id, code: data.access_code, name: data.name,
