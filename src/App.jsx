@@ -82,14 +82,8 @@ function buildSessions(teamId) {
       title: DEFAULT_SESSION_TITLE,
       active: false, // por defecto todos los días están desactivados; el entrenador activa los que correspondan
       suspendedReason: null,
-      boat: null,
-      oars: null,
       signups: new Set(),
-      seats: Array(9).fill(null), // 8 puestos estándar + el 9º (0E) que usa el llaüt
-      patron: null,
-      reserves: [null, null],
-      zodiac: [null, null, null, null],
-      status: isPast ? "cerrado" : "abierto",
+      crews: [], // los botes de ese día se añaden aparte, uno o varios
     });
   }
   return sessions;
@@ -187,11 +181,11 @@ const FISICO_LABELS = WEEK_DAY_LABELS;
 
 const seatFill = (s) => s.seats.filter(Boolean).length + (s.patron ? 1 : 0) + s.reserves.filter(Boolean).length + (s.zodiac ? s.zodiac.filter(Boolean).length : 0);
 const hasPassed = (s, now) => s.date < now;
-const inCrew = (s, id) => [...s.seats, s.patron, ...s.reserves, ...(s.zodiac || [])].includes(id);
+const inCrew = (s, id) => (s.crews || []).some(c => c.status === "cerrado" && [...c.seats, c.patron, ...c.reserves, ...(c.zodiac || [])].includes(id));
 const crewStatsFor = (sessions, id, now) => {
   let convocado = 0, entrenado = 0;
   sessions.forEach(s => {
-    if (!s.active || s.status !== "cerrado" || !inCrew(s, id)) return;
+    if (!s.active || !inCrew(s, id)) return;
     convocado++;
     if (hasPassed(s, now)) entrenado++;
   });
@@ -201,14 +195,20 @@ const weekOfDate = (date) => Math.ceil(date.getDate() / 7);
 // Convierte una fila cruda de la tabla water_sessions al formato que usa la app
 const mapWaterSessionRow = (s) => ({
   id: s.id, teamId: s.team_id, date: new Date(s.date + "T00:00:00"), iso: s.iso, dow: s.dow,
-  time: s.time, title: s.title, active: s.active, status: s.status,
-  suspendedReason: s.suspended_reason, boat: s.boat, oars: s.oars,
+  time: s.time, title: s.title, active: s.active,
+  suspendedReason: s.suspended_reason,
   signups: new Set(s.signups || []),
-  seats: (s.seats && s.seats.length >= 8) ? [...s.seats, ...Array(Math.max(0, 9 - s.seats.length)).fill(null)] : Array(9).fill(null),
-  patron: s.patron || null,
-  reserves: (s.reserves && s.reserves.length === 2) ? s.reserves : [null, null],
-  zodiac: (s.zodiac && s.zodiac.length === 4) ? s.zodiac : [null, null, null, null],
+  crews: [], // se rellena aparte desde session_crews
 });
+const mapCrewRow = (c) => ({
+  id: c.id, sessionId: c.session_id, boat: c.boat, oars: c.oars, status: c.status,
+  seats: (c.seats && c.seats.length >= 8) ? [...c.seats, ...Array(Math.max(0, 9 - c.seats.length)).fill(null)] : Array(9).fill(null),
+  patron: c.patron || null,
+  reserves: (c.reserves && c.reserves.length === 2) ? c.reserves : [null, null],
+  zodiac: (c.zodiac && c.zodiac.length === 4) ? c.zodiac : [null, null, null, null],
+});
+// Todos los remeros/entrenador metidos en cualquier bote de un día (para saber si alguien ya está ocupado ese día)
+const allCrewedIds = (session) => session.crews.flatMap(c => [...c.seats, c.patron, ...c.reserves, ...c.zodiac]).filter(Boolean);
 const JS_DOW_TO_WEEK_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"]; // Date.getDay(): 0=domingo..6=sábado
 // Posiciones del bote: patrón (0) al frente, luego 4 filas de BABOR/ESTRIBOR (1 a 4)
 const SEAT_LABELS = [
@@ -392,8 +392,13 @@ export default function ViradaPrototype() {
         setTeams(teamsData.map(t => ({ id: t.id, clubId: t.club_id, name: t.name, code: t.code })));
       }
       const { data: waterSessionsData, error: waterErr } = await supabase.from("water_sessions").select("*").order("iso", { ascending: true });
+      const { data: crewsData } = await supabase.from("session_crews").select("*").order("created_at", { ascending: true });
       if (!waterErr && waterSessionsData) {
-        setSessions(waterSessionsData.map(mapWaterSessionRow));
+        const crewsBySession = {};
+        (crewsData || []).forEach(c => {
+          crewsBySession[c.session_id] = [...(crewsBySession[c.session_id] || []), mapCrewRow(c)];
+        });
+        setSessions(waterSessionsData.map(s => ({ ...mapWaterSessionRow(s), crews: crewsBySession[s.id] || [] })));
       }
       const { data: notificationsData } = await supabase.from("notifications").select("*").order("created_at", { ascending: false });
       if (notificationsData) {
@@ -442,10 +447,26 @@ export default function ViradaPrototype() {
         }
         const updated = mapWaterSessionRow(payload.new);
         setSessions(prev => {
-          const exists = prev.some(s => s.id === updated.id);
-          return exists ? prev.map(s => s.id === updated.id ? updated : s) : [...prev, updated];
+          const existing = prev.find(s => s.id === updated.id);
+          const merged = { ...updated, crews: existing ? existing.crews : [] }; // no perder las tripulaciones ya cargadas
+          return existing ? prev.map(s => s.id === updated.id ? merged : s) : [...prev, merged];
         });
-        setOpenSession(prev => (prev && prev.id === updated.id) ? updated : prev);
+        setOpenSession(prev => (prev && prev.id === updated.id) ? { ...updated, crews: prev.crews } : prev);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "session_crews" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          setSessions(prev => prev.map(s => ({ ...s, crews: s.crews.filter(c => c.id !== payload.old.id) })));
+          setOpenSession(prev => prev ? { ...prev, crews: prev.crews.filter(c => c.id !== payload.old.id) } : prev);
+          return;
+        }
+        const crew = mapCrewRow(payload.new);
+        const applyCrew = (s) => {
+          if (s.id !== crew.sessionId) return s;
+          const exists = s.crews.some(c => c.id === crew.id);
+          return { ...s, crews: exists ? s.crews.map(c => c.id === crew.id ? crew : c) : [...s.crews, crew] };
+        };
+        setSessions(prev => prev.map(applyCrew));
+        setOpenSession(prev => (prev && prev.id === crew.sessionId) ? applyCrew(prev) : prev);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -797,8 +818,8 @@ export default function ViradaPrototype() {
     setSessions(prev => [...prev, ...newSessions]);
     const rows = newSessions.map(s => ({
       id: s.id, team_id: s.teamId, date: s.iso, iso: s.iso, dow: s.dow, time: s.time, title: s.title,
-      active: s.active, status: s.status, suspended_reason: s.suspendedReason, boat: s.boat, oars: s.oars,
-      signups: [], seats: s.seats, patron: s.patron, reserves: s.reserves, zodiac: s.zodiac,
+      active: s.active, suspended_reason: s.suspendedReason,
+      signups: [],
     }));
     const { error: sessErr } = await supabase.from("water_sessions").insert(rows);
     if (sessErr) { flash("Tripulación creada, pero hubo un problema guardando el calendario."); return; }
@@ -838,7 +859,7 @@ export default function ViradaPrototype() {
 
   const attendanceStats = useMemo(() => {
     const past = sessions.filter(s => s.teamId === myTeamId && s.active && hasPassed(s, today));
-    const monthAttended = past.filter(s => s.status === "cerrado" && inCrew(s, currentUserId)).length;
+    const monthAttended = past.filter(s => inCrew(s, currentUserId)).length;
     const monthTotal = past.length;
     return {
       month: { label: "agosto", attended: monthAttended, total: monthTotal },
@@ -852,16 +873,17 @@ export default function ViradaPrototype() {
 
   const statsFor = (id) => crewStatsFor(sessions, id, today);
 
-  const overlapFor = (session) => {
-    if (!session.active || !session.boat) return null; // sin bote asignado no se puede saber si hay conflicto real
+  const overlapFor = (session, crew) => {
+    if (!session.active || !crew || !crew.boat) return null; // sin bote asignado no se puede saber si hay conflicto real
     const range = parseTimeRange(session.time);
-    const clash = sessions.find(s =>
-      s.teamId !== session.teamId && s.iso === session.iso && s.active &&
-      s.boat === session.boat &&
-      rangesOverlap(range, parseTimeRange(s.time))
-    );
-    if (!clash) return null;
-    return { team: teamName(clash.teamId), time: clash.time, boat: clash.boat };
+    for (const s of sessions) {
+      if (s.teamId === session.teamId || s.iso !== session.iso || !s.active) continue;
+      const clashCrew = (s.crews || []).find(c => c.boat === crew.boat);
+      if (clashCrew && rangesOverlap(range, parseTimeRange(s.time))) {
+        return { team: teamName(s.teamId), time: s.time, boat: clashCrew.boat };
+      }
+    }
+    return null;
   };
 
   const updateSession = async (id, patch) => {
@@ -872,19 +894,57 @@ export default function ViradaPrototype() {
     if ("suspendedReason" in patch) dbPatch.suspended_reason = patch.suspendedReason;
     if ("time" in patch) dbPatch.time = patch.time;
     if ("title" in patch) dbPatch.title = patch.title;
-    if ("boat" in patch) dbPatch.boat = patch.boat;
-    if ("oars" in patch) dbPatch.oars = patch.oars;
-    if ("status" in patch) dbPatch.status = patch.status;
     if ("signups" in patch) dbPatch.signups = Array.from(patch.signups);
-    if ("seats" in patch) dbPatch.seats = patch.seats;
-    if ("patron" in patch) dbPatch.patron = patch.patron;
-    if ("reserves" in patch) dbPatch.reserves = patch.reserves;
-    if ("zodiac" in patch) dbPatch.zodiac = patch.zodiac;
     if (Object.keys(dbPatch).length === 0) return true;
     const { data, error } = await supabase.from("water_sessions").update(dbPatch).eq("id", id).select();
     if (error) { flash("No se pudo guardar el cambio. Inténtalo de nuevo."); return false; }
     if (!data || data.length === 0) { flash("No se pudo guardar: no tienes permiso sobre esta tripulación."); return false; }
     return true;
+  };
+
+  // Actualiza una tripulación (bote) concreta dentro de un día, y sincroniza el estado local
+  const patchCrewLocal = (sessionId, crewId, patch) => {
+    setSessions(prev => prev.map(s => s.id !== sessionId ? s : {
+      ...s, crews: s.crews.map(c => c.id === crewId ? { ...c, ...patch } : c),
+    }));
+    if (openSession && openSession.id === sessionId) {
+      setOpenSession(prev => ({ ...prev, crews: prev.crews.map(c => c.id === crewId ? { ...c, ...patch } : c) }));
+    }
+  };
+  const updateCrew = async (sessionId, crewId, patch) => {
+    patchCrewLocal(sessionId, crewId, patch);
+    const dbPatch = {};
+    if ("boat" in patch) dbPatch.boat = patch.boat;
+    if ("oars" in patch) dbPatch.oars = patch.oars;
+    if ("status" in patch) dbPatch.status = patch.status;
+    if ("seats" in patch) dbPatch.seats = patch.seats;
+    if ("patron" in patch) dbPatch.patron = patch.patron;
+    if ("reserves" in patch) dbPatch.reserves = patch.reserves;
+    if ("zodiac" in patch) dbPatch.zodiac = patch.zodiac;
+    if (Object.keys(dbPatch).length === 0) return true;
+    const { data, error } = await supabase.from("session_crews").update(dbPatch).eq("id", crewId).select();
+    if (error) { flash("No se pudo guardar el cambio. Inténtalo de nuevo."); return false; }
+    if (!data || data.length === 0) { flash("No se pudo guardar: no tienes permiso sobre esta tripulación."); return false; }
+    return true;
+  };
+  const addCrew = async (session, boat) => {
+    const { data, error } = await supabase.from("session_crews").insert({
+      session_id: session.id, boat, oars: null,
+      seats: Array(9).fill(null), patron: null, reserves: [null, null], zodiac: [null, null, null, null],
+      status: "abierto",
+    }).select().single();
+    if (error) { flash("No se pudo añadir el bote. Inténtalo de nuevo."); return; }
+    const newCrew = mapCrewRow(data);
+    setSessions(prev => prev.map(s => s.id === session.id ? { ...s, crews: [...s.crews, newCrew] } : s));
+    if (openSession && openSession.id === session.id) setOpenSession(prev => ({ ...prev, crews: [...prev.crews, newCrew] }));
+    flash(`${boat} añadido a este día`);
+  };
+  const removeCrew = async (session, crewId) => {
+    const { error } = await supabase.from("session_crews").delete().eq("id", crewId);
+    if (error) { flash("No se pudo quitar el bote. Inténtalo de nuevo."); return; }
+    setSessions(prev => prev.map(s => s.id === session.id ? { ...s, crews: s.crews.filter(c => c.id !== crewId) } : s));
+    if (openSession && openSession.id === session.id) setOpenSession(prev => ({ ...prev, crews: prev.crews.filter(c => c.id !== crewId) }));
+    flash("Bote quitado de este día");
   };
 
   const toggleSignup = async (session) => {
@@ -910,45 +970,45 @@ export default function ViradaPrototype() {
     await supabase.from("session_alerts").update({ resolved: true }).eq("id", alertId);
   };
 
-  const assign = (session, slotType, slotIndex) => {
+  const assign = (session, crew, slotType, slotIndex) => {
     if (!selectedRowerChip) return;
-    const already = session.seats.includes(selectedRowerChip) || session.patron === selectedRowerChip || session.reserves.includes(selectedRowerChip) || session.zodiac.includes(selectedRowerChip);
+    const already = allCrewedIds(session).includes(selectedRowerChip);
     if (already) return;
     if (slotType === "seat") {
-      const seats = [...session.seats]; seats[slotIndex] = selectedRowerChip;
-      updateSession(session.id, { seats });
+      const seats = [...crew.seats]; seats[slotIndex] = selectedRowerChip;
+      updateCrew(session.id, crew.id, { seats });
     } else if (slotType === "patron") {
-      updateSession(session.id, { patron: selectedRowerChip });
+      updateCrew(session.id, crew.id, { patron: selectedRowerChip });
     } else if (slotType === "zodiac") {
-      const zodiac = [...session.zodiac]; zodiac[slotIndex] = selectedRowerChip;
-      updateSession(session.id, { zodiac });
+      const zodiac = [...crew.zodiac]; zodiac[slotIndex] = selectedRowerChip;
+      updateCrew(session.id, crew.id, { zodiac });
     } else {
-      const reserves = [...session.reserves]; reserves[slotIndex] = selectedRowerChip;
-      updateSession(session.id, { reserves });
+      const reserves = [...crew.reserves]; reserves[slotIndex] = selectedRowerChip;
+      updateCrew(session.id, crew.id, { reserves });
     }
     setSelectedRowerChip(null);
   };
 
-  const clearSlot = (session, slotType, slotIndex) => {
-    if (slotType === "seat") { const seats = [...session.seats]; seats[slotIndex] = null; updateSession(session.id, { seats }); }
-    else if (slotType === "patron") updateSession(session.id, { patron: null });
-    else if (slotType === "zodiac") { const zodiac = [...session.zodiac]; zodiac[slotIndex] = null; updateSession(session.id, { zodiac }); }
-    else { const reserves = [...session.reserves]; reserves[slotIndex] = null; updateSession(session.id, { reserves }); }
+  const clearSlot = (session, crew, slotType, slotIndex) => {
+    if (slotType === "seat") { const seats = [...crew.seats]; seats[slotIndex] = null; updateCrew(session.id, crew.id, { seats }); }
+    else if (slotType === "patron") updateCrew(session.id, crew.id, { patron: null });
+    else if (slotType === "zodiac") { const zodiac = [...crew.zodiac]; zodiac[slotIndex] = null; updateCrew(session.id, crew.id, { zodiac }); }
+    else { const reserves = [...crew.reserves]; reserves[slotIndex] = null; updateCrew(session.id, crew.id, { reserves }); }
   };
 
-  const closeCrew = async (session, previousRoster) => {
-    const ok = await updateSession(session.id, { status: "cerrado" });
+  const closeCrew = async (session, crew, previousRoster) => {
+    const ok = await updateCrew(session.id, crew.id, { status: "cerrado" });
     if (!ok) return; // si no se pudo cerrar de verdad, no mandamos notificaciones con datos que no cuadran
-    const assigned = [...session.seats, session.patron, ...session.reserves, ...session.zodiac].filter(Boolean);
+    const assigned = [...crew.seats, crew.patron, ...crew.reserves, ...crew.zodiac].filter(Boolean);
     const notes = assigned.map(rid => {
       let role = "reserva";
-      const seatIdx = session.seats.indexOf(rid);
-      if (seatIdx > -1) role = `puesto ${seatShortForBoat(session.boat, seatIdx)}`;
-      else if (session.patron === rid) role = "patrón";
-      else if (session.zodiac.includes(rid)) role = "zodiac";
+      const seatIdx = crew.seats.indexOf(rid);
+      if (seatIdx > -1) role = `puesto ${seatShortForBoat(crew.boat, seatIdx)}`;
+      else if (crew.patron === rid) role = "patrón";
+      else if (crew.zodiac.includes(rid)) role = "zodiac";
       return {
         rowerId: rid,
-        text: `Has sido convocado al entreno de agua del ${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}, ${session.time}. Rol: ${role}.`,
+        text: `Has sido convocado al entreno de agua del ${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}, ${session.time} (${crew.boat}). Rol: ${role}.`,
       };
     });
     // Si venimos de reabrir y modificar una convocatoria ya cerrada, avisamos aparte
@@ -959,7 +1019,7 @@ export default function ViradaPrototype() {
       removed.forEach(rid => {
         notes.push({
           rowerId: rid,
-          text: `Ya no estás convocado/a al entreno de agua del ${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}, ${session.time}. La convocatoria ha cambiado.`,
+          text: `Ya no estás convocado/a al entreno de agua del ${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}, ${session.time} (${crew.boat}). La convocatoria ha cambiado.`,
         });
       });
     }
@@ -974,20 +1034,18 @@ export default function ViradaPrototype() {
         return;
       }
     }
-    flash("Tripulación cerrada y notificaciones enviadas");
+    flash(`${crew.boat} cerrado y notificaciones enviadas`);
   };
 
-  const reopenCrew = (session) => {
-    updateSession(session.id, { status: "abierto" });
-    flash("Tripulación reabierta — modifica lo que haga falta y vuelve a cerrarla para notificar");
+  const reopenCrew = (session, crew) => {
+    updateCrew(session.id, crew.id, { status: "abierto" });
+    flash(`${crew.boat} reabierto — modifica lo que haga falta y vuelve a cerrarlo para notificar`);
   };
 
   const toggleActive = (session) => {
     if (session.active) {
-      const hasData = !!session.boat || !!session.oars
-        || session.signups.size > 0
-        || session.seats.some(Boolean) || !!session.patron || session.reserves.some(Boolean);
-      if (hasData) { setSuspendTarget(session); return; } // hay bote/rems/gente: pedimos motivo antes de tocar nada
+      const hasData = session.signups.size > 0 || (session.crews && session.crews.length > 0);
+      if (hasData) { setSuspendTarget(session); return; } // hay botes/gente: pedimos motivo antes de tocar nada
       updateSession(session.id, { active: false, suspendedReason: null }); // nada configurado todavía: se desactiva sin más
       return;
     }
@@ -1140,9 +1198,9 @@ export default function ViradaPrototype() {
     const weekPast = teamPast.filter(s => weekOfDate(s.date) === currentWeek);
     // "completado" exige tripulación cerrada Y que el entreno ya haya pasado
     return {
-      weekDone: weekPast.filter(s => s.status === "cerrado" && inCrew(s, rowerId)).length,
+      weekDone: weekPast.filter(s => inCrew(s, rowerId)).length,
       weekTotal: weekPast.length,
-      monthDone: teamPast.filter(s => s.status === "cerrado" && inCrew(s, rowerId)).length,
+      monthDone: teamPast.filter(s => inCrew(s, rowerId)).length,
       monthTotal: teamPast.length,
     };
   };
@@ -1695,6 +1753,15 @@ export default function ViradaPrototype() {
                   onClear={clearSlot}
                   onClose={closeCrew}
                   onReopen={reopenCrew}
+                  onAddCrew={addCrew}
+                  onRemoveCrew={removeCrew}
+                  onSetCrewBoat={(sessionId, crew, boat) => {
+                    const validOars = oarsOptionsFor(boat);
+                    const oars = validOars.includes(crew.oars) ? crew.oars : null;
+                    updateCrew(sessionId, crew.id, { boat, oars });
+                  }}
+                  onSetCrewOars={(sessionId, crewId, oars) => updateCrew(sessionId, crewId, { oars })}
+                  overlapFor={overlapFor}
                   teamName={teamName}
                   teamOf={teamOf}
                   nameOf={nameOf}
@@ -2249,12 +2316,13 @@ function SessionRow({ s, onOpen, right, teamLabel, semaphore }) {
 // Semáforo del remero para una sesión de agua: rojo = tripulación aún por cerrar o no convocado,
 // naranja = de reserva, verde = convocado para remar
 const rowerSemaphore = (s, myId) => {
-  const isCalled = s.seats.includes(myId) || s.patron === myId || (s.zodiac && s.zodiac.includes(myId));
-  const isReserve = !isCalled && s.reserves.includes(myId);
-  if (s.status !== "cerrado") return { color: "#E24B4A", label: "Tripulación aún por cerrar" };
+  const closedCrews = (s.crews || []).filter(c => c.status === "cerrado");
+  const myCrew = closedCrews.find(c => c.seats.includes(myId) || c.patron === myId || c.reserves.includes(myId) || (c.zodiac && c.zodiac.includes(myId)));
+  if (closedCrews.length === 0) return { color: "#E24B4A", label: "Tripulación aún por cerrar" };
+  if (!myCrew) return { color: "#E24B4A", label: "No convocado/a" };
+  const isCalled = myCrew.seats.includes(myId) || myCrew.patron === myId || (myCrew.zodiac && myCrew.zodiac.includes(myId));
   if (isCalled) return { color: "#3EA55A", label: "Convocado/a para remar" };
-  if (isReserve) return { color: "#E67E22", label: "De reserva" };
-  return { color: "#E24B4A", label: "No convocado/a" };
+  return { color: "#E67E22", label: "De reserva" };
 };
 
 function Badge({ text, tone, onClick }) {
@@ -2357,13 +2425,16 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
         <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Próximos entrenos</p>
       </div>
       <div style={{ padding: "0 16px" }}>
-        {sessions.map(s => (
-          <SessionRow key={s.id} s={s} onOpen={onOpen} semaphore={rowerSemaphore(s, myId)} right={
-            s.status === "cerrado"
-              ? <Badge text={[...s.seats, s.patron, ...s.reserves, ...(s.zodiac || [])].includes(myId) ? "Seleccionado" : "Cerrado"} tone={[...s.seats, s.patron, ...s.reserves, ...(s.zodiac || [])].includes(myId) ? "selected" : "closed"} />
-              : <Badge text={s.signups.has(myId) ? "Apuntado ✓" : "Apuntarse"} tone={s.signups.has(myId) ? "signed" : "action"} onClick={() => onToggle(s)} />
-          } />
-        ))}
+        {sessions.map(s => {
+          const anyClosed = (s.crews || []).some(c => c.status === "cerrado");
+          return (
+            <SessionRow key={s.id} s={s} onOpen={onOpen} semaphore={rowerSemaphore(s, myId)} right={
+              anyClosed
+                ? <Badge text={inCrew(s, myId) ? "Seleccionado" : "Cerrado"} tone={inCrew(s, myId) ? "selected" : "closed"} />
+                : <Badge text={s.signups.has(myId) ? "Apuntado ✓" : "Apuntarse"} tone={s.signups.has(myId) ? "signed" : "action"} onClick={() => onToggle(s)} />
+            } />
+          );
+        })}
       </div>
     </div>
   );
@@ -2421,12 +2492,16 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
       </div>
       <div style={{ padding: "10px 16px" }}>
         {sessions.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13 }}>Esta tripulación no tiene entrenos activos próximamente.</p>}
-        {sessions.map(s => (
-          <SessionRow key={s.id} s={s} onOpen={onOpen} teamLabel={showTeamLabel ? teamName(s.teamId) : null} right={
-            s.status === "cerrado" ? <Badge text="Cerrado" tone="closed" />
-              : <Badge text={`${s.signups.size} apuntados · ${seatFill(s)}/11`} tone={seatFill(s) === 11 ? "selected" : "open"} />
-          } />
-        ))}
+        {sessions.map(s => {
+          const allClosed = s.crews.length > 0 && s.crews.every(c => c.status === "cerrado");
+          const totalFilled = s.crews.reduce((sum, c) => sum + seatFill(c), 0);
+          return (
+            <SessionRow key={s.id} s={s} onOpen={onOpen} teamLabel={showTeamLabel ? teamName(s.teamId) : null} right={
+              allClosed ? <Badge text="Cerrado" tone="closed" />
+                : <Badge text={`${s.signups.size} apuntados · ${totalFilled} asig.`} tone={s.crews.length > 0 ? "selected" : "open"} />
+            } />
+          );
+        })}
       </div>
     </div>
   );
@@ -3368,7 +3443,7 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
   const sessionForDay = (date) => sessions.find(s => s.iso === date.toISOString().slice(0, 10));
   const dayRow = (rower, date) => {
     const s = sessionForDay(date);
-    const swam = !!(s && s.active && s.status === "cerrado" && inCrew(s, rower.id));
+    const swam = !!(s && s.active && inCrew(s, rower.id));
     const wk = weekOfDate(date);
     const dayKey = JS_DOW_TO_WEEK_KEY[date.getDay()];
     const meta = gymWeekMetaFor(teamId, wk);
@@ -3508,7 +3583,7 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
                   return (
                     <tr key={d.toISOString()} style={{ borderBottom: "1px solid #DDD" }}>
                       <td style={{ padding: "4px 6px" }}>{DAYS_ES[d.getDay()]} {d.getDate()}</td>
-                      <td style={{ padding: "4px 6px" }}>{!s || !s.active ? "Sin entreno" : s.status === "cerrado" ? "Cerrado" : "Abierto"}</td>
+                      <td style={{ padding: "4px 6px" }}>{!s || !s.active ? "Sin entreno" : (s.crews.length > 0 && s.crews.every(c => c.status === "cerrado")) ? "Cerrado" : "Abierto"}</td>
                       <td style={{ padding: "4px 6px" }}>{crew || "—"}</td>
                     </tr>
                   );
@@ -3619,8 +3694,8 @@ function SeasonExportScreen({ team, sessions, gymPlanForTeam, currentWeek, membe
                 <td style={{ padding: "4px 6px" }}>{DAYS_ES[s.dow]} {s.date.getDate()} {MONTHS_ES[s.date.getMonth()]}</td>
                 <td style={{ padding: "4px 6px" }}>{s.active ? s.time : "—"}</td>
                 <td style={{ padding: "4px 6px" }}>{s.active ? s.title : (s.suspendedReason ? `Suspendido: ${s.suspendedReason}` : "Sin entreno")}</td>
-                <td style={{ padding: "4px 6px" }}>{s.boat ? `${s.boat} · ${s.oars || "—"}` : "—"}</td>
-                <td style={{ padding: "4px 6px" }}>{s.active ? (s.status === "cerrado" ? "Cerrado" : "Abierto") : "Suspendido"}</td>
+                <td style={{ padding: "4px 6px" }}>{s.crews.length > 0 ? s.crews.map(c => `${c.boat}${c.oars ? " · " + c.oars : ""}`).join(", ") : "—"}</td>
+                <td style={{ padding: "4px 6px" }}>{s.active ? (s.crews.length === 0 ? "Sin botes" : s.crews.every(c => c.status === "cerrado") ? "Cerrado" : "Abierto") : "Suspendido"}</td>
               </tr>
             ))}
           </tbody>
@@ -4018,9 +4093,9 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
         <div key={label}>
           <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, margin: "12px 4px 8px" }}>{label}</p>
           {items.map(s => {
-            const overlap = overlapFor(s);
+            const clashes = (s.crews || []).map(c => overlapFor(s, c)).filter(Boolean);
             return (
-              <div key={s.id} style={{ background: "#404040", border: `1px solid ${overlap ? "#E67E22" : "#565656"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10, opacity: s.active ? 1 : 0.65 }}>
+              <div key={s.id} style={{ background: "#404040", border: `1px solid ${clashes.length > 0 ? "#E67E22" : "#565656"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10, opacity: s.active ? 1 : 0.65 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ width: 38, textAlign: "center" }}>
@@ -4050,36 +4125,15 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
                         {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>
-                    {overlap && (
-                      <p style={{ color: "#E67E22", fontSize: 11, margin: "8px 0 0", lineHeight: 1.4 }}>
-                        ⚠ Mismo bote ({overlap.boat}) que {overlap.team}, que lo usa a las {overlap.time}
+                    {clashes.map((clash, i) => (
+                      <p key={i} style={{ color: "#E67E22", fontSize: 11, margin: "8px 0 0", lineHeight: 1.4 }}>
+                        ⚠ Mismo bote ({clash.boat}) que {clash.team}, que lo usa a las {clash.time}
                       </p>
-                    )}
-                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                      <select
-                        value={s.boat || ""}
-                        onChange={e => {
-                          const boat = e.target.value || null;
-                          const validOars = oarsOptionsFor(boat);
-                          const oars = validOars.includes(s.oars) ? s.oars : null;
-                          onUpdateSession(s.id, { boat, oars });
-                        }}
-                        disabled={!editable}
-                        style={{ ...inputStyle, padding: "9px 10px", fontSize: 12, flex: 1, opacity: editable ? 1 : 0.6 }}
-                      >
-                        <option value="">Sin bote</option>
-                        {BOATS.map(b => <option key={b} value={b}>{b}</option>)}
-                      </select>
-                      <select
-                        value={s.oars || ""}
-                        onChange={e => onUpdateSession(s.id, { oars: e.target.value || null })}
-                        disabled={!editable || !s.boat}
-                        style={{ ...inputStyle, padding: "9px 10px", fontSize: 12, flex: 1, opacity: (editable && s.boat) ? 1 : 0.5 }}
-                      >
-                        <option value="">Sin rems</option>
-                        {oarsOptionsFor(s.boat).map(o => <option key={o} value={o}>{o}</option>)}
-                      </select>
-                    </div>
+                    ))}
+                    <p style={{ color: "#8A8A8A", fontSize: 11, margin: "10px 0 0", lineHeight: 1.4 }}>
+                      {s.crews.length === 0 ? "Sin botes añadidos todavía." : s.crews.map(c => c.boat).join(", ")}
+                      {" — "}gestiona los botes de este día desde su ficha completa.
+                    </p>
                   </>
                 )}
                 {!s.active && s.suspendedReason && (
@@ -4164,10 +4218,11 @@ function CalendarScreen({ sessions, onOpen, onToggle, myId, teamName, showTeamLa
             <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, margin: "12px 4px 8px" }}>{label}</p>
             {items.map(s => {
               let right;
+              const allClosed = s.crews.length > 0 && s.crews.every(c => c.status === "cerrado");
               if (!onToggle) {
-                right = <Badge text={s.status === "cerrado" ? "Cerrado" : `${s.signups.size} aptdos`} tone={s.status === "cerrado" ? "closed" : "open"} />;
-              } else if (s.status === "cerrado") {
-                const selected = [...s.seats, s.patron, ...s.reserves, ...(s.zodiac || [])].includes(myId);
+                right = <Badge text={allClosed ? "Cerrado" : `${s.signups.size} aptdos`} tone={allClosed ? "closed" : "open"} />;
+              } else if (allClosed) {
+                const selected = inCrew(s, myId);
                 right = <Badge text={selected ? "Seleccionado" : "Cerrado"} tone={selected ? "selected" : "closed"} />;
               } else {
                 const signed = s.signups.has(myId);
@@ -4183,15 +4238,18 @@ function CalendarScreen({ sessions, onOpen, onToggle, myId, teamName, showTeamLa
 }
 
 function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, myId, nameOf, nicknameOf, sideOf, photoOf }) {
-  const seatIdx = session.seats.indexOf(myId);
-  const isPatron = session.patron === myId;
-  const zodiacIdx = session.zodiac.indexOf(myId);
+  const myCrew = session.crews.find(c => c.seats.includes(myId) || c.patron === myId || c.zodiac.includes(myId) || c.reserves.includes(myId));
+  const closedCrews = session.crews.filter(c => c.status === "cerrado");
+  const seatIdx = myCrew ? myCrew.seats.indexOf(myId) : -1;
+  const isPatron = myCrew ? myCrew.patron === myId : false;
+  const zodiacIdx = myCrew ? myCrew.zodiac.indexOf(myId) : -1;
   const isZodiac = zodiacIdx > -1;
-  const reserveIdx = session.reserves.indexOf(myId);
-  const isCalled = seatIdx > -1 || isPatron || isZodiac;
-  const isReserve = !isCalled && reserveIdx > -1;
+  const reserveIdx = myCrew ? myCrew.reserves.indexOf(myId) : -1;
+  const isCalled = myCrew ? (seatIdx > -1 || isPatron || isZodiac) : false;
+  const isReserve = myCrew ? (!isCalled && reserveIdx > -1) : false;
   const mySeatLabel = () => {
-    if (seatIdx > -1) return seatLabelForBoat(session.boat, seatIdx);
+    if (!myCrew) return null;
+    if (seatIdx > -1) return seatLabelForBoat(myCrew.boat, seatIdx);
     if (isPatron) return "0 · Patrón";
     if (isZodiac) return `Zodiac ${zodiacIdx === 0 ? "Z" : `Z${zodiacIdx}`}`;
     if (reserveIdx > -1) return `Reserva R${reserveIdx + 1}`;
@@ -4203,32 +4261,27 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>
         {DAYS_ES[session.dow]} {session.date.getDate()} de {MONTHS_ES[session.date.getMonth()]}
       </h2>
-      <p className="vir-mono" style={{ color: "#E61E29", fontSize: 13, margin: "0 0 6px" }}>{session.time}</p>
-      {session.boat && (
-        <p style={{ color: "#ADADAD", fontSize: 12, margin: "0 0 20px" }}>🚣 {session.boat}{session.oars ? ` · ${session.oars}` : ""}</p>
-      )}
-      {!session.boat && <div style={{ marginBottom: 20 }} />}
+      <p className="vir-mono" style={{ color: "#E61E29", fontSize: 13, margin: "0 0 20px" }}>{session.time}</p>
 
-      {session.status === "abierto" ? (
-        <>
-          <p style={{ color: "#ADADAD", fontSize: 13, lineHeight: 1.5 }}>
-            Apúntate a este entreno para entrar en la lista de disponibles. El entrenador seleccionará la tripulación más adelante.
-          </p>
-          <button className="vir-btn" onClick={() => onToggle(session)} style={{
-            ...primaryBtn, marginTop: 18,
-            background: session.signups.has(myId) ? "transparent" : "#E61E29",
-            border: session.signups.has(myId) ? "1px solid #FF8890" : "none",
-            color: session.signups.has(myId) ? "#FF8890" : "#F5F5F5",
-          }}>
-            {session.signups.has(myId) ? "Darme de baja" : "Apuntarme"}
-          </button>
-          <div style={{ marginTop: 22 }}>
-            <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", marginBottom: 8 }}>Apuntados ({session.signups.size})</p>
-            {[...session.signups].map(id => <NameChip key={id} name={nameOf(id)} />)}
-          </div>
-        </>
-      ) : (
+      <p style={{ color: "#ADADAD", fontSize: 13, lineHeight: 1.5 }}>
+        Apúntate a este entreno para entrar en la lista de disponibles. El entrenador te asignará a un bote más adelante.
+      </p>
+      <button className="vir-btn" onClick={() => onToggle(session)} style={{
+        ...primaryBtn, marginTop: 14,
+        background: session.signups.has(myId) ? "transparent" : "#E61E29",
+        border: session.signups.has(myId) ? "1px solid #FF8890" : "none",
+        color: session.signups.has(myId) ? "#FF8890" : "#F5F5F5",
+      }}>
+        {session.signups.has(myId) ? "Darme de baja" : "Apuntarme"}
+      </button>
+      <div style={{ marginTop: 18, marginBottom: 22 }}>
+        <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", marginBottom: 8 }}>Apuntados ({session.signups.size})</p>
+        {[...session.signups].map(id => <NameChip key={id} name={nameOf(id)} />)}
+      </div>
+
+      {myCrew ? (
         <div>
+          <p style={{ color: "#ADADAD", fontSize: 12, margin: "0 0 10px" }}>🚣 {myCrew.boat}{myCrew.oars ? ` · ${myCrew.oars}` : ""}</p>
           <div style={{
             display: "flex", alignItems: "center", gap: 12, borderRadius: 12, padding: 16, marginBottom: 18,
             background: isCalled ? "#1E3A2A" : isReserve ? "#3D2E17" : "#3A1E1E",
@@ -4250,7 +4303,7 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
               {mySeatLabel() && <p className="vir-mono" style={{ color: "#ADADAD", fontSize: 12.5, margin: "3px 0 0" }}>{mySeatLabel()}</p>}
             </div>
           </div>
-          <BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} />
+          <BoatDiagram crew={myCrew} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} />
           {(isCalled || isReserve) && (
             myAlerts && myAlerts.length > 0 ? (
               <p style={{ color: "#8A8A8A", fontSize: 12, marginTop: 16, textAlign: "center" }}>
@@ -4269,31 +4322,33 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
             )
           )}
         </div>
-      )}
+      ) : closedCrews.length > 0 ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, borderRadius: 12, padding: 16, background: "#3A1E1E", border: "1px solid #E24B4A" }}>
+          <div style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#E24B4A" }}>
+            <X size={19} color="#FFFFFF" />
+          </div>
+          <p style={{ color: "#F5F5F5", fontWeight: 700, fontSize: 14, margin: 0 }}>No convocado/a en ningún bote de este día</p>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert, myId, onToggleSignup, photoOf }) {
+function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, waterStatsFor, gymStatsFor, editable, myId, selected, setSelected, onAssign, onClear, onClose, onReopen, onRemoveCrew, onSetBoat, onSetOars, overlapFor }) {
   const [preEditRoster, setPreEditRoster] = useState(null);
   const handleReopen = () => {
-    setPreEditRoster({ seats: [...session.seats], patron: session.patron, reserves: [...session.reserves], zodiac: [...session.zodiac] });
-    onReopen(session);
+    setPreEditRoster({ seats: [...crew.seats], patron: crew.patron, reserves: [...crew.reserves], zodiac: [...crew.zodiac] });
+    onReopen(session, crew);
   };
   const handleClose = () => {
-    onClose(session, preEditRoster);
+    onClose(session, crew, preEditRoster);
     setPreEditRoster(null);
   };
   const inScope = (id) => teamOf(id) === session.teamId;
-  const available = [...session.signups].filter(id => !session.seats.includes(id) && session.patron !== id && !session.reserves.includes(id) && !session.zodiac.includes(id) && (inScope(id) || id === myId));
-  const filled = seatFill(session);
-  const setBoat = (boat) => {
-    const validOars = oarsOptionsFor(boat);
-    const oars = validOars.includes(session.oars) ? session.oars : null;
-    onUpdateSession(session.id, { boat, oars });
-  };
-  const setOars = (oars) => onUpdateSession(session.id, { oars });
-  const canEdit = editable && session.status === "abierto";
+  const available = [...session.signups].filter(id => !allCrewedIds(session).includes(id) && (inScope(id) || id === myId));
+  const filled = seatFill(crew);
+  const canEdit = editable && crew.status === "abierto";
+  const clash = overlapFor(session, crew);
   const pctFor = (id) => {
     const w = waterStatsFor(id, session.teamId);
     const g = gymStatsFor(id, session.teamId);
@@ -4301,13 +4356,101 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
     const gPct = g.monthTotal > 0 ? (g.monthDone / g.monthTotal) * 100 : 0;
     return Math.round((wPct + gPct) / 2);
   };
+  const narrow = isBatel(crew.boat);
+
+  return (
+    <div style={{ flex: narrow ? "1 1 47%" : "1 1 100%", minWidth: narrow ? 150 : "100%", background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: 14, marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ flex: 1 }}>
+          <select value={crew.boat} onChange={e => onSetBoat(crew, e.target.value)} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12.5, fontWeight: 700, opacity: canEdit ? 1 : 0.6 }}>
+            {BOATS.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </div>
+        {editable && canEdit && filled === 0 && (
+          <button className="vir-btn" onClick={() => { if (window.confirm(`¿Quitar "${crew.boat}" de este día?`)) onRemoveCrew(session, crew.id); }} style={{ background: "transparent", color: "#8A8A8A", padding: "4px 8px", marginLeft: 8 }}>
+            <X size={16} />
+          </button>
+        )}
+      </div>
+
+      <select value={crew.oars || ""} onChange={e => onSetOars(crew, e.target.value || null)} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12, marginBottom: 8, opacity: canEdit ? 1 : 0.6 }}>
+        <option value="">Sin rems</option>
+        {oarsOptionsFor(crew.boat).map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+
+      {clash && (
+        <p style={{ color: "#E67E22", fontSize: 10.5, margin: "0 0 8px", lineHeight: 1.4 }}>
+          ⚠ {clash.boat} también está en uso por {clash.team} a las {clash.time} — puede haber conflicto.
+        </p>
+      )}
+
+      <p className="vir-mono" style={{ color: "#E61E29", fontSize: 11.5, margin: "0 0 8px" }}>{filled} puesto{filled === 1 ? "" : "s"} asignado{filled === 1 ? "" : "s"}</p>
+
+      {crew.status === "abierto" ? (
+        <>
+          <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", marginBottom: 6 }}>Disponibles ({available.length})</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+            {available.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 11.5 }}>Nadie más apuntado todavía.</p>}
+            {available.map(id => {
+              const meta = SIDE_META[sideOf(id)];
+              const isSel = selected === id;
+              const label = nicknameOf(id) || nameOf(id);
+              const pct = pctFor(id);
+              return (
+                <button key={id} className="vir-chip vir-btn" disabled={!editable} onClick={() => editable && setSelected(isSel ? null : id)} style={{
+                  display: "flex", alignItems: "center", gap: 5, padding: "5px 10px 5px 5px", borderRadius: 20, fontSize: 11.5,
+                  background: isSel ? "#E61E29" : "#404040",
+                  border: `1px solid ${isSel ? "#E61E29" : "#565656"}`,
+                  color: "#F5F5F5", fontWeight: isSel ? 600 : 400,
+                  opacity: editable ? 1 : 0.6, cursor: editable ? "pointer" : "not-allowed",
+                }}>
+                  <span style={{
+                    width: 16, height: 16, borderRadius: 4, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                    background: meta ? meta.color : "#565656", color: "#FFFFFF", fontSize: 7.5, fontWeight: 800,
+                  }}>{meta ? meta.letter : "?"}</span>
+                  {label}
+                  <span className="vir-mono" style={{ color: isSel ? "#FFD9DB" : "#8A8A8A", fontSize: 9.5 }}>· {pct}%</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <BoatDiagram crew={crew} selected={selected} onAssign={(c, type, idx) => onAssign(session, c, type, idx)} onClear={(c, type, idx) => onClear(session, c, type, idx)} readOnly={!editable} nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} />
+
+          {editable && (
+            <button className="vir-btn" disabled={filled === 0} onClick={handleClose} style={{ ...primaryBtn, marginTop: 14, padding: "10px 0", fontSize: 12.5, opacity: filled === 0 ? 0.4 : 1 }}>
+              Cerrar y notificar
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          <Badge text="Cerrado" tone="closed" />
+          <div style={{ marginTop: 12 }}>
+            <BoatDiagram crew={crew} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} />
+          </div>
+          {editable && (
+            <button className="vir-btn" onClick={handleReopen} style={{ ...ghostBtn, marginTop: 12, padding: "9px 0", fontSize: 12 }}>
+              Reabrir para modificar
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, onAddCrew, onRemoveCrew, onSetCrewBoat, onSetCrewOars, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert, myId, onToggleSignup, photoOf, overlapFor }) {
+  const [newBoat, setNewBoat] = useState(BOATS[0]);
+  const availableBoats = BOATS.filter(b => !session.crews.some(c => c.boat === b));
+
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>
         {DAYS_ES[session.dow]} {session.date.getDate()} de {MONTHS_ES[session.date.getMonth()]}
       </h2>
-      <p className="vir-mono" style={{ color: "#E61E29", fontSize: 13, margin: "0 0 4px" }}>{session.time} · {filled} puesto{filled === 1 ? "" : "s"} asignado{filled === 1 ? "" : "s"}</p>
+      <p className="vir-mono" style={{ color: "#E61E29", fontSize: 13, margin: "0 0 4px" }}>{session.time}</p>
       <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "0 0 4px" }}>Tripulación: {teamName(session.teamId)}</p>
       {!editable && (
         <p style={{ color: "#E67E22", fontSize: 12, margin: "0 0 16px", lineHeight: 1.4 }}>
@@ -4330,100 +4473,68 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
             </div>
           ))}
           <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "6px 0 0", lineHeight: 1.4 }}>
-            Reabre la tripulación para hacer los cambios necesarios y vuelve a cerrarla para notificar.
+            Reabre el bote correspondiente para hacer los cambios necesarios y vuelve a cerrarlo para notificar.
           </p>
         </div>
       )}
 
-      {session.status === "abierto" && (
-        <button
-          className="vir-btn"
-          onClick={() => onToggleSignup(session)}
-          style={{
-            width: "100%", marginBottom: 18, padding: "11px 0", borderRadius: 10, fontSize: 13, fontWeight: 600,
-            background: session.signups.has(myId) ? "transparent" : "#404040",
-            border: session.signups.has(myId) ? "1px solid #FF8890" : "1px solid #565656",
-            color: session.signups.has(myId) ? "#FF8890" : "#ADADAD",
-          }}
-        >
-          {session.signups.has(myId) ? "Quitarme de disponible" : "Apuntarme también — cubriré un puesto"}
-        </button>
+      <button
+        className="vir-btn"
+        onClick={() => onToggleSignup(session)}
+        style={{
+          width: "100%", marginBottom: 18, padding: "11px 0", borderRadius: 10, fontSize: 13, fontWeight: 600,
+          background: session.signups.has(myId) ? "transparent" : "#404040",
+          border: session.signups.has(myId) ? "1px solid #FF8890" : "1px solid #565656",
+          color: session.signups.has(myId) ? "#FF8890" : "#ADADAD",
+        }}
+      >
+        {session.signups.has(myId) ? "Quitarme de disponible" : "Apuntarme también — cubriré un puesto"}
+      </button>
+
+      {session.crews.length === 0 && (
+        <p style={{ color: "#8A8A8A", fontSize: 12.5, marginBottom: 14 }}>Todavía no hay ningún bote añadido a este día.</p>
       )}
 
-      <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "10px 12px", marginBottom: 18 }}>
-        <p style={{ color: "#8A8A8A", fontSize: 10, textTransform: "uppercase", margin: "0 0 6px" }}>Bote y rems</p>
-        <div style={{ display: "flex", gap: 6, marginBottom: session.boat ? 5 : 0 }}>
-          <select value={session.boat || ""} onChange={e => setBoat(e.target.value || null)} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12, flex: 1, opacity: canEdit ? 1 : 0.6 }}>
-            <option value="">Sin bote</option>
-            {BOATS.map(b => <option key={b} value={b}>{b}</option>)}
-          </select>
-          <select value={session.oars || ""} onChange={e => setOars(e.target.value || null)} disabled={!canEdit || !session.boat} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12, flex: 1, opacity: (canEdit && session.boat) ? 1 : 0.5 }}>
-            <option value="">Sin rems</option>
-            {oarsOptionsFor(session.boat).map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
-        </div>
-        {!session.boat && <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "6px 2px 0" }}>Elige primero el bote para ver los rems compatibles.</p>}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        {session.crews.map(crew => (
+          <CrewCard
+            key={crew.id}
+            session={session} crew={crew}
+            teamOf={teamOf} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} photoOf={photoOf}
+            waterStatsFor={waterStatsFor} gymStatsFor={gymStatsFor} editable={editable} myId={myId}
+            selected={selected} setSelected={setSelected}
+            onAssign={onAssign} onClear={onClear} onClose={onClose} onReopen={onReopen} onRemoveCrew={onRemoveCrew}
+            onSetBoat={(c, boat) => onSetCrewBoat(session.id, c, boat)}
+            onSetOars={(c, oars) => onSetCrewOars(session.id, c.id, oars)}
+            overlapFor={overlapFor}
+          />
+        ))}
       </div>
 
-      {session.status === "abierto" ? (
-        <>
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", marginBottom: 8 }}>Disponibles ({available.length}) · toca uno y luego un puesto</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
-            {available.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 12.5 }}>Nadie más apuntado todavía.</p>}
-            {available.map(id => {
-              const meta = SIDE_META[sideOf(id)];
-              const isSel = selected === id;
-              const label = nicknameOf(id) || nameOf(id);
-              const pct = pctFor(id);
-              return (
-                <button key={id} className="vir-chip vir-btn" disabled={!editable} onClick={() => editable && setSelected(isSel ? null : id)} style={{
-                  display: "flex", alignItems: "center", gap: 6, padding: "6px 12px 6px 6px", borderRadius: 20, fontSize: 12.5,
-                  background: isSel ? "#E61E29" : "#404040",
-                  border: `1px solid ${isSel ? "#E61E29" : "#565656"}`,
-                  color: "#F5F5F5", fontWeight: isSel ? 600 : 400,
-                  opacity: editable ? 1 : 0.6, cursor: editable ? "pointer" : "not-allowed",
-                }}>
-                  <span style={{
-                    width: 18, height: 18, borderRadius: 5, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                    background: meta ? meta.color : "#565656", color: "#FFFFFF", fontSize: 8.5, fontWeight: 800,
-                  }}>{meta ? meta.letter : "?"}</span>
-                  {label}
-                  <span className="vir-mono" style={{ color: isSel ? "#FFD9DB" : "#8A8A8A", fontSize: 10.5 }}>· {pct}%</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <BoatDiagram session={session} selected={selected} onAssign={onAssign} onClear={onClear} readOnly={!editable} nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} />
-
-          {editable && (
-            <button className="vir-btn" disabled={filled === 0} onClick={handleClose} style={{
-              ...primaryBtn, marginTop: 20, opacity: filled === 0 ? 0.4 : 1,
-            }}>
-              Cerrar tripulación y notificar
-            </button>
+      {editable && (
+        <div style={{ background: "#404040", border: "1px dashed #565656", borderRadius: 12, padding: 14, marginTop: 6 }}>
+          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Añadir otro bote a este día</p>
+          {availableBoats.length === 0 ? (
+            <p style={{ color: "#8A8A8A", fontSize: 12 }}>Ya están añadidos todos los botes disponibles.</p>
+          ) : (
+            <div style={{ display: "flex", gap: 8 }}>
+              <select value={newBoat} onChange={e => setNewBoat(e.target.value)} style={{ ...inputStyle, padding: "8px 10px", fontSize: 12.5, flex: 1 }}>
+                {availableBoats.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+              <button className="vir-btn" onClick={() => onAddCrew(session, newBoat)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: 12.5 }}>Añadir</button>
+            </div>
           )}
-        </>
-      ) : (
-        <>
-          <Badge text="Tripulación cerrada" tone="closed" />
-          <div style={{ marginTop: 16 }}><BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} /></div>
-          {editable && (
-            <button className="vir-btn" onClick={handleReopen} style={{ ...ghostBtn, marginTop: 18 }}>
-              Reabrir para modificar
-            </button>
-          )}
-        </>
+        </div>
       )}
     </div>
   );
 }
 
-function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameOf, nameOf, sideOf, photoOf }) {
+function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, nameOf, sideOf, photoOf }) {
   const handleSlot = (type, idx, occupied) => {
     if (readOnly) return;
-    if (occupied) { onClear(session, type, idx); return; }
-    if (selected) onAssign(session, type, idx);
+    if (occupied) { onClear(crew, type, idx); return; }
+    if (selected) onAssign(crew, type, idx);
   };
   const canClick = (occupied) => !readOnly && (occupied || !!selected);
   const colorFor = (rowerId) => (sideOf && rowerId && SIDE_META[sideOf(rowerId)]) ? SIDE_META[sideOf(rowerId)].color : "#E61E29";
@@ -4467,7 +4578,7 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
       <>
         <rect x="25" y={y - 40} width="250" height="80" rx="14" fill="#333333" stroke="#565656" strokeWidth="1.5" />
         {[0, 1, 2, 3].map(i => (
-          <Avatar key={`z${i}`} x={zodiacPos[i].x} y={zodiacPos[i].y} r={17} filled={!!session.zodiac[i]} rowerId={session.zodiac[i]}
+          <Avatar key={`z${i}`} x={zodiacPos[i].x} y={zodiacPos[i].y} r={17} filled={!!crew.zodiac[i]} rowerId={crew.zodiac[i]}
             label={{ type: "zodiac", idx: i, text: i === 0 ? "Z" : `Z${i}` }} nameBelow />
         ))}
       </>
@@ -4475,7 +4586,7 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
   };
 
   // ---------- BÀTEL: 4 puestos en una sola columna (4,3,2,1) + patrón, sin babor/estribor ----------
-  if (isBatel(session.boat)) {
+  if (isBatel(crew.boat)) {
     const seatY = (i) => 46 + i * 66; // i=0 arriba (puesto 4) ... i=3 abajo (puesto 1)
     const seatIdxForRow = [3, 2, 1, 0]; // fila de arriba a abajo: idx3="4", idx2="3", idx1="2", idx0="1"
     const patronY = seatY(3) + 66;
@@ -4486,14 +4597,14 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
       <div style={{ background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
         <svg viewBox={`0 0 300 ${viewH}`} width="100%" height={viewH * 0.92}>
           {seatIdxForRow.map((idx, row) => (
-            <Avatar key={idx} x={centerX} y={seatY(row)} r={24} filled={!!session.seats[idx]} rowerId={session.seats[idx]}
+            <Avatar key={idx} x={centerX} y={seatY(row)} r={24} filled={!!crew.seats[idx]} rowerId={crew.seats[idx]}
               label={{ type: "seat", idx, text: BATEL_SEAT_NUMS[idx] }} nameBelow />
           ))}
-          <Avatar x={centerX} y={patronY} r={26} filled={!!session.patron} rowerId={session.patron}
+          <Avatar x={centerX} y={patronY} r={26} filled={!!crew.patron} rowerId={crew.patron}
             label={{ type: "patron", idx: 0, text: "P" }} nameBelow />
           <ZodiacBlock y={zodiacY} />
           {[0, 1].map(i => (
-            <Avatar key={`r${i}`} x={centerX + (i === 0 ? -50 : 50)} y={reserveY} r={20} filled={!!session.reserves[i]} rowerId={session.reserves[i]}
+            <Avatar key={`r${i}`} x={centerX + (i === 0 ? -50 : 50)} y={reserveY} r={20} filled={!!crew.reserves[i]} rowerId={crew.reserves[i]}
               label={{ type: "reserve", idx: i, text: `R${i + 1}` }} nameBelow />
           ))}
         </svg>
@@ -4502,7 +4613,7 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
   }
 
   // ---------- LLAÜT: 9 puestos (4 babor + 5 estribor), estribor desplazado una fila hacia arriba ----------
-  if (isLlaut9(session.boat)) {
+  if (isLlaut9(crew.boat)) {
     const rowY = (row) => 118 + row * 66;
     const rows = [
       { babor: null, estribor: 7 }, // 4E sola, sin pareja en babor
@@ -4526,22 +4637,22 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
           <text x={cx.estribor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ESTRIBOR</text>
 
           {[0, 1].map(i => (
-            <Avatar key={`r${i}`} x={reservePos[i].x} y={reservePos[i].y} r={22} filled={!!session.reserves[i]} rowerId={session.reserves[i]}
+            <Avatar key={`r${i}`} x={reservePos[i].x} y={reservePos[i].y} r={22} filled={!!crew.reserves[i]} rowerId={crew.reserves[i]}
               label={{ type: "reserve", idx: i, text: `R${i + 1}` }} nameBelow />
           ))}
 
           {rows.map((r, row) => (
             <g key={row}>
               {r.babor !== null && (
-                <Avatar x={cx.babor} y={rowY(row)} r={24} filled={!!session.seats[r.babor]} rowerId={session.seats[r.babor]}
-                  label={{ type: "seat", idx: r.babor, text: seatShortForBoat(session.boat, r.babor) }} nameBelow />
+                <Avatar x={cx.babor} y={rowY(row)} r={24} filled={!!crew.seats[r.babor]} rowerId={crew.seats[r.babor]}
+                  label={{ type: "seat", idx: r.babor, text: seatShortForBoat(crew.boat, r.babor) }} nameBelow />
               )}
-              <Avatar x={cx.estribor} y={rowY(row)} r={24} filled={!!session.seats[r.estribor]} rowerId={session.seats[r.estribor]}
-                label={{ type: "seat", idx: r.estribor, text: seatShortForBoat(session.boat, r.estribor) }} nameBelow />
+              <Avatar x={cx.estribor} y={rowY(row)} r={24} filled={!!crew.seats[r.estribor]} rowerId={crew.seats[r.estribor]}
+                label={{ type: "seat", idx: r.estribor, text: seatShortForBoat(crew.boat, r.estribor) }} nameBelow />
             </g>
           ))}
 
-          <Avatar x={patronPos.x} y={patronPos.y} r={26} filled={!!session.patron} rowerId={session.patron}
+          <Avatar x={patronPos.x} y={patronPos.y} r={26} filled={!!crew.patron} rowerId={crew.patron}
             label={{ type: "patron", idx: 0, text: "P" }} nameBelow />
           <ZodiacBlock y={zodiacY} />
         </svg>
@@ -4568,7 +4679,7 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
         <text x={cx.estribor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ESTRIBOR</text>
 
         {[0, 1].map(i => (
-          <Avatar key={`r${i}`} x={reservePos[i].x} y={reservePos[i].y} r={22} filled={!!session.reserves[i]} rowerId={session.reserves[i]}
+          <Avatar key={`r${i}`} x={reservePos[i].x} y={reservePos[i].y} r={22} filled={!!crew.reserves[i]} rowerId={crew.reserves[i]}
             label={{ type: "reserve", idx: i, text: `R${i + 1}` }} nameBelow />
         ))}
 
@@ -4578,15 +4689,15 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
           const estriborIdx = (seatNum - 1) * 2 + 1;
           return (
             <g key={row}>
-              <Avatar x={cx.babor} y={rowY(row)} r={24} filled={!!session.seats[baborIdx]} rowerId={session.seats[baborIdx]}
+              <Avatar x={cx.babor} y={rowY(row)} r={24} filled={!!crew.seats[baborIdx]} rowerId={crew.seats[baborIdx]}
                 label={{ type: "seat", idx: baborIdx, text: seatShort(baborIdx) }} nameBelow />
-              <Avatar x={cx.estribor} y={rowY(row)} r={24} filled={!!session.seats[estriborIdx]} rowerId={session.seats[estriborIdx]}
+              <Avatar x={cx.estribor} y={rowY(row)} r={24} filled={!!crew.seats[estriborIdx]} rowerId={crew.seats[estriborIdx]}
                 label={{ type: "seat", idx: estriborIdx, text: seatShort(estriborIdx) }} nameBelow />
             </g>
           );
         })}
 
-        <Avatar x={patronPos.x} y={patronPos.y} r={26} filled={!!session.patron} rowerId={session.patron}
+        <Avatar x={patronPos.x} y={patronPos.y} r={26} filled={!!crew.patron} rowerId={crew.patron}
           label={{ type: "patron", idx: 0, text: "P" }} nameBelow />
 
         <ZodiacBlock y={zodiacY} />
