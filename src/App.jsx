@@ -360,15 +360,21 @@ export default function ViradaPrototype() {
           id: c.id, name: c.name, code: c.access_code,
           username: c.username, createdAt: c.created_at,
           photoUrl: c.photo_url || null,
+          legalName: c.legal_name || "", nif: c.nif || "", email: c.email || "",
+          address: c.address || "", city: c.city || "", postalCode: c.postal_code || "",
+          contactFirstName: c.contact_first_name || "", contactLastName: c.contact_last_name || "",
+          contactRole: c.contact_role || "", contactPhone: c.contact_phone || "",
         })));
       }
       const { data: usersData, error: usersErr } = await supabase.from("users").select("*");
       if (!usersErr && usersData) {
         const activeUsers = usersData.filter(u => u.status === "active").map(u => ({
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
+          firstName: u.first_name || "", lastName: u.last_name || "", birthDate: u.birth_date || "", phone: u.phone || "",
         }));
         const pendingList = usersData.filter(u => u.status === "pending").map(u => ({
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
+          firstName: u.first_name || "", lastName: u.last_name || "", birthDate: u.birth_date || "", phone: u.phone || "",
         }));
         setAssignedUsers(activeUsers);
         setPendingUsers(pendingList);
@@ -619,8 +625,12 @@ export default function ViradaPrototype() {
     const seq = ROWERS.length + idx + 1;
     return `${joinYear}${clubCode}${String(seq).padStart(4, "0")}`;
   };
-  const updateMyProfile = async ({ apodo, side, email, newPassword }) => {
+  const updateMyProfile = async ({ apodo, side, email, newPassword, firstName, lastName, birthDate, phone }) => {
     const updates = { nickname: apodo, side };
+    if (firstName !== undefined) updates.first_name = firstName.trim();
+    if (lastName !== undefined) updates.last_name = lastName.trim();
+    if (birthDate !== undefined) updates.birth_date = birthDate || null;
+    if (phone !== undefined) updates.phone = phone.trim() || null;
     const emailChanged = email !== undefined && email.trim() && email.trim().toLowerCase() !== (recoveryEmails[currentUserId] || "").trim().toLowerCase();
     if (emailChanged) updates.email = email.trim().toLowerCase();
     const { error } = await supabase.from("users").update(updates).eq("id", currentUserId);
@@ -640,7 +650,13 @@ export default function ViradaPrototype() {
     setNicknameOverrides(prev => ({ ...prev, [currentUserId]: apodo }));
     setSideOverrides(prev => ({ ...prev, [currentUserId]: side }));
     if (emailChanged) setRecoveryEmails(prev => ({ ...prev, [currentUserId]: email.trim().toLowerCase() }));
-    setAssignedUsers(prev => prev.map(u => u.id === currentUserId ? { ...u, apodo, side } : u));
+    setAssignedUsers(prev => prev.map(u => u.id === currentUserId ? {
+      ...u, apodo, side,
+      firstName: firstName !== undefined ? firstName.trim() : u.firstName,
+      lastName: lastName !== undefined ? lastName.trim() : u.lastName,
+      birthDate: birthDate !== undefined ? birthDate : u.birthDate,
+      phone: phone !== undefined ? phone.trim() : u.phone,
+    } : u));
     flash("Perfil actualizado");
   };
   const [profilePhotos, setProfilePhotos] = useState({}); // { [userId]: dataUrl }
@@ -656,11 +672,45 @@ export default function ViradaPrototype() {
     setClubs(prev => prev.map(c => c.id === currentClubId ? { ...c, photoUrl: dataUrl } : c));
     flash("Foto del club actualizada");
   };
-  const updateClubName = async (name) => {
-    const { error } = await supabase.from("clubs").update({ name }).eq("id", currentClubId);
-    if (error) { flash("No se pudo actualizar el nombre del club. Inténtalo de nuevo."); return; }
-    setClubs(prev => prev.map(c => c.id === currentClubId ? { ...c, name } : c));
-    flash("Nombre del club actualizado");
+  const updateClubProfile = async (fields) => {
+    const updates = {};
+    if (fields.name !== undefined) updates.name = fields.name.trim();
+    if (fields.legalName !== undefined) updates.legal_name = fields.legalName.trim() || null;
+    if (fields.nif !== undefined) updates.nif = fields.nif.trim() || null;
+    if (fields.address !== undefined) updates.address = fields.address.trim() || null;
+    if (fields.city !== undefined) updates.city = fields.city.trim() || null;
+    if (fields.postalCode !== undefined) updates.postal_code = fields.postalCode.trim() || null;
+    if (fields.contactFirstName !== undefined) updates.contact_first_name = fields.contactFirstName.trim();
+    if (fields.contactLastName !== undefined) updates.contact_last_name = fields.contactLastName.trim();
+    if (fields.contactRole !== undefined) updates.contact_role = fields.contactRole.trim();
+    if (fields.contactPhone !== undefined) updates.contact_phone = fields.contactPhone.trim() || null;
+    const club = clubs.find(c => c.id === currentClubId);
+    const emailChanged = fields.email !== undefined && fields.email.trim() && fields.email.trim().toLowerCase() !== (club?.email || "").trim().toLowerCase();
+    if (emailChanged) updates.email = fields.email.trim().toLowerCase();
+    const { error } = await supabase.from("clubs").update(updates).eq("id", currentClubId);
+    if (error) {
+      flash(error.message?.includes("duplicate") ? "Ese correo ya está en uso por otra cuenta." : "No se pudo actualizar el perfil del club. Inténtalo de nuevo.");
+      return;
+    }
+    if (emailChanged) {
+      const { error: emailError } = await supabase.auth.updateUser({ email: fields.email.trim().toLowerCase() });
+      if (emailError) { flash("Perfil actualizado, pero no se pudo actualizar el correo de acceso. Inténtalo de nuevo."); return; }
+    }
+    setClubs(prev => prev.map(c => c.id === currentClubId ? {
+      ...c,
+      name: fields.name !== undefined ? fields.name.trim() : c.name,
+      legalName: fields.legalName !== undefined ? fields.legalName.trim() : c.legalName,
+      nif: fields.nif !== undefined ? fields.nif.trim() : c.nif,
+      email: emailChanged ? fields.email.trim().toLowerCase() : c.email,
+      address: fields.address !== undefined ? fields.address.trim() : c.address,
+      city: fields.city !== undefined ? fields.city.trim() : c.city,
+      postalCode: fields.postalCode !== undefined ? fields.postalCode.trim() : c.postalCode,
+      contactFirstName: fields.contactFirstName !== undefined ? fields.contactFirstName.trim() : c.contactFirstName,
+      contactLastName: fields.contactLastName !== undefined ? fields.contactLastName.trim() : c.contactLastName,
+      contactRole: fields.contactRole !== undefined ? fields.contactRole.trim() : c.contactRole,
+      contactPhone: fields.contactPhone !== undefined ? fields.contactPhone.trim() : c.contactPhone,
+    } : c));
+    flash("Perfil del club actualizado");
   };
   const assignTeam = async (id, teamId) => {
     const { data, error } = await supabase.from("users").update({ team_id: teamId }).eq("id", id).select();
@@ -1813,6 +1863,10 @@ export default function ViradaPrototype() {
                   mySide={sideOf(currentUserId)}
                   myTeam={teamOf(currentUserId)}
                   myEmail={recoveryEmails[currentUserId] || ""}
+                  myFirstName={assignedUsers.find(u => u.id === currentUserId)?.firstName || ""}
+                  myLastName={assignedUsers.find(u => u.id === currentUserId)?.lastName || ""}
+                  myBirthDate={assignedUsers.find(u => u.id === currentUserId)?.birthDate || ""}
+                  myPhone={assignedUsers.find(u => u.id === currentUserId)?.phone || ""}
                   myRowerCode={rowerCodeOf(currentUserId)}
                   myPhoto={profilePhotos[currentUserId] || null}
                   onUpdateMyPhoto={updateMyPhoto}
@@ -1820,7 +1874,8 @@ export default function ViradaPrototype() {
                   onUpdateMyProfile={updateMyProfile}
                   clubDisplayName={clubDisplayName}
                   clubPhoto={currentClub?.photoUrl || null}
-                  onUpdateClubName={updateClubName}
+                  clubProfile={currentClub}
+                  onUpdateClubProfile={updateClubProfile}
                   onUpdateClubPhoto={updateClubPhoto}
                 />
               )}
@@ -4765,7 +4820,7 @@ function NotificationsScreen({ items, role, nameOf }) {
   );
 }
 
-function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, teamCode, onOpenTraining, myId, myDisplayName, myNickname, mySide, myTeam, myEmail, myRowerCode, myPhoto, onUpdateMyProfile, onUpdateMyPhoto, clubDisplayName, clubCode, clubPhoto, onUpdateClubName, onUpdateClubPhoto }) {
+function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, teamCode, onOpenTraining, myId, myDisplayName, myNickname, mySide, myTeam, myEmail, myFirstName, myLastName, myBirthDate, myPhone, myRowerCode, myPhoto, onUpdateMyProfile, onUpdateMyPhoto, clubDisplayName, clubCode, clubPhoto, clubProfile, onUpdateClubProfile, onUpdateClubPhoto }) {
   const name = role === "coach" ? myDisplayName : role === "club" ? clubDisplayName : myDisplayName;
   const roleLabel = role === "coach" ? "Entrenador" : role === "club" ? "Club" : "Remero";
   const photo = role === "club" ? clubPhoto : myPhoto;
@@ -4773,27 +4828,68 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
   const [editing, setEditing] = useState(false);
   const [apodoInput, setApodoInput] = useState(myNickname);
   const [sideInput, setSideInput] = useState(mySide);
-  const [clubNameInput, setClubNameInput] = useState(clubDisplayName);
+  const [firstNameInput, setFirstNameInput] = useState(myFirstName);
+  const [lastNameInput, setLastNameInput] = useState(myLastName);
+  const [birthDateInput, setBirthDateInput] = useState(myBirthDate);
+  const [phoneInput, setPhoneInput] = useState(myPhone);
   const [emailInput, setEmailInput] = useState(myEmail);
   const [newPasswordInput, setNewPasswordInput] = useState("");
+
+  const [clubNameInput, setClubNameInput] = useState(clubDisplayName);
+  const [legalNameInput, setLegalNameInput] = useState(clubProfile?.legalName || "");
+  const [nifInput, setNifInput] = useState(clubProfile?.nif || "");
+  const [clubEmailInput, setClubEmailInput] = useState(clubProfile?.email || "");
+  const [addressInput, setAddressInput] = useState(clubProfile?.address || "");
+  const [cityInput, setCityInput] = useState(clubProfile?.city || "");
+  const [postalCodeInput, setPostalCodeInput] = useState(clubProfile?.postalCode || "");
+  const [contactFirstNameInput, setContactFirstNameInput] = useState(clubProfile?.contactFirstName || "");
+  const [contactLastNameInput, setContactLastNameInput] = useState(clubProfile?.contactLastName || "");
+  const [contactRoleInput, setContactRoleInput] = useState(clubProfile?.contactRole || "");
+  const [contactPhoneInput, setContactPhoneInput] = useState(clubProfile?.contactPhone || "");
 
   const startEdit = () => {
     setApodoInput(myNickname);
     setSideInput(mySide);
-    setClubNameInput(clubDisplayName);
+    setFirstNameInput(myFirstName);
+    setLastNameInput(myLastName);
+    setBirthDateInput(myBirthDate);
+    setPhoneInput(myPhone);
     setEmailInput(myEmail);
     setNewPasswordInput("");
+    setClubNameInput(clubDisplayName);
+    setLegalNameInput(clubProfile?.legalName || "");
+    setNifInput(clubProfile?.nif || "");
+    setClubEmailInput(clubProfile?.email || "");
+    setAddressInput(clubProfile?.address || "");
+    setCityInput(clubProfile?.city || "");
+    setPostalCodeInput(clubProfile?.postalCode || "");
+    setContactFirstNameInput(clubProfile?.contactFirstName || "");
+    setContactLastNameInput(clubProfile?.contactLastName || "");
+    setContactRoleInput(clubProfile?.contactRole || "");
+    setContactPhoneInput(clubProfile?.contactPhone || "");
     setEditing(true);
   };
   const saveEdit = () => {
     if (role === "rower" || role === "coach") {
-      onUpdateMyProfile({ apodo: apodoInput, side: sideInput, email: emailInput, newPassword: newPasswordInput || null });
+      onUpdateMyProfile({
+        apodo: apodoInput, side: sideInput, email: emailInput, newPassword: newPasswordInput || null,
+        firstName: firstNameInput, lastName: lastNameInput, birthDate: birthDateInput, phone: phoneInput,
+      });
     }
-    if (role === "club") onUpdateClubName(clubNameInput);
+    if (role === "club") {
+      onUpdateClubProfile({
+        name: clubNameInput, legalName: legalNameInput, nif: nifInput, email: clubEmailInput,
+        address: addressInput, city: cityInput, postalCode: postalCodeInput,
+        contactFirstName: contactFirstNameInput, contactLastName: contactLastNameInput,
+        contactRole: contactRoleInput, contactPhone: contactPhoneInput,
+      });
+    }
     setEditing(false);
   };
 
   const editable = true; // club, entrenador y remero pueden modificar su cuenta
+  const fieldStyle = { ...inputStyle, padding: "9px 11px", fontSize: 12.5, marginBottom: 10 };
+  const labelStyle = { fontSize: 11.5, color: "#ADADAD", marginBottom: 4, display: "block" };
 
   return (
     <div style={{ padding: "24px 20px" }}>
@@ -4815,11 +4911,25 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
       {editing && (role === "rower" || role === "coach") && (
         <div style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 12, padding: 14, marginBottom: 20 }}>
           <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Editar perfil</p>
+
+          <label style={labelStyle}>Nombre</label>
+          <input value={firstNameInput} onChange={e => setFirstNameInput(e.target.value)} style={fieldStyle} />
+
+          <label style={labelStyle}>Apellido</label>
+          <input value={lastNameInput} onChange={e => setLastNameInput(e.target.value)} style={fieldStyle} />
+
+          <label style={labelStyle}>Apodo</label>
+          <input value={apodoInput} onChange={e => setApodoInput(e.target.value)} style={fieldStyle} />
+
+          <label style={labelStyle}>Fecha de nacimiento</label>
+          <input type="date" value={birthDateInput} onChange={e => setBirthDateInput(e.target.value)} style={fieldStyle} />
+
+          <label style={labelStyle}>Nº Teléfono</label>
+          <input type="tel" value={phoneInput} onChange={e => setPhoneInput(e.target.value)} style={fieldStyle} />
+
           {role === "rower" && (
             <>
-              <label style={{ fontSize: 11.5, color: "#ADADAD", marginBottom: 4, display: "block" }}>Apodo</label>
-              <input value={apodoInput} onChange={e => setApodoInput(e.target.value)} style={{ ...inputStyle, padding: "9px 11px", fontSize: 12.5, marginBottom: 10 }} />
-              <label style={{ fontSize: 11.5, color: "#ADADAD", marginBottom: 6, display: "block" }}>Lado de remo</label>
+              <label style={{ ...labelStyle, marginBottom: 6 }}>Lado de remo</label>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
                 {Object.entries(SIDE_META).map(([key, meta]) => {
                   const active = sideInput === key;
@@ -4840,10 +4950,10 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
               </div>
             </>
           )}
-          <label style={{ fontSize: 11.5, color: "#ADADAD", marginBottom: 4, display: "block" }}>Correo de recuperación</label>
-          <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} placeholder="tucorreo@ejemplo.com" style={{ ...inputStyle, padding: "9px 11px", fontSize: 12.5, marginBottom: 10 }} />
-          <label style={{ fontSize: 11.5, color: "#ADADAD", marginBottom: 4, display: "block" }}>Nueva contraseña</label>
-          <input type="password" value={newPasswordInput} onChange={e => setNewPasswordInput(e.target.value)} placeholder="Déjalo en blanco para no cambiarla" style={{ ...inputStyle, padding: "9px 11px", fontSize: 12.5, marginBottom: 12 }} />
+          <label style={labelStyle}>Correo (acceso y recuperación)</label>
+          <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} placeholder="tucorreo@ejemplo.com" style={fieldStyle} />
+          <label style={labelStyle}>Nueva contraseña</label>
+          <input type="password" value={newPasswordInput} onChange={e => setNewPasswordInput(e.target.value)} placeholder="Déjalo en blanco para no cambiarla" style={{ ...fieldStyle, marginBottom: 12 }} />
           <div style={{ display: "flex", gap: 8 }}>
             <button className="vir-btn" onClick={saveEdit} style={{ ...primaryBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>Guardar</button>
             <button className="vir-btn" onClick={() => setEditing(false)} style={{ ...ghostBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>Cancelar</button>
@@ -4854,8 +4964,35 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
       {editing && role === "club" && (
         <div style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 12, padding: 14, marginBottom: 20 }}>
           <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Editar perfil</p>
-          <label style={{ fontSize: 11.5, color: "#ADADAD", marginBottom: 4, display: "block" }}>Nombre del club</label>
-          <input value={clubNameInput} onChange={e => setClubNameInput(e.target.value)} style={{ ...inputStyle, padding: "9px 11px", fontSize: 12.5, marginBottom: 12 }} />
+
+          <label style={labelStyle}>Nombre del club</label>
+          <input value={clubNameInput} onChange={e => setClubNameInput(e.target.value)} style={fieldStyle} />
+
+          <label style={labelStyle}>Correo (acceso y recuperación)</label>
+          <input type="email" value={clubEmailInput} onChange={e => setClubEmailInput(e.target.value)} style={fieldStyle} />
+
+          <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "16px 0 8px" }}>Datos del club</p>
+          <label style={labelStyle}>Nombre fiscal del club</label>
+          <input value={legalNameInput} onChange={e => setLegalNameInput(e.target.value)} style={fieldStyle} />
+          <label style={labelStyle}>NIF</label>
+          <input value={nifInput} onChange={e => setNifInput(e.target.value)} style={fieldStyle} />
+          <label style={labelStyle}>Dirección</label>
+          <input value={addressInput} onChange={e => setAddressInput(e.target.value)} style={fieldStyle} />
+          <label style={labelStyle}>Población</label>
+          <input value={cityInput} onChange={e => setCityInput(e.target.value)} style={fieldStyle} />
+          <label style={labelStyle}>Código postal</label>
+          <input value={postalCodeInput} onChange={e => setPostalCodeInput(e.target.value)} style={fieldStyle} />
+
+          <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "16px 0 8px" }}>Persona de contacto</p>
+          <label style={labelStyle}>Nombre</label>
+          <input value={contactFirstNameInput} onChange={e => setContactFirstNameInput(e.target.value)} style={fieldStyle} />
+          <label style={labelStyle}>Apellido</label>
+          <input value={contactLastNameInput} onChange={e => setContactLastNameInput(e.target.value)} style={fieldStyle} />
+          <label style={labelStyle}>Cargo en el club</label>
+          <input value={contactRoleInput} onChange={e => setContactRoleInput(e.target.value)} style={fieldStyle} />
+          <label style={labelStyle}>Nº Teléfono</label>
+          <input type="tel" value={contactPhoneInput} onChange={e => setContactPhoneInput(e.target.value)} style={{ ...fieldStyle, marginBottom: 12 }} />
+
           <div style={{ display: "flex", gap: 8 }}>
             <button className="vir-btn" onClick={saveEdit} style={{ ...primaryBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>Guardar</button>
             <button className="vir-btn" onClick={() => setEditing(false)} style={{ ...ghostBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>Cancelar</button>
