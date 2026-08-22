@@ -4494,7 +4494,9 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
         <Avatar x={patronPos.x} y={patronPos.y} r={26} filled={!!session.patron} rowerId={session.patron}
           label={{ type: "patron", idx: 0, text: "P" }} nameBelow />
 
-        <text x={centerX} y={zodiacY - 60} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ZODIAC</text>
+        <rect x="30" y={zodiacY - 44} width="240" height="88" rx="14" fill="#333333" stroke="#565656" strokeWidth="1.5" />
+        <circle cx="52" cy={zodiacY - 44} r="13" fill="#565656" stroke="#3A3A3A" strokeWidth="2" />
+        <text x="52" y={zodiacY - 40} textAnchor="middle" fontSize="12" fontWeight="800" fill="#F5F5F5">Z</text>
         {[0, 1, 2].map(i => (
           <Avatar key={`z${i}`} x={zodiacPos[i].x} y={zodiacPos[i].y} r={22} filled={!!session.zodiac[i]} rowerId={session.zodiac[i]}
             label={{ type: "zodiac", idx: i, text: `Z${i + 1}` }} nameBelow />
