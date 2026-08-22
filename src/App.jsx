@@ -4494,6 +4494,17 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
         {session.signups.has(myId) ? "Quitarme de disponible" : "Apuntarme también — cubriré un puesto"}
       </button>
 
+      <div style={{ marginBottom: 18 }}>
+        <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", marginBottom: 8 }}>Apuntados ({session.signups.size})</p>
+        {session.signups.size === 0 ? (
+          <p style={{ color: "#8A8A8A", fontSize: 12.5 }}>Todavía no se ha apuntado nadie.</p>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {[...session.signups].map(id => <NameChip key={id} name={nicknameOf(id) || nameOf(id)} />)}
+          </div>
+        )}
+      </div>
+
       {session.crews.length === 0 && (
         <p style={{ color: "#8A8A8A", fontSize: 12.5, marginBottom: 14 }}>Todavía no hay ningún bote añadido a este día.</p>
       )}
