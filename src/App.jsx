@@ -4423,12 +4423,12 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
 
   const centerX = 150;
   const cx = { babor: 88, estribor: 212 };
-  const rowY = (row) => 128 + row * 72; // row 0 = fila 4 (arriba) ... row 3 = fila 1 (abajo, junto al patrón)
-  const lineTop = 78;
-  const patronPos = { x: centerX, y: 128 + 4 * 72 - 4 }; // pegado a la fila de 1B/1E
+  const rowY = (row) => 140 + row * 72; // row 0 = fila 4 (arriba) ... row 3 = fila 1 (abajo, junto al patrón)
+  const lineTop = 90;
+  const patronPos = { x: centerX, y: 140 + 4 * 72 - 4 }; // pegado a la fila de 1B/1E
   const lineBottom = patronPos.y - 4;
   const reservePos = [{ x: 88, y: 34 }, { x: 212, y: 34 }];
-  const zodiacY = patronPos.y + 78;
+  const zodiacY = patronPos.y + 116; // buen margen respecto al nombre del patrón, para que no se pisen
   const zodiacPos = [{ x: 76, y: zodiacY }, { x: 150, y: zodiacY }, { x: 224, y: zodiacY }];
   const viewH = zodiacY + 60;
 
@@ -4469,8 +4469,8 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
       <svg viewBox={`0 0 300 ${viewH}`} width="100%" height={viewH * 0.92}>
         <line x1={centerX} y1={lineTop} x2={centerX} y2={lineBottom} stroke="#767676" strokeWidth="2" />
 
-        <text x={cx.babor} y={64} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">BABOR</text>
-        <text x={cx.estribor} y={64} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ESTRIBOR</text>
+        <text x={cx.babor} y={76} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">BABOR</text>
+        <text x={cx.estribor} y={76} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ESTRIBOR</text>
 
         {[0, 1].map(i => (
           <Avatar key={`r${i}`} x={reservePos[i].x} y={reservePos[i].y} r={22} filled={!!session.reserves[i]} rowerId={session.reserves[i]}
@@ -4494,7 +4494,7 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
         <Avatar x={patronPos.x} y={patronPos.y} r={26} filled={!!session.patron} rowerId={session.patron}
           label={{ type: "patron", idx: 0, text: "P" }} nameBelow />
 
-        <text x={centerX} y={zodiacY - 46} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ZODIAC</text>
+        <text x={centerX} y={zodiacY - 60} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ZODIAC</text>
         {[0, 1, 2].map(i => (
           <Avatar key={`z${i}`} x={zodiacPos[i].x} y={zodiacPos[i].y} r={22} filled={!!session.zodiac[i]} rowerId={session.zodiac[i]}
             label={{ type: "zodiac", idx: i, text: `Z${i + 1}` }} nameBelow />
