@@ -1311,7 +1311,9 @@ export default function ViradaPrototype() {
 
   const registerClub = async (club) => {
     setLoginError(null);
-    if (!club.username || !club.password) { setLoginError("Usuario y contraseña son obligatorios."); return; }
+    if (!club.name?.trim()) { setLoginError("El nombre del club es obligatorio."); return; }
+    if (!club.username || club.username.trim().length < 3) { setLoginError("El usuario debe tener al menos 3 caracteres."); return; }
+    if (!club.password || club.password.length < 4) { setLoginError("La contraseña debe tener al menos 4 caracteres."); return; }
     if (club.password !== club.passwordRepeat) { setLoginError("Las contraseñas no coinciden."); return; }
     if (!club.email?.trim()) {
       setLoginError("El correo electrónico es obligatorio.");
@@ -2054,7 +2056,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
             <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "8px 0 0" }}>Logo del club — toca para {regPhoto ? "cambiarlo" : "añadirlo"} (podrás cambiarlo luego desde el perfil)</p>
           </div>
 
-          <FieldLabel text="Nombre del club" required={false} />
+          <FieldLabel text="Nombre del club" required filled={!!clubNameRegInput.trim()} />
           <input
             value={clubNameRegInput}
             onChange={e => {
@@ -2066,7 +2068,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
             style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }}
           />
 
-          <FieldLabel text="Usuario del club" required filled={!!usernameInput.trim()} />
+          <FieldLabel text="Usuario del club" required filled={usernameInput.trim().length >= 3} hint="mínimo 3 caracteres" />
           <input
             value={usernameInput}
             onChange={e => { setUsernameInput(e.target.value); setUsernameTouched(true); }}
@@ -2077,13 +2079,13 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
             Te sugerimos "ADMIN" + las iniciales del nombre del club, pero puedes usar el que prefieras para entrar.
           </p>
 
-          <FieldLabel text="Contraseña" required filled={!!passwordInput} />
+          <FieldLabel text="Contraseña" required filled={passwordInput.length >= 4} hint="mínimo 4 caracteres" />
           <div style={{ position: "relative", marginBottom: 14 }}>
             <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
             <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", paddingLeft: 34 }} />
           </div>
 
-          <FieldLabel text="Repetir contraseña" required filled={!!passwordRepeatInput && passwordRepeatInput === passwordInput} />
+          <FieldLabel text="Repetir contraseña" required filled={passwordRepeatInput.length >= 4 && passwordRepeatInput === passwordInput} />
           <div style={{ position: "relative" }}>
             <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
             <input type="password" value={passwordRepeatInput} onChange={e => setPasswordRepeatInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", paddingLeft: 34 }} />
