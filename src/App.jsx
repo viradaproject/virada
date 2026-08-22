@@ -47,10 +47,11 @@ const randomClubCode = () => String(Math.floor(Math.random() * 900) + 100); // c
 const DEFAULT_SESSION_TITLE = "ENTRENO DE AGUA";
 const TIME_OPTIONS = ["7:00 – 8:30", "8:00 – 9:30", "9:00 – 10:30", "17:00 – 18:30", "18:00 – 19:30", "19:00 – 20:30", "20:00 – 21:30"];
 
-const BOATS = ["Alarona", "Llaüt Nou", "Llaüt Vell", "Batel 1", "Batel 2"];
+const BOATS = ["Alarona", "Gaudir", "Llaüt Nou", "Llaüt Vell", "Batel 1", "Batel 2"];
 const OARS = ["Amilibia", "Braka 1.0", "Braka 2.0", "Ami Batel", "Braka Batel"];
 const BOAT_OARS = {
   "Alarona": ["Amilibia", "Braka 1.0", "Braka 2.0"],
+  "Gaudir": ["Amilibia", "Braka 1.0", "Braka 2.0"],
   "Llaüt Nou": ["Amilibia", "Braka 1.0", "Braka 2.0"],
   "Llaüt Vell": ["Amilibia", "Braka 1.0", "Braka 2.0"],
   "Batel 1": ["Ami Batel", "Braka Batel"],
@@ -84,10 +85,10 @@ function buildSessions(teamId) {
       boat: null,
       oars: null,
       signups: new Set(),
-      seats: Array(8).fill(null),
+      seats: Array(9).fill(null), // 8 puestos estándar + el 9º (0E) que usa el llaüt
       patron: null,
       reserves: [null, null],
-      zodiac: [null, null, null],
+      zodiac: [null, null, null, null],
       status: isPast ? "cerrado" : "abierto",
     });
   }
@@ -203,10 +204,10 @@ const mapWaterSessionRow = (s) => ({
   time: s.time, title: s.title, active: s.active, status: s.status,
   suspendedReason: s.suspended_reason, boat: s.boat, oars: s.oars,
   signups: new Set(s.signups || []),
-  seats: (s.seats && s.seats.length === 8) ? s.seats : Array(8).fill(null),
+  seats: (s.seats && s.seats.length >= 8) ? [...s.seats, ...Array(Math.max(0, 9 - s.seats.length)).fill(null)] : Array(9).fill(null),
   patron: s.patron || null,
   reserves: (s.reserves && s.reserves.length === 2) ? s.reserves : [null, null],
-  zodiac: (s.zodiac && s.zodiac.length === 3) ? s.zodiac : [null, null, null],
+  zodiac: (s.zodiac && s.zodiac.length === 4) ? s.zodiac : [null, null, null, null],
 });
 const JS_DOW_TO_WEEK_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"]; // Date.getDay(): 0=domingo..6=sábado
 // Posiciones del bote: patrón (0) al frente, luego 4 filas de BABOR/ESTRIBOR (1 a 4)
@@ -215,9 +216,15 @@ const SEAT_LABELS = [
   { side: "BABOR", num: 2 }, { side: "ESTRIBOR", num: 2 },
   { side: "BABOR", num: 3 }, { side: "ESTRIBOR", num: 3 },
   { side: "BABOR", num: 4 }, { side: "ESTRIBOR", num: 4 },
+  { side: "ESTRIBOR", num: 0 }, // idx 8: el puesto extra 0E del llaüt
 ];
 const seatLabel = (i) => `${SEAT_LABELS[i].num} ${SEAT_LABELS[i].side}`;
 const seatShort = (i) => `${SEAT_LABELS[i].num}${SEAT_LABELS[i].side === "BABOR" ? "B" : "E"}`;
+const BATEL_SEAT_NUMS = ["1", "2", "3", "4"]; // idx 0-3, botel: puestos en línea sin babor/estribor
+const isBatel = (boat) => boat === "Batel 1" || boat === "Batel 2";
+const isLlaut9 = (boat) => boat === "Llaüt Nou" || boat === "Llaüt Vell";
+const seatShortForBoat = (boat, i) => isBatel(boat) ? BATEL_SEAT_NUMS[i] : seatShort(i);
+const seatLabelForBoat = (boat, i) => isBatel(boat) ? `Puesto ${BATEL_SEAT_NUMS[i]}` : seatLabel(i);
 const firstName = (name) => name.split(" ")[0];
 const crewLabel = (id, nicknameOf, nameOf) => {
   const nick = nicknameOf ? nicknameOf(id) : null;
@@ -936,7 +943,7 @@ export default function ViradaPrototype() {
     const notes = assigned.map(rid => {
       let role = "reserva";
       const seatIdx = session.seats.indexOf(rid);
-      if (seatIdx > -1) role = `puesto ${seatShort(seatIdx)}`;
+      if (seatIdx > -1) role = `puesto ${seatShortForBoat(session.boat, seatIdx)}`;
       else if (session.patron === rid) role = "patrón";
       else if (session.zodiac.includes(rid)) role = "zodiac";
       return {
@@ -4184,9 +4191,9 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
   const isCalled = seatIdx > -1 || isPatron || isZodiac;
   const isReserve = !isCalled && reserveIdx > -1;
   const mySeatLabel = () => {
-    if (seatIdx > -1) return seatLabel(seatIdx);
+    if (seatIdx > -1) return seatLabelForBoat(session.boat, seatIdx);
     if (isPatron) return "0 · Patrón";
-    if (isZodiac) return `Zodiac Z${zodiacIdx + 1}`;
+    if (isZodiac) return `Zodiac ${zodiacIdx === 0 ? "Z" : `Z${zodiacIdx}`}`;
     if (reserveIdx > -1) return `Reserva R${reserveIdx + 1}`;
     return null;
   };
@@ -4300,7 +4307,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>
         {DAYS_ES[session.dow]} {session.date.getDate()} de {MONTHS_ES[session.date.getMonth()]}
       </h2>
-      <p className="vir-mono" style={{ color: "#E61E29", fontSize: 13, margin: "0 0 4px" }}>{session.time} · {filled}/11 asignados</p>
+      <p className="vir-mono" style={{ color: "#E61E29", fontSize: 13, margin: "0 0 4px" }}>{session.time} · {filled} puesto{filled === 1 ? "" : "s"} asignado{filled === 1 ? "" : "s"}</p>
       <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "0 0 4px" }}>Tripulación: {teamName(session.teamId)}</p>
       {!editable && (
         <p style={{ color: "#E67E22", fontSize: 12, margin: "0 0 16px", lineHeight: 1.4 }}>
@@ -4343,19 +4350,19 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
         </button>
       )}
 
-      <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: 14, marginBottom: 18 }}>
-        <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Bote y rems</p>
-        <div style={{ display: "flex", gap: 8, marginBottom: session.boat ? 8 : 0 }}>
-          <select value={session.boat || ""} onChange={e => setBoat(e.target.value || null)} disabled={!canEdit} style={{ ...inputStyle, padding: "9px 10px", fontSize: 12.5, flex: 1, opacity: canEdit ? 1 : 0.6 }}>
+      <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "10px 12px", marginBottom: 18 }}>
+        <p style={{ color: "#8A8A8A", fontSize: 10, textTransform: "uppercase", margin: "0 0 6px" }}>Bote y rems</p>
+        <div style={{ display: "flex", gap: 6, marginBottom: session.boat ? 5 : 0 }}>
+          <select value={session.boat || ""} onChange={e => setBoat(e.target.value || null)} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12, flex: 1, opacity: canEdit ? 1 : 0.6 }}>
             <option value="">Sin bote</option>
             {BOATS.map(b => <option key={b} value={b}>{b}</option>)}
           </select>
-          <select value={session.oars || ""} onChange={e => setOars(e.target.value || null)} disabled={!canEdit || !session.boat} style={{ ...inputStyle, padding: "9px 10px", fontSize: 12.5, flex: 1, opacity: (canEdit && session.boat) ? 1 : 0.5 }}>
+          <select value={session.oars || ""} onChange={e => setOars(e.target.value || null)} disabled={!canEdit || !session.boat} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12, flex: 1, opacity: (canEdit && session.boat) ? 1 : 0.5 }}>
             <option value="">Sin rems</option>
             {oarsOptionsFor(session.boat).map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         </div>
-        {!session.boat && <p style={{ color: "#8A8A8A", fontSize: 11, margin: "8px 2px 0" }}>Elige primero el bote para ver los rems compatibles.</p>}
+        {!session.boat && <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "6px 2px 0" }}>Elige primero el bote para ver los rems compatibles.</p>}
       </div>
 
       {session.status === "abierto" ? (
@@ -4420,17 +4427,7 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
   };
   const canClick = (occupied) => !readOnly && (occupied || !!selected);
   const colorFor = (rowerId) => (sideOf && rowerId && SIDE_META[sideOf(rowerId)]) ? SIDE_META[sideOf(rowerId)].color : "#E61E29";
-
   const centerX = 150;
-  const cx = { babor: 88, estribor: 212 };
-  const rowY = (row) => 140 + row * 72; // row 0 = fila 4 (arriba) ... row 3 = fila 1 (abajo, junto al patrón)
-  const lineTop = 90;
-  const patronPos = { x: centerX, y: 140 + 4 * 72 - 4 }; // pegado a la fila de 1B/1E
-  const lineBottom = patronPos.y - 4;
-  const reservePos = [{ x: 88, y: 34 }, { x: 212, y: 34 }];
-  const zodiacY = patronPos.y + 116; // buen margen respecto al nombre del patrón, para que no se pisen
-  const zodiacPos = [{ x: 76, y: zodiacY }, { x: 150, y: zodiacY }, { x: 224, y: zodiacY }];
-  const viewH = zodiacY + 60;
 
   // Avatar redondo con aro del color de babor/estribor/ambos/patrón; si no hay foto, círculo de color con iniciales
   const Avatar = ({ x, y, r, filled, rowerId, label, nameBelow }) => {
@@ -4464,13 +4461,111 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
     );
   };
 
+  const ZodiacBlock = ({ y }) => {
+    const zodiacPos = [66, 122, 178, 234].map(x => ({ x, y }));
+    return (
+      <>
+        <rect x="25" y={y - 40} width="250" height="80" rx="14" fill="#333333" stroke="#565656" strokeWidth="1.5" />
+        {[0, 1, 2, 3].map(i => (
+          <Avatar key={`z${i}`} x={zodiacPos[i].x} y={zodiacPos[i].y} r={17} filled={!!session.zodiac[i]} rowerId={session.zodiac[i]}
+            label={{ type: "zodiac", idx: i, text: i === 0 ? "Z" : `Z${i}` }} nameBelow />
+        ))}
+      </>
+    );
+  };
+
+  // ---------- BÀTEL: 4 puestos en una sola columna (4,3,2,1) + patrón, sin babor/estribor ----------
+  if (isBatel(session.boat)) {
+    const seatY = (i) => 46 + i * 66; // i=0 arriba (puesto 4) ... i=3 abajo (puesto 1)
+    const seatIdxForRow = [3, 2, 1, 0]; // fila de arriba a abajo: idx3="4", idx2="3", idx1="2", idx0="1"
+    const patronY = seatY(3) + 66;
+    const zodiacY = patronY + 96;
+    const reserveY = zodiacY + 76;
+    const viewH = reserveY + 50;
+    return (
+      <div style={{ background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
+        <svg viewBox={`0 0 300 ${viewH}`} width="100%" height={viewH * 0.92}>
+          {seatIdxForRow.map((idx, row) => (
+            <Avatar key={idx} x={centerX} y={seatY(row)} r={24} filled={!!session.seats[idx]} rowerId={session.seats[idx]}
+              label={{ type: "seat", idx, text: BATEL_SEAT_NUMS[idx] }} nameBelow />
+          ))}
+          <Avatar x={centerX} y={patronY} r={26} filled={!!session.patron} rowerId={session.patron}
+            label={{ type: "patron", idx: 0, text: "P" }} nameBelow />
+          <ZodiacBlock y={zodiacY} />
+          {[0, 1].map(i => (
+            <Avatar key={`r${i}`} x={centerX + (i === 0 ? -50 : 50)} y={reserveY} r={20} filled={!!session.reserves[i]} rowerId={session.reserves[i]}
+              label={{ type: "reserve", idx: i, text: `R${i + 1}` }} nameBelow />
+          ))}
+        </svg>
+      </div>
+    );
+  }
+
+  // ---------- LLAÜT: 9 puestos (4 babor + 5 estribor), estribor desplazado una fila hacia arriba ----------
+  if (isLlaut9(session.boat)) {
+    const rowY = (row) => 118 + row * 66;
+    const rows = [
+      { babor: null, estribor: 7 }, // 4E sola, sin pareja en babor
+      { babor: 6, estribor: 5 },    // 4B / 3E
+      { babor: 4, estribor: 3 },    // 3B / 2E
+      { babor: 2, estribor: 1 },    // 2B / 1E
+      { babor: 0, estribor: 8 },    // 1B / 0E
+    ];
+    const cx = { babor: 88, estribor: 212 };
+    const lineTop = 90;
+    const patronPos = { x: centerX, y: rowY(4) + 60 };
+    const lineBottom = patronPos.y - 4;
+    const reservePos = [{ x: 88, y: 56 }, { x: 212, y: 56 }];
+    const zodiacY = patronPos.y + 116;
+    const viewH = zodiacY + 60;
+    return (
+      <div style={{ background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
+        <svg viewBox={`0 0 300 ${viewH}`} width="100%" height={viewH * 0.92}>
+          <line x1={centerX} y1={lineTop} x2={centerX} y2={lineBottom} stroke="#767676" strokeWidth="2" />
+          <text x={cx.babor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">BABOR</text>
+          <text x={cx.estribor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ESTRIBOR</text>
+
+          {[0, 1].map(i => (
+            <Avatar key={`r${i}`} x={reservePos[i].x} y={reservePos[i].y} r={22} filled={!!session.reserves[i]} rowerId={session.reserves[i]}
+              label={{ type: "reserve", idx: i, text: `R${i + 1}` }} nameBelow />
+          ))}
+
+          {rows.map((r, row) => (
+            <g key={row}>
+              {r.babor !== null && (
+                <Avatar x={cx.babor} y={rowY(row)} r={24} filled={!!session.seats[r.babor]} rowerId={session.seats[r.babor]}
+                  label={{ type: "seat", idx: r.babor, text: seatShortForBoat(session.boat, r.babor) }} nameBelow />
+              )}
+              <Avatar x={cx.estribor} y={rowY(row)} r={24} filled={!!session.seats[r.estribor]} rowerId={session.seats[r.estribor]}
+                label={{ type: "seat", idx: r.estribor, text: seatShortForBoat(session.boat, r.estribor) }} nameBelow />
+            </g>
+          ))}
+
+          <Avatar x={patronPos.x} y={patronPos.y} r={26} filled={!!session.patron} rowerId={session.patron}
+            label={{ type: "patron", idx: 0, text: "P" }} nameBelow />
+          <ZodiacBlock y={zodiacY} />
+        </svg>
+      </div>
+    );
+  }
+
+  // ---------- LLAGUT estándar (Alarona, Gaudir, o sin bote elegido): 8 puestos, 4 filas simétricas ----------
+  const cx = { babor: 88, estribor: 212 };
+  const rowY = (row) => 140 + row * 72; // row 0 = fila 4 (arriba) ... row 3 = fila 1 (abajo, junto al patrón)
+  const lineTop = 90;
+  const patronPos = { x: centerX, y: 140 + 4 * 72 - 4 }; // pegado a la fila de 1B/1E
+  const lineBottom = patronPos.y - 4;
+  const reservePos = [{ x: 88, y: 56 }, { x: 212, y: 56 }];
+  const zodiacY = patronPos.y + 116;
+  const viewH = zodiacY + 60;
+
   return (
     <div style={{ background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
       <svg viewBox={`0 0 300 ${viewH}`} width="100%" height={viewH * 0.92}>
         <line x1={centerX} y1={lineTop} x2={centerX} y2={lineBottom} stroke="#767676" strokeWidth="2" />
 
-        <text x={cx.babor} y={76} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">BABOR</text>
-        <text x={cx.estribor} y={76} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ESTRIBOR</text>
+        <text x={cx.babor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">BABOR</text>
+        <text x={cx.estribor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ESTRIBOR</text>
 
         {[0, 1].map(i => (
           <Avatar key={`r${i}`} x={reservePos[i].x} y={reservePos[i].y} r={22} filled={!!session.reserves[i]} rowerId={session.reserves[i]}
@@ -4494,13 +4589,7 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
         <Avatar x={patronPos.x} y={patronPos.y} r={26} filled={!!session.patron} rowerId={session.patron}
           label={{ type: "patron", idx: 0, text: "P" }} nameBelow />
 
-        <rect x="30" y={zodiacY - 44} width="240" height="88" rx="14" fill="#333333" stroke="#565656" strokeWidth="1.5" />
-        <circle cx="52" cy={zodiacY - 44} r="13" fill="#565656" stroke="#3A3A3A" strokeWidth="2" />
-        <text x="52" y={zodiacY - 40} textAnchor="middle" fontSize="12" fontWeight="800" fill="#F5F5F5">Z</text>
-        {[0, 1, 2].map(i => (
-          <Avatar key={`z${i}`} x={zodiacPos[i].x} y={zodiacPos[i].y} r={22} filled={!!session.zodiac[i]} rowerId={session.zodiac[i]}
-            label={{ type: "zodiac", idx: i, text: `Z${i + 1}` }} nameBelow />
-        ))}
+        <ZodiacBlock y={zodiacY} />
       </svg>
     </div>
   );
