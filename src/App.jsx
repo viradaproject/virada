@@ -698,9 +698,12 @@ export default function ViradaPrototype() {
       setLoginError("Rellena todos los campos obligatorios.");
       return;
     }
+    if (!person.username || person.username.trim().length < 3) { setLoginError("El usuario debe tener al menos 3 caracteres."); return; }
+    if (!person.password || person.password.length < 4) { setLoginError("La contraseña debe tener al menos 4 caracteres."); return; }
     if (!person.side) { setLoginError("Elige tu función en el equipo."); return; }
     if (person.password !== person.passwordRepeat) { setLoginError("Las contraseñas no coinciden."); return; }
     const code = (person.clubCode || "").trim();
+    if (code.length !== 3) { setLoginError("El número de club debe tener 3 cifras."); return; }
     const { data: clubRow, error: clubErr } = await supabase.from("clubs").select("*").eq("access_code", code).maybeSingle();
     if (clubErr || !clubRow) { setLoginError(clubs.length === 0 ? "Todavía no se ha registrado ningún club." : "Código de club incorrecto."); return; }
     if (isUsernameTaken(person.username)) { setLoginError("Ese nombre de usuario ya existe. Elige otro."); return; }
@@ -2143,7 +2146,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
             <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "8px 0 0" }}>Toca la foto para {regPhoto ? "cambiarla" : "añadirla"}</p>
           </div>
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Número de club</label>
+          <FieldLabel text="Número de club" required filled={clubCodeInput.trim().length === 3} />
           <div style={{ position: "relative", marginBottom: 14 }}>
             <KeyRound size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
             <input
@@ -2156,16 +2159,16 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
             />
           </div>
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nombre de usuario</label>
+          <FieldLabel text="Nombre de usuario" required filled={usernameInput.trim().length >= 3} hint="mínimo 3 caracteres" />
           <input value={usernameInput} onChange={e => setUsernameInput(e.target.value)} placeholder="Acceso a la plataforma" style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Contraseña</label>
+          <FieldLabel text="Contraseña" required filled={passwordInput.length >= 4} hint="mínimo 4 caracteres" />
           <div style={{ position: "relative", marginBottom: 14 }}>
             <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
             <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", paddingLeft: 34 }} />
           </div>
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Repetir contraseña</label>
+          <FieldLabel text="Repetir contraseña" required filled={passwordRepeatInput.length >= 4 && passwordRepeatInput === passwordInput} />
           <div style={{ position: "relative" }}>
             <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
             <input type="password" value={passwordRepeatInput} onChange={e => setPasswordRepeatInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", paddingLeft: 34 }} />
@@ -2173,25 +2176,28 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
 
           <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>Datos personales</p>
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nombre</label>
+          <FieldLabel text="Nombre" required filled={!!firstNameInput.trim()} />
           <input value={firstNameInput} onChange={e => setFirstNameInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Apellido</label>
+          <FieldLabel text="Apellido" required filled={!!lastNameInput.trim()} />
           <input value={lastNameInput} onChange={e => setLastNameInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Apodo</label>
+          <FieldLabel text="Apodo" required filled={!!apodoInput.trim()} hint="aparecerá en las tripulaciones" />
           <input value={apodoInput} onChange={e => setApodoInput(e.target.value)} placeholder="Aparecerá en las tripulaciones" style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Fecha de nacimiento</label>
+          <FieldLabel text="Fecha de nacimiento" required filled={!!birthDateInput} />
           <input type="date" value={birthDateInput} onChange={e => setBirthDateInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Correo electrónico <span style={{ color: "#8A8A8A", fontWeight: 400, textTransform: "none" }}>(recuperación de acceso)</span></label>
+          <FieldLabel text="Correo electrónico" required filled={!!emailInput.trim()} hint="para recuperar el acceso" />
           <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Nº Teléfono <span style={{ color: "#8A8A8A", fontWeight: 400, textTransform: "none" }}>(opcional)</span></label>
+          <FieldLabel text="Nº Teléfono" required={false} />
           <input type="tel" value={phoneInput} onChange={e => setPhoneInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 4 }} />
 
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>Función en el equipo</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>
+            <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: 0 }}>Función en el equipo</p>
+            {regSide ? <Check size={13} color="#3EA55A" /> : <span style={{ color: "#E61E29", fontWeight: 800, fontSize: 14 }}>*</span>}
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {REGISTER_SIDE_OPTIONS.map(({ key, label, color, letter }) => {
               const active = regSide === key;
