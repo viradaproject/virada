@@ -1668,6 +1668,8 @@ export default function ViradaPrototype() {
                   currentWeek={currentWeek}
                   waterStatsFor={waterStatsFor}
                   gymStatsFor={gymStatsFor}
+                  pesosExercisesOf={pesosExercisesOf}
+                  ergoTestSetFor={(id) => !!ergoTestTimes[id]}
                   today={today}
                   onBack={() => setScreen("home")}
                   onViewPhoto={(photo, caption) => setViewPhoto({ photo, caption })}
@@ -3490,7 +3492,7 @@ function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended
   );
 }
 
-function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gymRecordFor, members, currentWeek, waterStatsFor, gymStatsFor, today, onBack, onViewPhoto }) {
+function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gymRecordFor, members, currentWeek, waterStatsFor, gymStatsFor, pesosExercisesOf, ergoTestSetFor, today, onBack, onViewPhoto }) {
   const [tab, setTab] = useState("diario");
   const [day, setDay] = useState(today);
   const [week, setWeek] = useState(currentWeek);
@@ -3653,12 +3655,16 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
               <tbody>
                 {weekDates.map(d => {
                   const s = sessionForDay(d);
-                  const crew = s ? members.filter(m => inCrew(s, m.id)).map(m => m.nickname || m.name).join(", ") : "";
+                  const closedCrews = s ? s.crews.filter(c => c.status === "cerrado") : [];
+                  const crewText = closedCrews.map(c => {
+                    const names = members.filter(m => [...c.seats, c.patron, ...c.reserves, ...c.zodiac].includes(m.id)).map(m => m.nickname || m.name);
+                    return `${c.boat}: ${names.length > 0 ? names.join(", ") : "—"}`;
+                  }).join(" · ");
                   return (
                     <tr key={d.toISOString()} style={{ borderBottom: "1px solid #DDD" }}>
                       <td style={{ padding: "4px 6px" }}>{DAYS_ES[d.getDay()]} {d.getDate()}</td>
                       <td style={{ padding: "4px 6px" }}>{!s || !s.active ? "Sin entreno" : (s.crews.length > 0 && s.crews.every(c => c.status === "cerrado")) ? "Cerrado" : "Abierto"}</td>
-                      <td style={{ padding: "4px 6px" }}>{crew || "—"}</td>
+                      <td style={{ padding: "4px 6px" }}>{crewText || "—"}</td>
                     </tr>
                   );
                 })}
@@ -3706,17 +3712,25 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
                 <th style={{ textAlign: "left", padding: "4px 6px" }}>Días de agua</th>
                 <th style={{ textAlign: "left", padding: "4px 6px" }}>Sesiones de gim</th>
                 <th style={{ textAlign: "left", padding: "4px 6px" }}>% compromiso</th>
+                <th style={{ textAlign: "left", padding: "4px 6px" }}>Test de pesos</th>
+                <th style={{ textAlign: "left", padding: "4px 6px" }}>TEST 1600</th>
               </tr>
             </thead>
             <tbody>
-              {monthlyRows.map(r => (
-                <tr key={r.member.id} style={{ borderBottom: "1px solid #DDD" }}>
-                  <td style={{ padding: "4px 6px" }}>{r.member.nickname || r.member.name}</td>
-                  <td style={{ padding: "4px 6px" }}>{r.water.monthDone} / {r.water.monthTotal}</td>
-                  <td style={{ padding: "4px 6px" }}>{r.gym.monthDone} / {r.gym.monthTotal}</td>
-                  <td style={{ padding: "4px 6px" }}>{r.commitment}%</td>
-                </tr>
-              ))}
+              {monthlyRows.map(r => {
+                const pesosCount = pesosExercisesOf ? pesosExercisesOf(r.member.id).length : 0;
+                const ergoSet = ergoTestSetFor ? ergoTestSetFor(r.member.id) : false;
+                return (
+                  <tr key={r.member.id} style={{ borderBottom: "1px solid #DDD" }}>
+                    <td style={{ padding: "4px 6px" }}>{r.member.nickname || r.member.name}</td>
+                    <td style={{ padding: "4px 6px" }}>{r.water.monthDone} / {r.water.monthTotal}</td>
+                    <td style={{ padding: "4px 6px" }}>{r.gym.monthDone} / {r.gym.monthTotal}</td>
+                    <td style={{ padding: "4px 6px" }}>{r.commitment}%</td>
+                    <td style={{ padding: "4px 6px" }}>{pesosCount > 0 ? `${pesosCount} ejercicio${pesosCount === 1 ? "" : "s"}` : "Sin registrar"}</td>
+                    <td style={{ padding: "4px 6px" }}>{ergoSet ? "✓ Registrado" : "Sin registrar"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
