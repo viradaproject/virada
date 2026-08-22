@@ -968,7 +968,14 @@ export default function ViradaPrototype() {
   };
 
   const toggleActive = (session) => {
-    if (session.active) { setSuspendTarget(session); return; } // desactivar un día activo pide motivo
+    if (session.active) {
+      const hasData = !!session.boat || !!session.oars
+        || session.signups.size > 0
+        || session.seats.some(Boolean) || !!session.patron || session.reserves.some(Boolean);
+      if (hasData) { setSuspendTarget(session); return; } // hay bote/rems/gente: pedimos motivo antes de tocar nada
+      updateSession(session.id, { active: false, suspendedReason: null }); // nada configurado todavía: se desactiva sin más
+      return;
+    }
     updateSession(session.id, { active: true, suspendedReason: null });
   };
   const confirmSuspend = (reason) => {
