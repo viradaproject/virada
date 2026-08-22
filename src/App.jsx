@@ -376,7 +376,7 @@ export default function ViradaPrototype() {
         usersData.forEach(u => {
           if (u.role) roles[u.id] = u.role;
           pwds[u.id] = u.password_hash;
-          if (u.recovery_email) emails[u.id] = u.recovery_email;
+          if (u.email) emails[u.id] = u.email;
           if (u.photo_url) photos[u.id] = u.photo_url;
           if (u.team_id) teamsById[u.id] = u.team_id;
         });
@@ -621,16 +621,25 @@ export default function ViradaPrototype() {
   };
   const updateMyProfile = async ({ apodo, side, email, newPassword }) => {
     const updates = { nickname: apodo, side };
-    if (email !== undefined) updates.recovery_email = email;
+    const emailChanged = email !== undefined && email.trim() && email.trim().toLowerCase() !== (recoveryEmails[currentUserId] || "").trim().toLowerCase();
+    if (emailChanged) updates.email = email.trim().toLowerCase();
     const { error } = await supabase.from("users").update(updates).eq("id", currentUserId);
-    if (error) { flash("No se pudo actualizar el perfil. Inténtalo de nuevo."); return; }
+    if (error) {
+      flash(error.message?.includes("duplicate") ? "Ese correo ya está en uso por otra cuenta." : "No se pudo actualizar el perfil. Inténtalo de nuevo.");
+      return;
+    }
+    if (emailChanged) {
+      // El correo real es el que usa Supabase Auth para entrar y para recuperar la contraseña — hay que mantenerlo sincronizado
+      const { error: emailError } = await supabase.auth.updateUser({ email: email.trim().toLowerCase() });
+      if (emailError) { flash("Perfil actualizado, pero no se pudo actualizar el correo de acceso. Inténtalo de nuevo."); return; }
+    }
     if (newPassword) {
       const { error: pwError } = await supabase.auth.updateUser({ password: newPassword });
       if (pwError) { flash("Perfil actualizado, pero no se pudo cambiar la contraseña. Inténtalo de nuevo."); return; }
     }
     setNicknameOverrides(prev => ({ ...prev, [currentUserId]: apodo }));
     setSideOverrides(prev => ({ ...prev, [currentUserId]: side }));
-    if (email !== undefined) setRecoveryEmails(prev => ({ ...prev, [currentUserId]: email }));
+    if (emailChanged) setRecoveryEmails(prev => ({ ...prev, [currentUserId]: email.trim().toLowerCase() }));
     setAssignedUsers(prev => prev.map(u => u.id === currentUserId ? { ...u, apodo, side } : u));
     flash("Perfil actualizado");
   };
@@ -1461,7 +1470,9 @@ export default function ViradaPrototype() {
   const recoverPassword = async (username) => {
     const cleanUsername = (username || "").trim().toLowerCase();
     if (cleanUsername) {
-      const { data: email } = await supabase.rpc("resolve_user_login_email", { p_username: cleanUsername });
+      const { data: userEmail } = await supabase.rpc("resolve_user_login_email", { p_username: cleanUsername });
+      const { data: clubEmail } = await supabase.rpc("resolve_club_login_email", { p_username: cleanUsername });
+      const email = userEmail || clubEmail;
       if (email) {
         await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
       }
