@@ -4356,10 +4356,8 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
     const gPct = g.monthTotal > 0 ? (g.monthDone / g.monthTotal) * 100 : 0;
     return Math.round((wPct + gPct) / 2);
   };
-  const narrow = isBatel(crew.boat);
-
   return (
-    <div style={{ flex: narrow ? "1 1 47%" : "1 1 100%", minWidth: narrow ? 150 : "100%", background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: 14, marginBottom: 14 }}>
+    <div style={{ flex: "1 1 100%", minWidth: "100%", background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: 14, marginBottom: 14 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ flex: 1 }}>
           <select value={crew.boat} onChange={e => onSetBoat(crew, e.target.value)} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12.5, fontWeight: 700, opacity: canEdit ? 1 : 0.6 }}>
@@ -4518,10 +4516,10 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
             <p style={{ color: "#8A8A8A", fontSize: 12 }}>Ya están añadidos todos los botes disponibles.</p>
           ) : (
             <div style={{ display: "flex", gap: 8 }}>
-              <select value={newBoat} onChange={e => setNewBoat(e.target.value)} style={{ ...inputStyle, padding: "8px 10px", fontSize: 12.5, flex: 1 }}>
+              <select value={availableBoats.includes(newBoat) ? newBoat : availableBoats[0]} onChange={e => setNewBoat(e.target.value)} style={{ ...inputStyle, padding: "8px 10px", fontSize: 12.5, flex: 1 }}>
                 {availableBoats.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
-              <button className="vir-btn" onClick={() => onAddCrew(session, newBoat)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: 12.5 }}>Añadir</button>
+              <button className="vir-btn" onClick={() => { const boat = availableBoats.includes(newBoat) ? newBoat : availableBoats[0]; onAddCrew(session, boat); setNewBoat(BOATS[0]); }} style={{ ...primaryBtn, padding: "8px 16px", fontSize: 12.5 }}>Añadir</button>
             </div>
           )}
         </div>
