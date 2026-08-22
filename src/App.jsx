@@ -4361,11 +4361,16 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ flex: 1 }}>
           <select value={crew.boat} onChange={e => onSetBoat(crew, e.target.value)} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12.5, fontWeight: 700, opacity: canEdit ? 1 : 0.6 }}>
-            {BOATS.map(b => <option key={b} value={b}>{b}</option>)}
+            {BOATS.filter(b => b === crew.boat || !session.crews.some(c => c.id !== crew.id && c.boat === b)).map(b => <option key={b} value={b}>{b}</option>)}
           </select>
         </div>
-        {editable && canEdit && filled === 0 && (
-          <button className="vir-btn" onClick={() => { if (window.confirm(`¿Quitar "${crew.boat}" de este día?`)) onRemoveCrew(session, crew.id); }} style={{ background: "transparent", color: "#8A8A8A", padding: "4px 8px", marginLeft: 8 }}>
+        {editable && canEdit && (
+          <button className="vir-btn" onClick={() => {
+            const msg = filled > 0
+              ? `¿Quitar "${crew.boat}" de este día? Hay ${filled} puesto${filled === 1 ? "" : "s"} asignado${filled === 1 ? "" : "s"} que se perderán.`
+              : `¿Quitar "${crew.boat}" de este día?`;
+            if (window.confirm(msg)) onRemoveCrew(session, crew.id);
+          }} style={{ background: "transparent", color: "#8A8A8A", padding: "4px 8px", marginLeft: 8 }}>
             <X size={16} />
           </button>
         )}
