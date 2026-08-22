@@ -3577,6 +3577,16 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
           <div className="vir-print-area">
             <h1 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 18, margin: "0 0 2px" }}>Informe diario · {team?.name}</h1>
             <p style={{ fontSize: 12, margin: "0 0 16px" }}>{DAYS_ES[day.getDay()]} {day.getDate()} {MONTHS_ES[day.getMonth()]} de {day.getFullYear()}</p>
+            {(() => {
+              const gymDayRows = members.map(m => dayRow(m, day)).filter(r => r.isGymDay);
+              if (gymDayRows.length === 0) return null;
+              const gymDone = gymDayRows.filter(r => r.gymDone).length;
+              return (
+                <p style={{ fontSize: 11.5, margin: "0 0 16px" }}>
+                  Gimnasio: <strong>{gymDone}</strong> hecho{gymDone === 1 ? "" : "s"} · <strong>{gymDayRows.length - gymDone}</strong> pendiente{gymDayRows.length - gymDone === 1 ? "" : "s"}
+                </p>
+              );
+            })()}
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #999" }}>
@@ -3672,30 +3682,57 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
             </table>
 
             <h3 style={{ fontSize: 13, margin: "0 0 8px" }}>Gimnasio — días de esta semana: {weekActiveDays.map(d => WEEK_DAY_LABELS[d]).join(", ") || "ninguno"}</h3>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid #999" }}>
-                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Remero/a</th>
-                  {weekActiveDays.map(d => <th key={d} style={{ textAlign: "left", padding: "4px 6px" }}>{WEEK_DAY_LABELS[d].slice(0, 3)}</th>)}
-                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Total semana</th>
-                </tr>
-              </thead>
-              <tbody>
-                {members.map(m => {
-                  const doneCount = weekActiveDays.filter(d => { const r = gymRecordFor(m.id, teamId, week, d); return !!(r && r.done); }).length;
-                  return (
-                    <tr key={m.id} style={{ borderBottom: "1px solid #DDD" }}>
-                      <td style={{ padding: "4px 6px" }}>{m.nickname || m.name}</td>
-                      {weekActiveDays.map(d => {
-                        const r = gymRecordFor(m.id, teamId, week, d);
-                        return <td key={d} style={{ padding: "4px 6px" }}>{r && r.done ? "✓" : "✕"}</td>;
-                      })}
-                      <td style={{ padding: "4px 6px" }}>{doneCount}/{weekActiveDays.length}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            {(() => {
+              const totalPossible = members.length * weekActiveDays.length;
+              const doneEntries = [];
+              members.forEach(m => {
+                weekActiveDays.forEach(d => {
+                  const r = gymRecordFor(m.id, teamId, week, d);
+                  if (r && r.done) doneEntries.push({ member: m, day: d, photos: r.photos || [] });
+                });
+              });
+              const totalDone = doneEntries.length;
+              const totalMissing = totalPossible - totalDone;
+              return (
+                <>
+                  <p style={{ fontSize: 11.5, margin: "0 0 12px" }}>
+                    <strong>{totalDone}</strong> entreno{totalDone === 1 ? "" : "s"} hecho{totalDone === 1 ? "" : "s"} · <strong>{totalMissing}</strong> pendiente{totalMissing === 1 ? "" : "s"} de {totalPossible} posibles
+                  </p>
+                  {doneEntries.length === 0 ? (
+                    <p style={{ fontSize: 11.5, color: "#666" }}>Nadie ha completado ningún entreno de gimnasio esta semana todavía.</p>
+                  ) : (
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid #999" }}>
+                          <th style={{ textAlign: "left", padding: "4px 6px" }}>Remero/a</th>
+                          <th style={{ textAlign: "left", padding: "4px 6px" }}>Día</th>
+                          <th style={{ textAlign: "left", padding: "4px 6px" }}>Fotos</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {doneEntries.map((e, i) => (
+                          <tr key={i} style={{ borderBottom: "1px solid #DDD" }}>
+                            <td style={{ padding: "4px 6px" }}>{e.member.nickname || e.member.name}</td>
+                            <td style={{ padding: "4px 6px" }}>{WEEK_DAY_LABELS[e.day]}</td>
+                            <td style={{ padding: "4px 6px" }}>
+                              {e.photos.length === 0 ? "—" : (
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  {e.photos.map((p, pi) => p.kind === "pdf" ? (
+                                    <span key={pi} onClick={() => window.open(p.dataUrl, "_blank")} style={{ textDecoration: "underline", cursor: "pointer" }}>PDF</span>
+                                  ) : (
+                                    <img key={pi} src={p.dataUrl} onClick={() => onViewPhoto(p.dataUrl, `${e.member.nickname || e.member.name} · ${WEEK_DAY_LABELS[e.day]}`)} alt="" style={{ width: 26, height: 26, borderRadius: 5, objectFit: "cover", cursor: "pointer" }} />
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </>
       )}
