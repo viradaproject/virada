@@ -1676,7 +1676,7 @@ export default function ViradaPrototype() {
                 <CalendarScreen sessions={coachUpcoming} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} myId={currentUserId} teamName={teamName} showTeamLabel={coachScope === "club"} />
               )}
               {screen === "sessionRower" && openSession && (
-                <SessionRowerScreen session={openSession} onBack={() => setScreen(role === "rower" ? "home" : "calendar")} onToggle={toggleSignup} onSendAlert={sendCantComeAlert} myAlerts={openSession ? alertsFor(openSession.id).filter(a => a.rowerId === currentUserId) : []} myId={currentUserId} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} />
+                <SessionRowerScreen session={openSession} onBack={() => setScreen(role === "rower" ? "home" : "calendar")} onToggle={toggleSignup} onSendAlert={sendCantComeAlert} myAlerts={openSession ? alertsFor(openSession.id).filter(a => a.rowerId === currentUserId) : []} myId={currentUserId} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} photoOf={(id) => profilePhotos[id] || null} />
               )}
               {screen === "sessionCoach" && openSession && (
                 <SessionCoachScreen
@@ -1701,6 +1701,7 @@ export default function ViradaPrototype() {
                   onResolveAlert={(alertId) => resolveAlert(openSession.id, alertId)}
                   myId={currentUserId}
                   onToggleSignup={toggleSignup}
+                  photoOf={(id) => profilePhotos[id] || null}
                 />
               )}
               {screen === "notifications" && (
@@ -4174,7 +4175,7 @@ function CalendarScreen({ sessions, onOpen, onToggle, myId, teamName, showTeamLa
   );
 }
 
-function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, myId, nameOf, nicknameOf, sideOf }) {
+function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, myId, nameOf, nicknameOf, sideOf, photoOf }) {
   const seatIdx = session.seats.indexOf(myId);
   const isPatron = session.patron === myId;
   const zodiacIdx = session.zodiac.indexOf(myId);
@@ -4242,7 +4243,7 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
               {mySeatLabel() && <p className="vir-mono" style={{ color: "#ADADAD", fontSize: 12.5, margin: "3px 0 0" }}>{mySeatLabel()}</p>}
             </div>
           </div>
-          <BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} />
+          <BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} />
           {(isCalled || isReserve) && (
             myAlerts && myAlerts.length > 0 ? (
               <p style={{ color: "#8A8A8A", fontSize: 12, marginTop: 16, textAlign: "center" }}>
@@ -4266,7 +4267,7 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
   );
 }
 
-function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert, myId, onToggleSignup }) {
+function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert, myId, onToggleSignup, photoOf }) {
   const [preEditRoster, setPreEditRoster] = useState(null);
   const handleReopen = () => {
     setPreEditRoster({ seats: [...session.seats], patron: session.patron, reserves: [...session.reserves], zodiac: [...session.zodiac] });
@@ -4386,7 +4387,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
             })}
           </div>
 
-          <BoatDiagram session={session} selected={selected} onAssign={onAssign} onClear={onClear} readOnly={!editable} nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} />
+          <BoatDiagram session={session} selected={selected} onAssign={onAssign} onClear={onClear} readOnly={!editable} nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} />
 
           {editable && (
             <button className="vir-btn" disabled={filled === 0} onClick={handleClose} style={{
@@ -4399,7 +4400,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
       ) : (
         <>
           <Badge text="Tripulación cerrada" tone="closed" />
-          <div style={{ marginTop: 16 }}><BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} /></div>
+          <div style={{ marginTop: 16 }}><BoatDiagram session={session} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} /></div>
           {editable && (
             <button className="vir-btn" onClick={handleReopen} style={{ ...ghostBtn, marginTop: 18 }}>
               Reabrir para modificar
@@ -4411,7 +4412,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
   );
 }
 
-function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameOf, nameOf, sideOf }) {
+function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameOf, nameOf, sideOf, photoOf }) {
   const handleSlot = (type, idx, occupied) => {
     if (readOnly) return;
     if (occupied) { onClear(session, type, idx); return; }
@@ -4421,23 +4422,43 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
   const colorFor = (rowerId) => (sideOf && rowerId && SIDE_META[sideOf(rowerId)]) ? SIDE_META[sideOf(rowerId)].color : "#E61E29";
 
   const centerX = 150;
-  const cx = { babor: 92, estribor: 208 };
-  const rowY = (row) => 130 + row * 64; // row 0 = fila 4 (arriba) ... row 3 = fila 1 (abajo, junto al patrón)
-  const lineTop = 96;
-  const lineBottom = 460;
-  const reservePos = [{ x: 92, y: 44 }, { x: 208, y: 44 }];
-  const patronPos = { x: centerX, y: 486 };
-  const zodiacPos = [{ x: 80, y: 538 }, { x: 150, y: 538 }, { x: 220, y: 538 }];
+  const cx = { babor: 88, estribor: 212 };
+  const rowY = (row) => 128 + row * 72; // row 0 = fila 4 (arriba) ... row 3 = fila 1 (abajo, junto al patrón)
+  const lineTop = 78;
+  const patronPos = { x: centerX, y: 128 + 4 * 72 - 4 }; // pegado a la fila de 1B/1E
+  const lineBottom = patronPos.y - 4;
+  const reservePos = [{ x: 88, y: 34 }, { x: 212, y: 34 }];
+  const zodiacY = patronPos.y + 78;
+  const zodiacPos = [{ x: 76, y: zodiacY }, { x: 150, y: zodiacY }, { x: 224, y: zodiacY }];
+  const viewH = zodiacY + 60;
 
-  const Seat = ({ x, y, filled, label, rowerId, onClick }) => {
+  // Avatar redondo con aro del color de babor/estribor/ambos/patrón; si no hay foto, círculo de color con iniciales
+  const Avatar = ({ x, y, r, filled, rowerId, label, nameBelow }) => {
     const color = colorFor(rowerId);
+    const photo = filled && photoOf ? photoOf(rowerId) : null;
+    const clipId = `bd-clip-${x}-${y}`;
     return (
-      <g style={{ cursor: canClick(filled) ? "pointer" : "default" }} onClick={onClick}>
-        <circle cx={x} cy={y} r="18" className="vir-seat"
-          fill={filled ? color : "#404040"} stroke={filled ? color : "#6E6E6E"} strokeWidth="1.5" />
-        <text x={x} y={y + 4} textAnchor="middle" fontSize="10.5" fontWeight="700" fill={filled ? "#FFFFFF" : "#8A8A8A"}>{label}</text>
-        {filled && (
-          <text x={x} y={y + 34} textAnchor="middle" fontSize="11" fontWeight="600" fill="#F5F5F5">{crewLabel(rowerId, nicknameOf, nameOf)}</text>
+      <g style={{ cursor: canClick(filled) ? "pointer" : "default" }} onClick={() => handleSlot(label.type, label.idx, filled)}>
+        {photo ? (
+          <>
+            <defs><clipPath id={clipId}><circle cx={x} cy={y} r={r - 3} /></clipPath></defs>
+            <circle cx={x} cy={y} r={r} fill="#333333" stroke={color} strokeWidth="3.5" />
+            <image href={photo} x={x - (r - 3)} y={y - (r - 3)} width={(r - 3) * 2} height={(r - 3) * 2} clipPath={`url(#${clipId})`} preserveAspectRatio="xMidYMid slice" />
+          </>
+        ) : (
+          <circle cx={x} cy={y} r={r} fill={filled ? color : "#404040"} stroke={filled ? color : "#6E6E6E"} strokeWidth="1.5" />
+        )}
+        {!photo && (
+          <text x={x} y={y + r * 0.28} textAnchor="middle" fontSize={r * 0.62} fontWeight="700" fill={filled ? "#FFFFFF" : "#8A8A8A"}>{label.text}</text>
+        )}
+        {filled && photo && (
+          <g>
+            <circle cx={x + r * 0.68} cy={y + r * 0.68} r={r * 0.36} fill={color} stroke="#3A3A3A" strokeWidth="1.5" />
+            <text x={x + r * 0.68} y={y + r * 0.68 + r * 0.13} textAnchor="middle" fontSize={r * 0.32} fontWeight="800" fill="#FFFFFF">{label.text}</text>
+          </g>
+        )}
+        {filled && nameBelow && (
+          <text x={x} y={y + r + 15} textAnchor="middle" fontSize="11" fontWeight="600" fill="#F5F5F5">{crewLabel(rowerId, nicknameOf, nameOf)}</text>
         )}
       </g>
     );
@@ -4445,24 +4466,16 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
 
   return (
     <div style={{ background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
-      <svg viewBox="0 0 300 610" width="100%" height="530">
+      <svg viewBox={`0 0 300 ${viewH}`} width="100%" height={viewH * 0.92}>
         <line x1={centerX} y1={lineTop} x2={centerX} y2={lineBottom} stroke="#767676" strokeWidth="2" />
 
-        <text x={cx.babor} y={80} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">BABOR</text>
-        <text x={cx.estribor} y={80} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ESTRIBOR</text>
+        <text x={cx.babor} y={64} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">BABOR</text>
+        <text x={cx.estribor} y={64} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ESTRIBOR</text>
 
-        {[0, 1].map(i => {
-          const rColor = colorFor(session.reserves[i]);
-          return (
-            <g key={i} style={{ cursor: canClick(!!session.reserves[i]) ? "pointer" : "default" }}
-              onClick={() => handleSlot("reserve", i, !!session.reserves[i])}>
-              <rect x={reservePos[i].x - 26} y={reservePos[i].y - 16} width="52" height="32" rx="9" className="vir-seat"
-                fill={session.reserves[i] ? rColor : "#404040"} stroke={session.reserves[i] ? rColor : "#6E6E6E"} strokeWidth="1.5" />
-              <text x={reservePos[i].x} y={reservePos[i].y + 4} textAnchor="middle" fontSize="10.5" fontWeight="700" fill={session.reserves[i] ? "#FFFFFF" : "#8A8A8A"}>R{i + 1}</text>
-              {session.reserves[i] && <text x={reservePos[i].x} y={reservePos[i].y - 24} textAnchor="middle" fontSize="10.5" fontWeight="600" fill="#F5F5F5">{crewLabel(session.reserves[i], nicknameOf, nameOf)}</text>}
-            </g>
-          );
-        })}
+        {[0, 1].map(i => (
+          <Avatar key={`r${i}`} x={reservePos[i].x} y={reservePos[i].y} r={22} filled={!!session.reserves[i]} rowerId={session.reserves[i]}
+            label={{ type: "reserve", idx: i, text: `R${i + 1}` }} nameBelow />
+        ))}
 
         {[0, 1, 2, 3].map(row => {
           const seatNum = 4 - row; // fila 4 arriba -> fila 1 abajo
@@ -4470,37 +4483,22 @@ function BoatDiagram({ session, selected, onAssign, onClear, readOnly, nicknameO
           const estriborIdx = (seatNum - 1) * 2 + 1;
           return (
             <g key={row}>
-              <Seat x={cx.babor} y={rowY(row)} filled={!!session.seats[baborIdx]} label={seatShort(baborIdx)}
-                rowerId={session.seats[baborIdx]}
-                onClick={() => handleSlot("seat", baborIdx, !!session.seats[baborIdx])} />
-              <Seat x={cx.estribor} y={rowY(row)} filled={!!session.seats[estriborIdx]} label={seatShort(estriborIdx)}
-                rowerId={session.seats[estriborIdx]}
-                onClick={() => handleSlot("seat", estriborIdx, !!session.seats[estriborIdx])} />
+              <Avatar x={cx.babor} y={rowY(row)} r={24} filled={!!session.seats[baborIdx]} rowerId={session.seats[baborIdx]}
+                label={{ type: "seat", idx: baborIdx, text: seatShort(baborIdx) }} nameBelow />
+              <Avatar x={cx.estribor} y={rowY(row)} r={24} filled={!!session.seats[estriborIdx]} rowerId={session.seats[estriborIdx]}
+                label={{ type: "seat", idx: estriborIdx, text: seatShort(estriborIdx) }} nameBelow />
             </g>
           );
         })}
 
-        <g style={{ cursor: canClick(!!session.patron) ? "pointer" : "default" }}
-          onClick={() => handleSlot("patron", 0, !!session.patron)}>
-          <circle cx={patronPos.x} cy={patronPos.y} r="19" className="vir-seat"
-            fill={session.patron ? colorFor(session.patron) : "#404040"} stroke={session.patron ? colorFor(session.patron) : "#6E6E6E"} strokeWidth="1.5" />
-          <text x={patronPos.x} y={patronPos.y + 5} textAnchor="middle" fontSize="13" fontWeight="700" fill={session.patron ? "#FFFFFF" : "#8A8A8A"}>P</text>
-          {session.patron && <text x={patronPos.x} y={patronPos.y + 38} textAnchor="middle" fontSize="11" fontWeight="600" fill="#F5F5F5">{crewLabel(session.patron, nicknameOf, nameOf)}</text>}
-        </g>
+        <Avatar x={patronPos.x} y={patronPos.y} r={26} filled={!!session.patron} rowerId={session.patron}
+          label={{ type: "patron", idx: 0, text: "P" }} nameBelow />
 
-        <text x={centerX} y={512} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ZODIAC</text>
-        {[0, 1, 2].map(i => {
-          const zColor = colorFor(session.zodiac[i]);
-          return (
-            <g key={i} style={{ cursor: canClick(!!session.zodiac[i]) ? "pointer" : "default" }}
-              onClick={() => handleSlot("zodiac", i, !!session.zodiac[i])}>
-              <rect x={zodiacPos[i].x - 26} y={zodiacPos[i].y - 16} width="52" height="32" rx="9" className="vir-seat"
-                fill={session.zodiac[i] ? zColor : "#404040"} stroke={session.zodiac[i] ? zColor : "#6E6E6E"} strokeWidth="1.5" />
-              <text x={zodiacPos[i].x} y={zodiacPos[i].y + 4} textAnchor="middle" fontSize="10.5" fontWeight="700" fill={session.zodiac[i] ? "#FFFFFF" : "#8A8A8A"}>Z{i + 1}</text>
-              {session.zodiac[i] && <text x={zodiacPos[i].x} y={zodiacPos[i].y + 26} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#F5F5F5">{crewLabel(session.zodiac[i], nicknameOf, nameOf)}</text>}
-            </g>
-          );
-        })}
+        <text x={centerX} y={zodiacY - 46} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ZODIAC</text>
+        {[0, 1, 2].map(i => (
+          <Avatar key={`z${i}`} x={zodiacPos[i].x} y={zodiacPos[i].y} r={22} filled={!!session.zodiac[i]} rowerId={session.zodiac[i]}
+            label={{ type: "zodiac", idx: i, text: `Z${i + 1}` }} nameBelow />
+        ))}
       </svg>
     </div>
   );
