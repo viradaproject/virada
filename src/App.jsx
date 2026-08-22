@@ -289,6 +289,61 @@ export default function ViradaPrototype() {
   // Carga desde Supabase: clubes y usuarios (activos y pendientes) guardados de verdad.
   // Se llama al arrancar la app, y se vuelve a llamar justo después de iniciar sesión,
   // porque con RLS activado la base de datos solo devuelve los datos del club/usuario ya autenticado.
+  const refetchCoachPerms = async () => {
+    const { data: permsData } = await supabase.from("coach_team_permissions").select("*");
+    if (permsData) {
+      const byCoach = {};
+      permsData.forEach(p => { byCoach[p.coach_id] = [...(byCoach[p.coach_id] || []), p.team_id]; });
+      setCoachTeams(byCoach);
+    }
+  };
+  const refetchRaces = async () => {
+    const { data: catsData, error: catsErr } = await supabase.from("race_categories").select("*");
+    const { data: racesData } = await supabase.from("races").select("*");
+    const { data: docsData } = await supabase.from("race_documents").select("*");
+    if (!catsErr && catsData) {
+      const assembled = catsData.map(cat => ({
+        id: cat.id, name: cat.name,
+        races: (racesData || []).filter(r => r.category_id === cat.id).map(r => ({
+          id: r.id, dateLabel: r.date_label, title: r.title || "", notes: r.notes || "", subcategory: r.subcategory || null,
+          docs: (docsData || []).filter(d => d.race_id === r.id).map(d => ({
+            id: d.id, label: d.title, name: d.file_name, fileType: d.file_type, dataUrl: d.file_url,
+          })),
+        })),
+      }));
+      setRaceCategories(assembled);
+    }
+  };
+  const refetchGymPlans = async () => {
+    const { data: gymWeeksData } = await supabase.from("gym_weeks").select("*");
+    const { data: gymDaysData } = await supabase.from("gym_days").select("*");
+    if (gymWeeksData || gymDaysData) {
+      const plans = {};
+      (gymWeeksData || []).forEach(w => {
+        plans[w.team_id] = plans[w.team_id] || {};
+        plans[w.team_id][w.week_number] = plans[w.team_id][w.week_number] || { activeDays: [], weekAttachment: null, days: {} };
+        plans[w.team_id][w.week_number].activeDays = w.active_days || [];
+        plans[w.team_id][w.week_number].weekAttachment = w.attachment_url ? { name: w.attachment_name, fileType: w.attachment_type, dataUrl: w.attachment_url } : null;
+      });
+      (gymDaysData || []).forEach(d => {
+        plans[d.team_id] = plans[d.team_id] || {};
+        plans[d.team_id][d.week_number] = plans[d.team_id][d.week_number] || { activeDays: [], weekAttachment: null, days: {} };
+        plans[d.team_id][d.week_number].days[d.day_key] = { content: d.content || "" };
+      });
+      setGymPlans(plans);
+    }
+  };
+  const refetchGymCompletions = async () => {
+    const { data: gymCompletionsData } = await supabase.from("gym_completions").select("*");
+    if (gymCompletionsData) {
+      const completion = {};
+      gymCompletionsData.forEach(c => {
+        completion[c.rower_id] = completion[c.rower_id] || {};
+        completion[c.rower_id][`${c.team_id}-${c.week_number}-${c.day_key}`] = { done: c.done, photos: c.photos || [] };
+      });
+      setGymCompletion(completion);
+    }
+  };
   const loadData = async () => {
       const { data: clubsData, error: clubsErr } = await supabase.from("clubs").select("*");
       if (!clubsErr && clubsData) {
@@ -322,12 +377,7 @@ export default function ViradaPrototype() {
         setProfilePhotos(prev => ({ ...prev, ...photos }));
         setTeamOverrides(prev => ({ ...prev, ...teamsById }));
       }
-      const { data: permsData } = await supabase.from("coach_team_permissions").select("*");
-      if (permsData) {
-        const byCoach = {};
-        permsData.forEach(p => { byCoach[p.coach_id] = [...(byCoach[p.coach_id] || []), p.team_id]; });
-        setCoachTeams(byCoach);
-      }
+      await refetchCoachPerms();
       const { data: teamsData, error: teamsErr } = await supabase.from("teams").select("*");
       if (!teamsErr && teamsData) {
         setTeams(teamsData.map(t => ({ id: t.id, clubId: t.club_id, name: t.name, code: t.code })));
@@ -348,47 +398,9 @@ export default function ViradaPrototype() {
         });
         setSessionAlerts(bySession);
       }
-      const { data: catsData, error: catsErr } = await supabase.from("race_categories").select("*");
-      const { data: racesData } = await supabase.from("races").select("*");
-      const { data: docsData } = await supabase.from("race_documents").select("*");
-      if (!catsErr && catsData) {
-        const assembled = catsData.map(cat => ({
-          id: cat.id, name: cat.name,
-          races: (racesData || []).filter(r => r.category_id === cat.id).map(r => ({
-            id: r.id, dateLabel: r.date_label, title: r.title || "", notes: r.notes || "", subcategory: r.subcategory || null,
-            docs: (docsData || []).filter(d => d.race_id === r.id).map(d => ({
-              id: d.id, label: d.title, name: d.file_name, fileType: d.file_type, dataUrl: d.file_url,
-            })),
-          })),
-        }));
-        setRaceCategories(assembled);
-      }
-      const { data: gymWeeksData } = await supabase.from("gym_weeks").select("*");
-      const { data: gymDaysData } = await supabase.from("gym_days").select("*");
-      if (gymWeeksData || gymDaysData) {
-        const plans = {};
-        (gymWeeksData || []).forEach(w => {
-          plans[w.team_id] = plans[w.team_id] || {};
-          plans[w.team_id][w.week_number] = plans[w.team_id][w.week_number] || { activeDays: [], weekAttachment: null, days: {} };
-          plans[w.team_id][w.week_number].activeDays = w.active_days || [];
-          plans[w.team_id][w.week_number].weekAttachment = w.attachment_url ? { name: w.attachment_name, fileType: w.attachment_type, dataUrl: w.attachment_url } : null;
-        });
-        (gymDaysData || []).forEach(d => {
-          plans[d.team_id] = plans[d.team_id] || {};
-          plans[d.team_id][d.week_number] = plans[d.team_id][d.week_number] || { activeDays: [], weekAttachment: null, days: {} };
-          plans[d.team_id][d.week_number].days[d.day_key] = { content: d.content || "" };
-        });
-        setGymPlans(plans);
-      }
-      const { data: gymCompletionsData } = await supabase.from("gym_completions").select("*");
-      if (gymCompletionsData) {
-        const completion = {};
-        gymCompletionsData.forEach(c => {
-          completion[c.rower_id] = completion[c.rower_id] || {};
-          completion[c.rower_id][`${c.team_id}-${c.week_number}-${c.day_key}`] = { done: c.done, photos: c.photos || [] };
-        });
-        setGymCompletion(completion);
-      }
+      await refetchRaces();
+      await refetchGymPlans();
+      await refetchGymCompletions();
       const { data: pesosData } = await supabase.from("pesos_exercises").select("*");
       if (pesosData) {
         const byRower = {};
@@ -453,6 +465,64 @@ export default function ViradaPrototype() {
           return { ...prev, [a.session_id]: nextList };
         });
       })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  // Tiempo real: tripulaciones, usuarios, notificaciones, plan de gimnasio, regatas y permisos —
+  // cualquier cambio hecho por el club o el admin llega al momento al resto de usuarios conectados
+  useEffect(() => {
+    const channel = supabase
+      .channel("app_data_live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          setTeams(prev => prev.filter(t => t.id !== payload.old.id));
+          return;
+        }
+        const t = payload.new;
+        const mapped = { id: t.id, clubId: t.club_id, name: t.name, code: t.code };
+        setTeams(prev => {
+          const exists = prev.some(x => x.id === mapped.id);
+          return exists ? prev.map(x => x.id === mapped.id ? mapped : x) : [...prev, mapped];
+        });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "users" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          const id = payload.old.id;
+          setAssignedUsers(prev => prev.filter(u => u.id !== id));
+          setPendingUsers(prev => prev.filter(u => u.id !== id));
+          return;
+        }
+        const u = payload.new;
+        const entry = { id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side };
+        if (u.status === "active") {
+          setAssignedUsers(prev => {
+            const exists = prev.some(x => x.id === u.id);
+            return exists ? prev.map(x => x.id === u.id ? entry : x) : [...prev, entry];
+          });
+          setPendingUsers(prev => prev.filter(x => x.id !== u.id));
+        } else if (u.status === "pending") {
+          setPendingUsers(prev => {
+            const exists = prev.some(x => x.id === u.id);
+            return exists ? prev.map(x => x.id === u.id ? entry : x) : [...prev, entry];
+          });
+          setAssignedUsers(prev => prev.filter(x => x.id !== u.id));
+        }
+        if (u.role) setRoleOverrides(prev => ({ ...prev, [u.id]: u.role }));
+        setTeamOverrides(prev => ({ ...prev, [u.id]: u.team_id || null }));
+        if (u.photo_url) setProfilePhotos(prev => ({ ...prev, [u.id]: u.photo_url }));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (payload) => {
+        const n = payload.new;
+        setNotifications(prev => prev.some(x => x.id === n.id) ? prev : [{ id: n.id, rowerId: n.rower_id, text: n.text }, ...prev]);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "gym_weeks" }, () => refetchGymPlans())
+      .on("postgres_changes", { event: "*", schema: "public", table: "gym_days" }, () => refetchGymPlans())
+      .on("postgres_changes", { event: "*", schema: "public", table: "gym_completions" }, () => refetchGymCompletions())
+      .on("postgres_changes", { event: "*", schema: "public", table: "race_categories" }, () => refetchRaces())
+      .on("postgres_changes", { event: "*", schema: "public", table: "races" }, () => refetchRaces())
+      .on("postgres_changes", { event: "*", schema: "public", table: "race_documents" }, () => refetchRaces())
+      .on("postgres_changes", { event: "*", schema: "public", table: "coach_team_permissions" }, () => refetchCoachPerms())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
