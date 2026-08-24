@@ -435,6 +435,24 @@ export default function ViradaPrototype() {
         ergoData.forEach(row => { byRower[row.rower_id] = row.test_time; });
         setErgoTestTimes(byRower);
       }
+      const { data: notesData } = await supabase.from("rower_notes").select("*");
+      if (notesData) {
+        const notes = {};
+        notesData.forEach(n => { notes[n.rower_id] = n.text || ""; });
+        setRowerNotes(notes);
+      }
+      const { data: measBoatsData } = await supabase.from("measurement_boats").select("*");
+      if (measBoatsData) {
+        setMeasurementBoats(measBoatsData.map(b => ({ id: b.id, teamId: b.team_id, name: b.name })));
+      }
+      const { data: measData } = await supabase.from("boat_measurements").select("*");
+      if (measData) {
+        const byBoat = {};
+        measData.forEach(m => {
+          byBoat[m.boat_id] = { ...(byBoat[m.boat_id] || {}), [m.rower_id]: m.value };
+        });
+        setBoatMeasurements(byBoat);
+      }
   };
 
   useEffect(() => {
@@ -1164,6 +1182,50 @@ export default function ViradaPrototype() {
     if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
     flash("TEST 1600 actualizado");
   };
+
+  // NOTAS: apuntes privados del propio remero
+  const [rowerNotes, setRowerNotes] = useState({}); // { [rowerId]: text }
+  const updateMyNotes = async (text) => {
+    setRowerNotes(prev => ({ ...prev, [currentUserId]: text }));
+    const { error } = await supabase.from("rower_notes").upsert(
+      { rower_id: currentUserId, text, updated_at: new Date().toISOString() },
+      { onConflict: "rower_id" }
+    );
+    if (error) { flash("No se pudieron guardar las notas. Inténtalo de nuevo."); return; }
+    flash("Notas guardadas");
+  };
+
+  // MEDIDAS: botes con la medida de cada remero, a cargo del entrenador/club
+  const [measurementBoats, setMeasurementBoats] = useState([]); // [{id, teamId, name}]
+  const [boatMeasurements, setBoatMeasurements] = useState({}); // { [boatId]: { [rowerId]: value } }
+  const measurementBoatsFor = (teamId) => measurementBoats.filter(b => b.teamId === teamId);
+  const addMeasurementBoat = async (teamId, name) => {
+    const { data, error } = await supabase.from("measurement_boats").insert({ team_id: teamId, name }).select().single();
+    if (error) { flash("No se pudo añadir el bote. Inténtalo de nuevo."); return; }
+    setMeasurementBoats(prev => [...prev, { id: data.id, teamId: data.team_id, name: data.name }]);
+    flash(`Bote "${name}" añadido a Medidas`);
+  };
+  const renameMeasurementBoat = async (boatId, name) => {
+    setMeasurementBoats(prev => prev.map(b => b.id === boatId ? { ...b, name } : b));
+    const { error } = await supabase.from("measurement_boats").update({ name }).eq("id", boatId);
+    if (error) flash("No se pudo renombrar el bote. Inténtalo de nuevo.");
+  };
+  const removeMeasurementBoat = async (boatId) => {
+    const { error } = await supabase.from("measurement_boats").delete().eq("id", boatId);
+    if (error) { flash("No se pudo eliminar el bote. Inténtalo de nuevo."); return; }
+    setMeasurementBoats(prev => prev.filter(b => b.id !== boatId));
+    setBoatMeasurements(prev => { const next = { ...prev }; delete next[boatId]; return next; });
+    flash("Bote eliminado de Medidas");
+  };
+  const setBoatMeasurement = async (boatId, rowerId, value) => {
+    setBoatMeasurements(prev => ({ ...prev, [boatId]: { ...(prev[boatId] || {}), [rowerId]: value } }));
+    const { error } = await supabase.from("boat_measurements").upsert(
+      { boat_id: boatId, rower_id: rowerId, value, updated_at: new Date().toISOString() },
+      { onConflict: "boat_id,rower_id" }
+    );
+    if (error) flash("No se pudo guardar la medida. Inténtalo de nuevo.");
+  };
+
   const [gymPlans, setGymPlans] = useState({}); // { [teamId]: { [week]: { activeDays: [...], weekAttachment, days: { lun: {content}, ... } } } }
   const [gymCompletion, setGymCompletion] = useState({}); // { [rowerId]: { "teamId-week-day": { done, photos: [{dataUrl,kind}] } } }
   const currentWeek = Math.ceil(today.getDate() / 7);
@@ -1611,7 +1673,7 @@ export default function ViradaPrototype() {
                 />
               )}
               {screen === "home" && role === "coach" && (
-                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} />
+                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} onOpenMeasurements={() => setScreen("medidasCoach")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} />
               )}
               {screen === "coachPlan" && (role === "coach" || role === "admin") && (
                 <CoachPlanScreen
@@ -1673,6 +1735,24 @@ export default function ViradaPrototype() {
                   today={today}
                   onBack={() => setScreen("home")}
                   onViewPhoto={(photo, caption) => setViewPhoto({ photo, caption })}
+                />
+              )}
+              {screen === "medidasCoach" && (role === "coach" || role === "admin") && (
+                <CoachMeasurementsScreen
+                  teamId={coachScope}
+                  teams={clubTeams}
+                  setScope={setCoachScope}
+                  boats={measurementBoatsFor(coachScope)}
+                  members={[...ROWERS, ...clubAssignedUsers]
+                    .filter(p => roleOf(p.id) === "rower" && teamOf(p.id) === coachScope)
+                    .map(p => ({ id: p.id, name: p.name || p.username, nickname: nicknameOf(p.id) }))}
+                  measurements={boatMeasurements}
+                  editable={role === "admin" ? true : canManage(coachScope)}
+                  onAddBoat={addMeasurementBoat}
+                  onRenameBoat={renameMeasurementBoat}
+                  onRemoveBoat={removeMeasurementBoat}
+                  onSetValue={setBoatMeasurement}
+                  onBack={() => setScreen("home")}
                 />
               )}
               {screen === "coachTeamStats" && (role === "coach" || role === "admin") && (
@@ -1906,6 +1986,21 @@ export default function ViradaPrototype() {
                 <ErgoZonesScreen
                   testTime={ergoTestTimes[currentUserId] || null}
                   onSetTest={setErgoTest}
+                  onBack={() => setScreen("profile")}
+                />
+              )}
+              {screen === "notas" && role === "rower" && (
+                <NotesScreen
+                  notes={rowerNotes[currentUserId] || ""}
+                  onSave={updateMyNotes}
+                  onBack={() => setScreen("profile")}
+                />
+              )}
+              {screen === "medidas" && role === "rower" && (
+                <RowerMeasurementsScreen
+                  boats={measurementBoatsFor(teamOf(currentUserId))}
+                  measurements={boatMeasurements}
+                  myId={currentUserId}
                   onBack={() => setScreen("profile")}
                 />
               )}
@@ -2516,7 +2611,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
   );
 }
 
-function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenInformes, coachName, teamName, showTeamLabel }) {
+function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenInformes, onOpenMeasurements, coachName, teamName, showTeamLabel }) {
   return (
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={`Hola, ${coachName} · ${CLUB_NAME}`}>Planificación de botes</SectionTitle>
@@ -2555,6 +2650,13 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
           <div>
             <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Informes</p>
             <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Diario, semanal y mensual · exportables a PDF</p>
+          </div>
+          <ChevronRight size={18} color="#8A8A8A" />
+        </div>
+        <div className="vir-btn" onClick={onOpenMeasurements} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div>
+            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Medidas</p>
+            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Medidas de cada remero por bote</p>
           </div>
           <ChevronRight size={18} color="#8A8A8A" />
         </div>
@@ -3488,6 +3590,113 @@ function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended
           {m.side && <SideBadge side={m.side} />}
         </div>
       ))}
+    </div>
+  );
+}
+
+function MeasurementBoatCard({ boat, members, measurements, editable, onSetValue, onRename, onRemove }) {
+  const [expanded, setExpanded] = useState(true);
+  const [nameInput, setNameInput] = useState(boat.name);
+  const [renaming, setRenaming] = useState(false);
+  const values = measurements[boat.id] || {};
+
+  return (
+    <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <p className="vir-btn" onClick={() => setExpanded(!expanded)} style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 700, margin: 0, flex: 1, cursor: "pointer" }}>
+          {boat.name} <span style={{ color: "#8A8A8A", fontSize: 11 }}>{expanded ? "▲" : "▼"}</span>
+        </p>
+        {editable && (
+          <div style={{ display: "flex", gap: 4 }}>
+            <button className="vir-btn" onClick={() => { setNameInput(boat.name); setRenaming(!renaming); }} style={{ background: "transparent", color: "#ADADAD", padding: 4 }}>
+              <Pencil size={14} />
+            </button>
+            <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar el bote "${boat.name}" de Medidas? Se perderán todas las medidas registradas en él.`)) onRemove(boat.id); }} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {renaming && (
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <input value={nameInput} onChange={e => setNameInput(e.target.value)} style={{ ...inputStyle, padding: "9px 11px", fontSize: 13, flex: 1 }} />
+          <button className="vir-btn" onClick={() => { if (nameInput.trim()) onRename(boat.id, nameInput.trim()); setRenaming(false); }} style={{ ...primaryBtn, padding: "0 16px", fontSize: 12 }}>Guardar</button>
+        </div>
+      )}
+
+      {expanded && (
+        <div style={{ marginTop: 12 }}>
+          {members.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 12 }}>Sin remeros en esta tripulación.</p>}
+          {members.map(m => (
+            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <p style={{ color: "#ADADAD", fontSize: 12.5, margin: 0, flex: 1 }}>{m.nickname || m.name}</p>
+              <input
+                defaultValue={values[m.id] || ""}
+                onBlur={e => { if (e.target.value !== (values[m.id] || "")) onSetValue(boat.id, m.id, e.target.value); }}
+                disabled={!editable}
+                placeholder="Sin medida"
+                style={{ ...inputStyle, padding: "7px 9px", fontSize: 12.5, width: 120, opacity: editable ? 1 : 0.6 }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CoachMeasurementsScreen({ teamId, teams, setScope, boats, members, measurements, editable, onAddBoat, onRenameBoat, onRemoveBoat, onSetValue, onBack }) {
+  const [newBoat, setNewBoat] = useState("");
+
+  if (teamId === "club") {
+    return (
+      <div style={{ padding: "16px 20px 28px" }}>
+        <BackRow onBack={onBack} />
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Medidas</h2>
+        <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Elige una tripulación para gestionar sus medidas.</p>
+        {teams.map(t => (
+          <div key={t.id} className="vir-btn" onClick={() => setScope(t.id)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.name}</p>
+            <ChevronRight size={18} color="#8A8A8A" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const teamLabel = teams.find(t => t.id === teamId)?.name || "";
+
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Medidas</h2>
+      <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+        Tripulación: <span style={{ color: "#E61E29", fontWeight: 600 }}>{teamLabel}</span>
+      </p>
+      {!editable && (
+        <p style={{ color: "#E67E22", fontSize: 12, margin: "0 0 16px", lineHeight: 1.4 }}>
+          🔒 Solo lectura — el club no te ha dado permiso para gestionar esta tripulación.
+        </p>
+      )}
+
+      {boats.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13, marginBottom: 14 }}>Todavía no hay ningún bote con medidas en esta tripulación.</p>}
+      {boats.map(b => (
+        <MeasurementBoatCard
+          key={b.id} boat={b} members={members} measurements={measurements} editable={editable}
+          onSetValue={onSetValue} onRename={onRenameBoat} onRemove={onRemoveBoat}
+        />
+      ))}
+
+      {editable && (
+        <div style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 12, padding: 14, marginTop: 6 }}>
+          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Añadir bote</p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={newBoat} onChange={e => setNewBoat(e.target.value)} placeholder="Ej. Alarona" style={{ ...inputStyle, padding: "9px 11px", fontSize: 13, flex: 1 }} />
+            <button className="vir-btn" onClick={() => { if (newBoat.trim()) { onAddBoat(teamId, newBoat.trim()); setNewBoat(""); } }} style={{ ...primaryBtn, padding: "9px 16px", fontSize: 12.5 }}>Añadir</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -5073,6 +5282,8 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
             { id: "rowerGymPlan", label: "Entrenos de gim", sub: "5 sesiones de cada semana, con foto/PDF" },
             { id: "testPesos", label: "Test de pesos", sub: "Registra tus marcas de fuerza" },
             { id: "zonasErgo", label: "Zonas de ergo", sub: "Registra tus tiempos y ritmos de ergómetro" },
+            { id: "medidas", label: "Medidas", sub: "Tus medidas de bote, a cargo del entrenador" },
+            { id: "notas", label: "Notas", sub: "Tus apuntes personales, privados" },
             { id: "estadisticas", label: "Estadísticas", sub: "Asistencia, agua y gimnasio, todo junto" },
           ].map(item => (
             <div key={item.id} className="vir-btn" onClick={() => onOpenTraining(item.id)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
@@ -5241,6 +5452,56 @@ const wattsFromTestTime = (timeStr, distanceM = 1600) => {
   const splitPer500 = (seconds * 500) / distanceM;
   return 2.8 / Math.pow(splitPer500 / 500, 3);
 };
+
+function NotesScreen({ notes, onSave, onBack }) {
+  const [text, setText] = useState(notes || "");
+  const dirty = text !== (notes || "");
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Notas</h2>
+      <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
+        Tus apuntes personales — solo tú los ves, ni el club ni el entrenador tienen acceso a ellos.
+      </p>
+      <textarea
+        value={text}
+        onChange={e => setText(e.target.value)}
+        placeholder="Escribe aquí lo que necesites recordar..."
+        rows={12}
+        style={{ ...inputStyle, fontSize: 16, padding: "12px", resize: "vertical", width: "100%" }}
+      />
+      <button className="vir-btn" disabled={!dirty} onClick={() => onSave(text)} style={{ ...primaryBtn, marginTop: 16, opacity: dirty ? 1 : 0.4 }}>
+        Guardar
+      </button>
+    </div>
+  );
+}
+
+function RowerMeasurementsScreen({ boats, measurements, myId, onBack }) {
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Medidas</h2>
+      <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
+        🔒 Solo consulta — las gestiona el entrenador para cada bote.
+      </p>
+      {boats.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13 }}>Todavía no hay ningún bote con medidas registradas.</p>}
+      {boats.map(b => {
+        const value = (measurements[b.id] || {})[myId];
+        return (
+          <div key={b.id} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
+            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 700, margin: "0 0 6px" }}>{b.name}</p>
+            {value ? (
+              <p className="vir-mono" style={{ color: "#E61E29", fontSize: 15, fontWeight: 700, margin: 0 }}>{value}</p>
+            ) : (
+              <p style={{ color: "#8A8A8A", fontSize: 12, margin: 0 }}>El entrenador todavía no ha registrado tu medida en este bote.</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function PesosScreen({ exercises, onAddExercise, onSetBase, onRemoveExercise, onBack, editable, subtitle }) {
   const [search, setSearch] = useState("");
