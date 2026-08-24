@@ -4811,7 +4811,7 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
       </button>
       <div style={{ marginTop: 18, marginBottom: 22 }}>
         <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", marginBottom: 8 }}>Apuntados ({session.signups.size})</p>
-        {[...session.signups].map(id => <NameChip key={id} name={nameOf(id)} />)}
+        <SignupsBySide ids={[...session.signups]} sideOf={sideOf} nameOf={nameOf} nicknameOf={nicknameOf} />
       </div>
 
       {myCrew ? (
@@ -5034,9 +5034,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
         {session.signups.size === 0 ? (
           <p style={{ color: "#8A8A8A", fontSize: 12.5 }}>Todavía no se ha apuntado nadie.</p>
         ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {[...session.signups].map(id => <NameChip key={id} name={nicknameOf(id) || nameOf(id)} />)}
-          </div>
+          <SignupsBySide ids={[...session.signups]} sideOf={sideOf} nameOf={nameOf} nicknameOf={nicknameOf} />
         )}
       </div>
 
@@ -5271,8 +5269,45 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
   );
 }
 
-function NameChip({ name }) {
-  return <div style={{ display: "inline-block", background: "#454545", color: "#E8E8E8", fontSize: 12, padding: "6px 12px", borderRadius: 20, marginRight: 6, marginBottom: 6 }}>{name}</div>;
+function NameChip({ name, side }) {
+  const meta = side ? SIDE_META[side] : null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 5, background: "#454545", color: "#E8E8E8", fontSize: 12, padding: "6px 12px", borderRadius: 20, marginRight: 6, marginBottom: 6 }}>
+      {meta && <span style={{ width: 10, height: 10, borderRadius: 3, flexShrink: 0, background: meta.color }} />}
+      {name}
+    </div>
+  );
+}
+
+// Reparte a los apuntados en dos columnas, babor a la izquierda y estribor a la derecha; quien
+// rema a ambos lados se coloca en la columna que en ese momento tenga menos gente, para compensar
+function SignupsBySide({ ids, sideOf, nameOf, nicknameOf }) {
+  const babor = [], estribor = [];
+  ids.forEach(id => {
+    const side = sideOf(id);
+    if (side === "babor") babor.push(id);
+    else if (side === "estribor") estribor.push(id);
+    else if (side === "ambos") (babor.length <= estribor.length ? babor : estribor).push(id);
+    else babor.push(id);
+  });
+  const Col = ({ label, color, list }) => (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <p style={{ color, fontSize: 9.5, textTransform: "uppercase", fontWeight: 700, margin: "0 0 6px" }}>{label}</p>
+      {list.length === 0 ? (
+        <p style={{ color: "#6E6E6E", fontSize: 11 }}>—</p>
+      ) : (
+        <div style={{ display: "flex", flexWrap: "wrap" }}>
+          {list.map(id => <NameChip key={id} name={nicknameOf(id) || nameOf(id)} side={sideOf(id)} />)}
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", gap: 14 }}>
+      <Col label="Babor" color="#E61E29" list={babor} />
+      <Col label="Estribor" color="#3EA55A" list={estribor} />
+    </div>
+  );
 }
 
 // Una notificación deslizable: arrastra hacia la izquierda para descubrir los botones de "visto" y "eliminar".
