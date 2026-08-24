@@ -1090,33 +1090,50 @@ export default function ViradaPrototype() {
   const closeCrew = async (session, crew, previousRoster) => {
     const ok = await updateCrew(session.id, crew.id, { status: "cerrado" });
     if (!ok) return; // si no se pudo cerrar de verdad, no mandamos notificaciones con datos que no cuadran
-    const called = [...crew.seats, crew.patron, ...crew.zodiac].filter(Boolean);
-    const reserve = crew.reserves.filter(Boolean);
     const dayLabel = `${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}`;
 
-    // Un aviso individual a cada uno de los que se apuntaron: convocado, de reserva, o no convocado
+    const statusFor = (rid, seats, patron, reserves, zodiac) => {
+      if (seats.includes(rid) || patron === rid || zodiac.includes(rid)) return "convocado";
+      if (reserves.includes(rid)) return "reserva";
+      return "no";
+    };
+    const roleFor = (rid) => {
+      const seatIdx = crew.seats.indexOf(rid);
+      if (seatIdx > -1) return `puesto ${seatShortForBoat(crew.layout, seatIdx)}`;
+      if (crew.patron === rid) return "patrón";
+      if (crew.zodiac.includes(rid)) return "zodiac";
+      return "puesto";
+    };
+
+    // Un aviso individual a cada uno de los que se apuntaron: convocado, de reserva, o no convocado.
+    // Si venimos de reabrir y modificar una convocatoria ya cerrada, solo avisamos a quien de verdad
+    // le haya cambiado algo, con un mensaje que deja claro que es una modificación.
     const notes = [];
     [...session.signups].forEach(rid => {
-      let text;
-      if (called.includes(rid)) {
-        let role = "puesto";
-        const seatIdx = crew.seats.indexOf(rid);
-        if (seatIdx > -1) role = `puesto ${seatShortForBoat(crew.layout, seatIdx)}`;
-        else if (crew.patron === rid) role = "patrón";
-        else if (crew.zodiac.includes(rid)) role = "zodiac";
-        text = `Convocado/a al entreno de agua del ${dayLabel}, ${session.time} (${crew.boat}). Rol: ${role}.`;
-      } else if (reserve.includes(rid)) {
-        text = `De reserva para el entreno de agua del ${dayLabel}, ${session.time} (${crew.boat}).`;
+      const newStatus = statusFor(rid, crew.seats, crew.patron, crew.reserves, crew.zodiac);
+      if (previousRoster) {
+        const prevStatus = statusFor(rid, previousRoster.seats, previousRoster.patron, previousRoster.reserves, previousRoster.zodiac || []);
+        if (prevStatus === newStatus) return; // sin cambios para esta persona, no repetimos aviso
+        let text;
+        if (newStatus === "convocado") text = `La convocatoria de "${crew.boat}" ha cambiado — ahora estás convocado/a para el entreno del ${dayLabel}, ${session.time}. Rol: ${roleFor(rid)}.`;
+        else if (newStatus === "reserva") text = `La convocatoria de "${crew.boat}" ha cambiado — ahora estás de reserva para el entreno del ${dayLabel}, ${session.time}.`;
+        else text = `La convocatoria de "${crew.boat}" ha cambiado — ya no estás convocado/a para el entreno del ${dayLabel}, ${session.time}.`;
+        notes.push({ rowerId: rid, text });
       } else {
-        text = `No convocado/a al entreno de agua del ${dayLabel}, ${session.time} (${crew.boat}).`;
+        let text;
+        if (newStatus === "convocado") text = `Convocado/a al entreno de agua del ${dayLabel}, ${session.time} (${crew.boat}). Rol: ${roleFor(rid)}.`;
+        else if (newStatus === "reserva") text = `De reserva para el entreno de agua del ${dayLabel}, ${session.time} (${crew.boat}).`;
+        else text = `No convocado/a al entreno de agua del ${dayLabel}, ${session.time} (${crew.boat}).`;
+        notes.push({ rowerId: rid, text });
       }
-      notes.push({ rowerId: rid, text });
     });
 
     // Un único aviso resumen para el propio entrenador, que le lleva directo a la convocatoria al tocarlo
     notes.push({
       rowerId: null,
-      text: `Has cerrado la convocatoria de "${crew.boat}" para el día ${dayLabel} a las ${session.time}h.`,
+      text: previousRoster
+        ? `Has actualizado la convocatoria de "${crew.boat}" para el día ${dayLabel} a las ${session.time}h.`
+        : `Has cerrado la convocatoria de "${crew.boat}" para el día ${dayLabel} a las ${session.time}h.`,
     });
 
     const { data, error } = await supabase.from("notifications").insert(
@@ -1125,7 +1142,7 @@ export default function ViradaPrototype() {
     if (!error && data) {
       setNotifications(prev => [...data.map(mapNotificationRow), ...prev]);
     } else if (error) {
-      flash("Tripulación cerrada, pero hubo un problema guardando las notificaciones.");
+      flash(`Tripulación cerrada, pero hubo un problema guardando las notificaciones: ${error.message}`);
       return;
     }
     flash(`${crew.boat} cerrado y notificaciones enviadas`);
