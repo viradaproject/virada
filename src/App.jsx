@@ -613,24 +613,6 @@ export default function ViradaPrototype() {
     return () => { authListener?.subscription?.unsubscribe(); };
   }, []);
 
-  // Comprueba cada minuto si hay avisos programados cuya hora ya ha llegado, y los manda.
-  // Como no hay un reloj de servidor detrás, se envían la próxima vez que un club/entrenador
-  // tenga la app abierta después de esa hora, no en el segundo exacto.
-  useEffect(() => {
-    if (!(role === "club" || role === "coach" || role === "admin")) return;
-    const checkAndSend = () => {
-      const now = new Date();
-      broadcasts.forEach(b => {
-        if (!b.sentAt && b.scheduledFor && new Date(b.scheduledFor) <= now) {
-          dispatchBroadcast(b);
-        }
-      });
-    };
-    checkAndSend();
-    const interval = setInterval(checkAndSend, 60000);
-    return () => clearInterval(interval);
-  }, [role, broadcasts]);
-
   const setNewPasswordAfterRecovery = async (newPassword) => {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) { flash("No se pudo cambiar la contraseña. Inténtalo de nuevo."); return; }
@@ -1345,6 +1327,24 @@ export default function ViradaPrototype() {
       flash("Aviso programado");
     }
   };
+
+  // Comprueba cada minuto si hay avisos programados cuya hora ya ha llegado, y los manda.
+  // Como no hay un reloj de servidor detrás, se envían la próxima vez que un club/entrenador
+  // tenga la app abierta después de esa hora, no en el segundo exacto.
+  useEffect(() => {
+    if (!(role === "club" || role === "coach" || role === "admin")) return;
+    const checkAndSend = () => {
+      const now = new Date();
+      broadcasts.forEach(b => {
+        if (!b.sentAt && b.scheduledFor && new Date(b.scheduledFor) <= now) {
+          dispatchBroadcast(b);
+        }
+      });
+    };
+    checkAndSend();
+    const interval = setInterval(checkAndSend, 60000);
+    return () => clearInterval(interval);
+  }, [role, broadcasts]);
 
   // MEDIDAS: botes con la medida de cada remero, a cargo del entrenador/club
   // BOTES: la flota real del equipo (nombre + disposición), gestionada por el entrenador/club.
