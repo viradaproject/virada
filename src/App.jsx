@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Home, CalendarDays, Bell, User, ChevronLeft, ChevronRight, Check, X, KeyRound, Lock, LogOut, Users, RotateCw, Anchor, Search, Camera, Pencil, Trash2 } from "lucide-react";
+import { Home, CalendarDays, Bell, User, ChevronLeft, ChevronRight, Check, X, KeyRound, Lock, LogOut, Users, RotateCw, Anchor, Search, Camera, Pencil, Trash2, Ruler } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 async function hashPassword(password) {
@@ -2584,6 +2584,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
       tiles: [
         { id: "testPesos", label: "Test de pesos", sub: "Registra tus marcas", icon: Anchor },
         { id: "zonasErgo", label: "Zonas de ergo", sub: "Registra tus ritmos", icon: RotateCw },
+        { id: "medidas", label: "Medidas", sub: "A cargo del entrenador", icon: Ruler },
       ],
     },
     {
