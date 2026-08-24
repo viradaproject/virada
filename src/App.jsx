@@ -2533,22 +2533,31 @@ function SectionTitle({ children, sub }) {
 
 function SessionRow({ s, onOpen, right, teamLabel, semaphore }) {
   const dow = DAYS_ES[s.dow];
+  const closedBoats = (s.crews || []).filter(c => c.status === "cerrado").map(c => c.boat);
   return (
-    <div className="vir-btn" onClick={() => onOpen(s)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "#404040", border: "1px solid #565656", borderRadius: 12, marginBottom: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        {semaphore && (
-          <span title={semaphore.label} style={{ width: 10, height: 10, borderRadius: "50%", background: semaphore.color, flexShrink: 0 }} />
-        )}
-        <div style={{ width: 42, textAlign: "center" }}>
-          <div className="vir-mono" style={{ color: "#E61E29", fontSize: 18, lineHeight: 1 }}>{s.date.getDate()}</div>
-          <div style={{ color: "#8A8A8A", fontSize: 10, textTransform: "uppercase" }}>{dow}</div>
+    <div className="vir-btn" onClick={() => onOpen(s)} style={{ padding: "12px 16px", background: "#404040", border: "1px solid #565656", borderRadius: 12, marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {semaphore && (
+            <span title={semaphore.label} style={{ width: 10, height: 10, borderRadius: "50%", background: semaphore.color, flexShrink: 0 }} />
+          )}
+          <div style={{ width: 42, textAlign: "center" }}>
+            <div className="vir-mono" style={{ color: "#E61E29", fontSize: 18, lineHeight: 1 }}>{s.date.getDate()}</div>
+            <div style={{ color: "#8A8A8A", fontSize: 10, textTransform: "uppercase" }}>{dow}</div>
+          </div>
+          <div>
+            <div style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 500 }}>{s.title || DEFAULT_SESSION_TITLE}{teamLabel ? ` · ${teamLabel}` : ""}</div>
+            <div className="vir-mono" style={{ color: "#ADADAD", fontSize: 11.5 }}>{s.time}</div>
+          </div>
         </div>
-        <div>
-          <div style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 500 }}>{s.title || DEFAULT_SESSION_TITLE}{teamLabel ? ` · ${teamLabel}` : ""}</div>
-          <div className="vir-mono" style={{ color: "#ADADAD", fontSize: 11.5 }}>{s.time}</div>
-        </div>
+        {right}
       </div>
-      {right}
+      {closedBoats.length > 0 && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #565656", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <Anchor size={11} color="#8A8A8A" style={{ flexShrink: 0 }} />
+          <span style={{ color: "#ADADAD", fontSize: 11 }}>{closedBoats.join(" · ")}</span>
+        </div>
+      )}
     </div>
   );
 }
