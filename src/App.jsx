@@ -5860,13 +5860,30 @@ function PesosExerciseCard({ exercise, onSetBase, onRemove, editable }) {
 }
 
 function ErgoZonesScreen({ testTime, onSetTest, onBack }) {
+  const parseParts = (t) => {
+    const m = (t || "").trim().match(/^(\d{1,2}):(\d{1,2})(?:\.(\d))?$/);
+    return m ? { min: m[1], sec: m[2], tenths: m[3] || "" } : { min: "", sec: "", tenths: "" };
+  };
   const [editingTest, setEditingTest] = useState(false);
-  const [testInput, setTestInput] = useState(testTime || "");
+  const [minInput, setMinInput] = useState("");
+  const [secInput, setSecInput] = useState("");
+  const [tenthsInput, setTenthsInput] = useState("");
 
   const baseWatts = wattsFromTestTime(testTime);
 
+  const startEdit = () => {
+    const parts = parseParts(testTime);
+    setMinInput(parts.min); setSecInput(parts.sec); setTenthsInput(parts.tenths);
+    setEditingTest(!editingTest);
+  };
+  const composed = () => {
+    if (minInput === "" || secInput === "") return null;
+    const sec = secInput.padStart(2, "0");
+    return tenthsInput ? `${minInput}:${sec}.${tenthsInput}` : `${minInput}:${sec}`;
+  };
   const saveTest = () => {
-    if (parseErgoTime(testInput)) onSetTest(testInput.trim());
+    const value = composed();
+    if (value && parseErgoTime(value)) onSetTest(value);
     setEditingTest(false);
   };
 
@@ -5885,15 +5902,48 @@ function ErgoZonesScreen({ testTime, onSetTest, onBack }) {
             <p className="vir-mono" style={{ color: "#F5F5F5", fontSize: 22, fontWeight: 700, margin: 0 }}>{testTime || "—"}</p>
             {baseWatts && <p style={{ color: "#8A8A8A", fontSize: 11, margin: "4px 0 0" }}>≈ {Math.round(baseWatts)} W de media</p>}
           </div>
-          <button className="vir-btn" onClick={() => { setTestInput(testTime || ""); setEditingTest(!editingTest); }} style={{ background: "#333333", border: "1px solid #565656", borderRadius: 10, padding: "8px 10px", color: "#ADADAD" }}>
+          <button className="vir-btn" onClick={startEdit} style={{ background: "#333333", border: "1px solid #565656", borderRadius: 10, padding: "8px 10px", color: "#ADADAD" }}>
             <Pencil size={15} />
           </button>
         </div>
         {editingTest && (
           <div>
             <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Tiempo TEST 1600</label>
-            <input value={testInput} onChange={e => setTestInput(e.target.value)} placeholder="mm:ss (ej. 6:45)" inputMode="numeric" style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 10 }} />
-            <button className="vir-btn" onClick={saveTest} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13 }}>Guardar</button>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <input
+                  value={minInput}
+                  onChange={e => setMinInput(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                  placeholder="0"
+                  inputMode="numeric"
+                  style={{ ...inputStyle, padding: "11px", fontSize: 18, width: "100%", textAlign: "center" }}
+                />
+                <p style={{ color: "#8A8A8A", fontSize: 10, textAlign: "center", margin: "4px 0 0" }}>minutos</p>
+              </div>
+              <p style={{ color: "#8A8A8A", fontSize: 20, margin: "0 0 20px" }}>:</p>
+              <div style={{ flex: 1 }}>
+                <input
+                  value={secInput}
+                  onChange={e => setSecInput(Math.min(59, +e.target.value.replace(/\D/g, "") || 0).toString().slice(0, 2))}
+                  placeholder="00"
+                  inputMode="numeric"
+                  style={{ ...inputStyle, padding: "11px", fontSize: 18, width: "100%", textAlign: "center" }}
+                />
+                <p style={{ color: "#8A8A8A", fontSize: 10, textAlign: "center", margin: "4px 0 0" }}>segundos</p>
+              </div>
+              <p style={{ color: "#8A8A8A", fontSize: 20, margin: "0 0 20px" }}>.</p>
+              <div style={{ flex: 1 }}>
+                <input
+                  value={tenthsInput}
+                  onChange={e => setTenthsInput(e.target.value.replace(/\D/g, "").slice(0, 1))}
+                  placeholder="0"
+                  inputMode="numeric"
+                  style={{ ...inputStyle, padding: "11px", fontSize: 18, width: "100%", textAlign: "center" }}
+                />
+                <p style={{ color: "#8A8A8A", fontSize: 10, textAlign: "center", margin: "4px 0 0" }}>décimas</p>
+              </div>
+            </div>
+            <button className="vir-btn" disabled={!composed()} onClick={saveTest} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13, opacity: composed() ? 1 : 0.4 }}>Guardar</button>
           </div>
         )}
       </div>
