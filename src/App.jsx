@@ -2223,8 +2223,8 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
     }}>
       {view === "menu" && (
         <>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 6, marginTop: 8 }}><Logo size={50} /></div>
-          <p style={{ textAlign: "center", color: "#ADADAD", fontSize: 13, margin: "4px 0 54px", letterSpacing: 1.5, textTransform: "uppercase" }}>Club Manager</p>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 6, marginTop: 8 }}><Logo size={74} /></div>
+          <p style={{ textAlign: "center", color: "#ADADAD", fontSize: 13, margin: "4px 0 108px", letterSpacing: 1.5, textTransform: "uppercase" }}>Club Manager</p>
         </>
       )}
 
