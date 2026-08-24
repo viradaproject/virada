@@ -65,10 +65,11 @@ const parseTimeRange = (str) => {
 const rangesOverlap = (a, b) => !!a && !!b && a[0] < b[1] && b[0] < a[1];
 
 function buildSessions(teamId) {
-  const year = 2026, month = 7; // agosto (0-indexed)
+  const now = new Date();
+  const year = now.getFullYear(), month = now.getMonth(); // mes actual real
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const sessions = [];
-  const today = new Date(2026, 7, 12);
+  const today = new Date();
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month, d);
     const dow = date.getDay();
@@ -940,7 +941,7 @@ export default function ViradaPrototype() {
 
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
 
-  const today = new Date(2026, 7, 12);
+  const today = new Date();
 
   const myTeamId = teamOf(currentUserId);
   const myManagedTeams = managedTeamsOf(currentUserId);
@@ -964,7 +965,7 @@ export default function ViradaPrototype() {
     const monthAttended = past.filter(s => inCrew(s, currentUserId)).length;
     const monthTotal = past.length;
     return {
-      month: { label: "agosto", attended: monthAttended, total: monthTotal },
+      month: { label: MONTHS_ES[today.getMonth()], attended: monthAttended, total: monthTotal },
       year: {
         label: ATTENDANCE_BASE.label,
         attended: ATTENDANCE_BASE.attendedBeforeAgosto + monthAttended,
