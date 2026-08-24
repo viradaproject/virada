@@ -1936,7 +1936,7 @@ export default function ViradaPrototype() {
                   onBack={() => setScreen("home")}
                 />
               )}
-              {screen === "remindersClub" && role === "club" && (
+              {screen === "remindersClub" && (role === "club" || role === "admin") && (
                 <ClubRemindersScreen
                   note={clubReminderNote}
                   onSaveNote={setClubNote}
@@ -2023,6 +2023,10 @@ export default function ViradaPrototype() {
                   onOpenWater={() => { setCoachScope("club"); setScreen("coachPlan"); }}
                   onOpenGym={() => { setCoachScope("club"); setScreen("coachGymPlan"); }}
                   onOpenStats={() => { setCoachScope("club"); setScreen("coachTeamStats"); }}
+                  onOpenInformes={() => { setCoachScope("club"); setScreen("informes"); }}
+                  onOpenMeasurements={() => { setCoachScope("club"); setScreen("medidasCoach"); }}
+                  onOpenFleet={() => { setCoachScope("club"); setScreen("botesCoach"); }}
+                  onOpenReminders={() => setScreen("remindersClub")}
                   clubCode={clubCode}
                   clubDisplayName={clubDisplayName}
                   teamsCount={clubTeams.length}
@@ -3185,7 +3189,7 @@ function StatCard({ label, value }) {
   );
 }
 
-function AdminHome({ onOpenRegattas, onOpenUsers, onOpenTeams, onOpenWater, onOpenGym, onOpenStats, clubCode, clubDisplayName, teamsCount, coachCount, rowerCount, clubs, currentClubId, onSwitchClub, onDeleteClub }) {
+function AdminHome({ onOpenRegattas, onOpenUsers, onOpenTeams, onOpenWater, onOpenGym, onOpenStats, onOpenInformes, onOpenMeasurements, onOpenFleet, onOpenReminders, clubCode, clubDisplayName, teamsCount, coachCount, rowerCount, clubs, currentClubId, onSwitchClub, onDeleteClub }) {
   const [deletingId, setDeletingId] = useState(null);
   const [confirmText, setConfirmText] = useState("");
   const links = [
@@ -3194,6 +3198,10 @@ function AdminHome({ onOpenRegattas, onOpenUsers, onOpenTeams, onOpenWater, onOp
     { label: "Entrenos de agua", sub: "Calendario, bote/rems y alineaciones de cualquier tripulación", onClick: onOpenWater },
     { label: "Plan de gimnasio", sub: "Ver y editar las 5 sesiones semanales de cualquier tripulación", onClick: onOpenGym },
     { label: "Estadísticas de tripulación", sub: "Convocatorias, asistencia y ficha de cada remero", onClick: onOpenStats },
+    { label: "Informes", sub: "Diario, semanal y mensual de cualquier tripulación", onClick: onOpenInformes },
+    { label: "Medidas", sub: "Medidas de cada remero por bote, de cualquier tripulación", onClick: onOpenMeasurements },
+    { label: "Botes", sub: "Flota de botes de cualquier tripulación", onClick: onOpenFleet },
+    { label: "Recordatorios", sub: "Nota fija del club y avisos puntuales", onClick: onOpenReminders },
     { label: "Calendario de regatas", sub: "Añade o quita días, dosieres, horarios y resultados (compartido entre todos los clubes)", onClick: onOpenRegattas },
   ];
 
