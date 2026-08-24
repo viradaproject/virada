@@ -3619,9 +3619,9 @@ function MeasurementBoatCard({ boat, members, measurements, editable, onSetValue
       </div>
 
       {renaming && (
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <input value={nameInput} onChange={e => setNameInput(e.target.value)} style={{ ...inputStyle, padding: "9px 11px", fontSize: 13, flex: 1 }} />
-          <button className="vir-btn" onClick={() => { if (nameInput.trim()) onRename(boat.id, nameInput.trim()); setRenaming(false); }} style={{ ...primaryBtn, padding: "0 16px", fontSize: 12 }}>Guardar</button>
+        <div style={{ marginTop: 10 }}>
+          <input value={nameInput} onChange={e => setNameInput(e.target.value)} style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 8 }} />
+          <button className="vir-btn" onClick={() => { if (nameInput.trim()) onRename(boat.id, nameInput.trim()); setRenaming(false); }} style={{ ...primaryBtn, padding: "9px 0", fontSize: 12.5, width: "100%" }}>Guardar</button>
         </div>
       )}
 
@@ -3636,7 +3636,7 @@ function MeasurementBoatCard({ boat, members, measurements, editable, onSetValue
                 onBlur={e => { if (e.target.value !== (values[m.id] || "")) onSetValue(boat.id, m.id, e.target.value); }}
                 disabled={!editable}
                 placeholder="Sin medida"
-                style={{ ...inputStyle, padding: "7px 9px", fontSize: 12.5, width: 120, opacity: editable ? 1 : 0.6 }}
+                style={{ ...inputStyle, padding: "9px 10px", fontSize: 16, width: 130, opacity: editable ? 1 : 0.6 }}
               />
             </div>
           ))}
@@ -3691,10 +3691,9 @@ function CoachMeasurementsScreen({ teamId, teams, setScope, boats, members, meas
       {editable && (
         <div style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 12, padding: 14, marginTop: 6 }}>
           <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Añadir bote</p>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input value={newBoat} onChange={e => setNewBoat(e.target.value)} placeholder="Ej. Alarona" style={{ ...inputStyle, padding: "9px 11px", fontSize: 13, flex: 1 }} />
-            <button className="vir-btn" onClick={() => { if (newBoat.trim()) { onAddBoat(teamId, newBoat.trim()); setNewBoat(""); } }} style={{ ...primaryBtn, padding: "9px 16px", fontSize: 12.5 }}>Añadir</button>
-          </div>
+          <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Nombre del bote</label>
+          <input value={newBoat} onChange={e => setNewBoat(e.target.value)} placeholder="Ej. Alarona" style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 10 }} />
+          <button className="vir-btn" onClick={() => { if (newBoat.trim()) { onAddBoat(teamId, newBoat.trim()); setNewBoat(""); } }} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13 }}>Añadir</button>
         </div>
       )}
     </div>
