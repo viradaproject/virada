@@ -3114,7 +3114,7 @@ function AdminHome({ onOpenRegattas, onOpenUsers, onOpenTeams, onOpenWater, onOp
           <StatCard label="Remeros" value={rowerCount} />
         </div>
         <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "0 0 18px", lineHeight: 1.4 }}>
-          Club: {clubDisplayName} (código {clubCode}). Recuerda que este prototipo no tiene base de datos real — estos datos son solo de la sesión actual.
+          Club: {clubDisplayName} (código {clubCode}).
         </p>
 
         {links.map(l => (
