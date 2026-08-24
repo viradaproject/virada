@@ -49,6 +49,7 @@ const TIME_OPTIONS = ["7:00 – 8:30", "8:00 – 9:30", "9:00 – 10:30", "17:00
 
 const LAYOUTS = [
   { id: "llagut8", label: "Llagut · 8 puestos", oars: ["Amilibia", "Braka 1.0", "Braka 2.0"] },
+  { id: "llaut8", label: "Llaüt · 8 puestos", oars: ["Amilibia", "Braka 1.0", "Braka 2.0"] },
   { id: "llaut9", label: "Llaüt · 9 puestos", oars: ["Amilibia", "Braka 1.0", "Braka 2.0"] },
   { id: "batel4", label: "Bàtel · 4 puestos", oars: ["Ami Batel", "Braka Batel"] },
 ];
@@ -219,6 +220,7 @@ const seatShort = (i) => `${SEAT_LABELS[i].num}${SEAT_LABELS[i].side === "BABOR"
 const BATEL_SEAT_NUMS = ["1", "2", "3", "4"]; // idx 0-3, botel: puestos en línea sin babor/estribor
 const isBatel = (layout) => layout === "batel4";
 const isLlaut9 = (layout) => layout === "llaut9";
+const isLlaut8 = (layout) => layout === "llaut8";
 const seatShortForBoat = (layout, i) => isBatel(layout) ? BATEL_SEAT_NUMS[i] : seatShort(i);
 const seatLabelForBoat = (layout, i) => isBatel(layout) ? `Puesto ${BATEL_SEAT_NUMS[i]}` : seatLabel(i);
 const firstName = (name) => name.split(" ")[0];
@@ -5042,14 +5044,14 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
   }
 
   // ---------- LLAÜT: 9 puestos (4 babor + 5 estribor), estribor desplazado una fila hacia arriba ----------
-  if (isLlaut9(crew.layout)) {
+  if (isLlaut9(crew.layout) || isLlaut8(crew.layout)) {
     const rowY = (row) => 118 + row * 66;
     const rows = [
       { babor: null, estribor: 7 }, // 4E sola, sin pareja en babor
       { babor: 6, estribor: 5 },    // 4B / 3E
       { babor: 4, estribor: 3 },    // 3B / 2E
       { babor: 2, estribor: 1 },    // 2B / 1E
-      { babor: 0, estribor: 8 },    // 1B / 0E
+      { babor: 0, estribor: isLlaut9(crew.layout) ? 8 : null }, // 1B / 0E (solo en el de 9 puestos)
     ];
     const cx = { babor: 88, estribor: 212 };
     const lineTop = 90;
@@ -5076,8 +5078,10 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
                 <Avatar x={cx.babor} y={rowY(row)} r={24} filled={!!crew.seats[r.babor]} rowerId={crew.seats[r.babor]}
                   label={{ type: "seat", idx: r.babor, text: seatShortForBoat(crew.layout, r.babor) }} nameBelow />
               )}
-              <Avatar x={cx.estribor} y={rowY(row)} r={24} filled={!!crew.seats[r.estribor]} rowerId={crew.seats[r.estribor]}
-                label={{ type: "seat", idx: r.estribor, text: seatShortForBoat(crew.layout, r.estribor) }} nameBelow />
+              {r.estribor !== null && (
+                <Avatar x={cx.estribor} y={rowY(row)} r={24} filled={!!crew.seats[r.estribor]} rowerId={crew.seats[r.estribor]}
+                  label={{ type: "seat", idx: r.estribor, text: seatShortForBoat(crew.layout, r.estribor) }} nameBelow />
+              )}
             </g>
           ))}
 
