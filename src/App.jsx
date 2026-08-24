@@ -1782,8 +1782,6 @@ export default function ViradaPrototype() {
                   currentWeek={currentWeek}
                   waterStatsFor={waterStatsFor}
                   gymStatsFor={gymStatsFor}
-                  pesosExercisesOf={pesosExercisesOf}
-                  ergoTestSetFor={(id) => !!ergoTestTimes[id]}
                   today={today}
                   onBack={() => setScreen("home")}
                   onViewPhoto={(photo, caption) => setViewPhoto({ photo, caption })}
@@ -2049,7 +2047,7 @@ export default function ViradaPrototype() {
                   onRemoveExercise={(exId) => removePesosExercise(openPerson.id, exId)}
                   onBack={() => setScreen("coachRowerDetail")}
                   editable={false}
-                  subtitle={`Test de pesos de ${openPerson.name} · lo gestiona el propio remero desde su perfil`}
+                  subtitle={`Datos de gim de ${openPerson.name} · lo gestiona el propio remero desde su perfil`}
                 />
               )}
               {screen === "zonasErgo" && role === "rower" && (
@@ -2609,8 +2607,8 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
     {
       label: "Rendimiento",
       tiles: [
-        { id: "testPesos", label: "Test de pesos", sub: "Registra tus marcas", icon: Anchor },
-        { id: "zonasErgo", label: "Zonas de ergo", sub: "Registra tus ritmos", icon: RotateCw },
+        { id: "testPesos", label: "Datos de gim", sub: "Registra tus marcas", icon: Anchor },
+        { id: "zonasErgo", label: "Datos ergo", sub: "Registra tus ritmos", icon: RotateCw },
         { id: "medidas", label: "Medidas", sub: "A cargo del entrenador", icon: Ruler },
       ],
     },
@@ -2640,7 +2638,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
           </div>
           <div style={{ borderTop: "1px solid #565656", paddingTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
             <p style={{ color: "#ADADAD", fontSize: 11.5, margin: 0 }}>
-              {registeredExercises > 0 ? `Test de pesos: ${registeredExercises} ejercicio${registeredExercises > 1 ? "s" : ""} registrado${registeredExercises > 1 ? "s" : ""}` : "Todavía no has registrado ningún test de pesos."}
+              {registeredExercises > 0 ? `Datos de gim: ${registeredExercises} ejercicio${registeredExercises > 1 ? "s" : ""} registrado${registeredExercises > 1 ? "s" : ""}` : "Todavía no has registrado ningún dato de gim."}
             </p>
             <p style={{ color: "#ADADAD", fontSize: 11.5, margin: 0 }}>
               {ergoTest ? `TEST 1600: ${ergoTest} W` : "Todavía no has registrado tu TEST 1600 de ergómetro."}
@@ -2936,7 +2934,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
         <p style={{ color: "#8A8A8A", fontSize: 12.5 }}>Todavía no hay plan de gimnasio subido para esta tripulación.</p>
       )}
 
-      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 10px" }}>Test de pesos y zonas de ergo</p>
+      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 10px" }}>Datos de gim y datos ergo</p>
       {hasGymLogs ? (
         <>
           <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
@@ -2950,7 +2948,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
         </p>
       )}
       <button className="vir-btn" onClick={onOpenPesos} style={{ ...primaryBtn, padding: "11px 0", fontSize: 12.5 }}>
-        Ver Test de pesos
+        Ver Datos de gim
       </button>
     </div>
   );
@@ -3902,7 +3900,7 @@ function CoachMeasurementsScreen({ teamId, teams, setScope, boats, members, meas
   );
 }
 
-function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gymRecordFor, members, currentWeek, waterStatsFor, gymStatsFor, pesosExercisesOf, ergoTestSetFor, today, onBack, onViewPhoto }) {
+function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gymRecordFor, members, currentWeek, waterStatsFor, gymStatsFor, today, onBack, onViewPhoto }) {
   const [tab, setTab] = useState("diario");
   const [day, setDay] = useState(today);
   const [week, setWeek] = useState(currentWeek);
@@ -4159,30 +4157,22 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
                 <th style={{ textAlign: "left", padding: "4px 6px" }}>Días de agua</th>
                 <th style={{ textAlign: "left", padding: "4px 6px" }}>Sesiones de gim</th>
                 <th style={{ textAlign: "left", padding: "4px 6px" }}>% compromiso</th>
-                <th style={{ textAlign: "left", padding: "4px 6px" }}>Test de pesos</th>
-                <th style={{ textAlign: "left", padding: "4px 6px" }}>TEST 1600</th>
               </tr>
             </thead>
             <tbody>
-              {monthlyRows.map(r => {
-                const pesosCount = pesosExercisesOf ? pesosExercisesOf(r.member.id).length : 0;
-                const ergoSet = ergoTestSetFor ? ergoTestSetFor(r.member.id) : false;
-                return (
-                  <tr key={r.member.id} style={{ borderBottom: "1px solid #DDD" }}>
-                    <td style={{ padding: "4px 6px" }}>{r.member.nickname || r.member.name}</td>
-                    <td style={{ padding: "4px 6px" }}>{r.water.monthDone} / {r.water.monthTotal}</td>
-                    <td style={{ padding: "4px 6px" }}>{r.gym.monthDone} / {r.gym.monthTotal}</td>
-                    <td style={{ padding: "4px 6px" }}>{r.commitment}%</td>
-                    <td style={{ padding: "4px 6px" }}>{pesosCount > 0 ? `${pesosCount} ejercicio${pesosCount === 1 ? "" : "s"}` : "Sin registrar"}</td>
-                    <td style={{ padding: "4px 6px" }}>{ergoSet ? "✓ Registrado" : "Sin registrar"}</td>
-                  </tr>
-                );
-              })}
+              {monthlyRows.map(r => (
+                <tr key={r.member.id} style={{ borderBottom: "1px solid #DDD" }}>
+                  <td style={{ padding: "4px 6px" }}>{r.member.nickname || r.member.name}</td>
+                  <td style={{ padding: "4px 6px" }}>{r.water.monthDone} / {r.water.monthTotal}</td>
+                  <td style={{ padding: "4px 6px" }}>{r.gym.monthDone} / {r.gym.monthTotal}</td>
+                  <td style={{ padding: "4px 6px" }}>{r.commitment}%</td>
+                </tr>
+              ))}
             </tbody>
           </table>
 
           <p style={{ fontSize: 10, color: "#666", marginTop: 16 }}>
-            El % de compromiso combina a partes iguales la asistencia a agua y la constancia en gimnasio. Iremos ampliando este informe con más datos.
+            El % de compromiso combina a partes iguales la asistencia a agua y la constancia en gimnasio.
           </p>
         </div>
       )}
@@ -5599,8 +5589,8 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
           <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Entrenamiento</p>
           {[
             { id: "rowerGymPlan", label: "Entrenos de gim", sub: "5 sesiones de cada semana, con foto/PDF" },
-            { id: "testPesos", label: "Test de pesos", sub: "Registra tus marcas de fuerza" },
-            { id: "zonasErgo", label: "Zonas de ergo", sub: "Registra tus tiempos y ritmos de ergómetro" },
+            { id: "testPesos", label: "Datos de gim", sub: "Registra tus marcas de fuerza" },
+            { id: "zonasErgo", label: "Datos ergo", sub: "Registra tus tiempos y ritmos de ergómetro" },
             { id: "medidas", label: "Medidas", sub: "Tus medidas de bote, a cargo del entrenador" },
             { id: "notas", label: "Notas", sub: "Tus apuntes personales, privados" },
             { id: "estadisticas", label: "Estadísticas", sub: "Asistencia, agua y gimnasio, todo junto" },
@@ -5831,7 +5821,7 @@ function PesosScreen({ exercises, onAddExercise, onSetBase, onRemoveExercise, on
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
-      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Test de pesos</h2>
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Datos de gim</h2>
       <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 16px", lineHeight: 1.4 }}>
         {subtitle || "Cada ejercicio tiene su propia tabla de porcentajes de trabajo, calculada a partir del registro (100%)."}
       </p>
@@ -5985,7 +5975,7 @@ function ErgoZonesScreen({ testTime, onSetTest, onBack }) {
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
-      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Zonas de ergómetro</h2>
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Datos ergo</h2>
       <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
         Registra tu tiempo del TEST 1600; las zonas Z0-Z6 y los porcentajes de trabajo se calculan solos a partir de ese tiempo.
       </p>
@@ -6161,7 +6151,7 @@ function RowerStatsScreen({ onBack, attendance, crewStats, pesosCount, ergoTestS
         <AttendanceCard label="Este mes" attended={gymWeekMonth.monthDone} total={gymWeekMonth.monthTotal} unitLabel="hecho" />
       </div>
 
-      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Test de pesos y zonas de ergo</p>
+      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Datos de gim y datos ergo</p>
       <div style={{ display: "flex", gap: 10 }}>
         <StatCard label="Ejercicios con marca" value={pesosCount} />
         <StatCard label="TEST 1600 registrado" value={ergoTestSet ? "Sí" : "No"} />
