@@ -1797,7 +1797,7 @@ export default function ViradaPrototype() {
                   boats={fleetBoatsFor(coachScope)}
                   members={[...ROWERS, ...clubAssignedUsers]
                     .filter(p => roleOf(p.id) === "rower" && teamOf(p.id) === coachScope)
-                    .map(p => ({ id: p.id, name: p.name || p.username, nickname: nicknameOf(p.id) }))}
+                    .map(p => ({ id: p.id, name: p.name || p.username, nickname: nicknameOf(p.id), side: sideOf(p.id) }))}
                   measurements={boatMeasurements}
                   editable={role === "admin" ? true : canManage(coachScope)}
                   onSetValue={setBoatMeasurement}
@@ -3681,34 +3681,86 @@ function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended
   );
 }
 
+function MeasurementRow({ m, value, editable, onSetValue }) {
+  const [editing, setEditing] = useState(false);
+  const [input, setInput] = useState(value || "");
+  const meta = SIDE_META[m.side] || null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+      <span style={{
+        width: 14, height: 14, borderRadius: 4, flexShrink: 0,
+        background: meta ? meta.color : "#565656",
+      }} />
+      <p style={{ color: "#ADADAD", fontSize: 11.5, margin: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.nickname || m.name}</p>
+      {editing ? (
+        <>
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            autoFocus
+            style={{ ...inputStyle, padding: "5px 6px", fontSize: 12, width: 56 }}
+          />
+          <button className="vir-btn" onClick={() => { onSetValue(m.id, input); setEditing(false); }} style={{ background: "#3EA55A", color: "#FFFFFF", borderRadius: 6, padding: "5px 7px", flexShrink: 0 }}>
+            <Check size={12} />
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="vir-mono" style={{ color: value ? "#F5F5F5" : "#6E6E6E", fontSize: 11.5, minWidth: 26, textAlign: "right" }}>{value || "—"}</span>
+          {editable && (
+            <button className="vir-btn" onClick={() => { setInput(value || ""); setEditing(true); }} style={{ background: "transparent", color: "#8A8A8A", padding: "4px 5px", flexShrink: 0 }}>
+              <Pencil size={12} />
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function MeasurementBoatCard({ boat, members, measurements, editable, onSetValue }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const values = measurements[boat.id] || {};
+
+  // Babor a la izquierda, estribor a la derecha; quien rema a ambos lados (naranja) se reparte
+  // hacia el lado que en ese momento tenga menos remeros, para compensar las dos columnas
+  const babor = [], estribor = [];
+  members.forEach(m => {
+    if (m.side === "babor") babor.push(m);
+    else if (m.side === "estribor") estribor.push(m);
+    else if (m.side === "ambos") (babor.length <= estribor.length ? babor : estribor).push(m);
+    else babor.push(m); // patrón u otros: se listan igualmente, por defecto a la izquierda
+  });
 
   return (
     <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <p className="vir-btn" onClick={() => setExpanded(!expanded)} style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 700, margin: 0, flex: 1, cursor: "pointer" }}>
-          {boat.name} <span style={{ color: "#8A8A8A", fontSize: 11 }}>{expanded ? "▲" : "▼"}</span>
+        <p className="vir-btn" onClick={() => setExpanded(!expanded)} style={{ color: "#F5F5F5", fontSize: 12.5, fontWeight: 700, margin: 0, flex: 1, cursor: "pointer" }}>
+          {boat.name} <span style={{ color: "#8A8A8A", fontSize: 10 }}>{expanded ? "▲" : "▼"}</span>
         </p>
-        <span style={{ color: "#8A8A8A", fontSize: 10 }}>{layoutMeta(boat.layout).label}</span>
+        <span style={{ color: "#8A8A8A", fontSize: 9.5 }}>{layoutMeta(boat.layout).label}</span>
       </div>
 
       {expanded && (
-        <div style={{ marginTop: 12 }}>
-          {members.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 12 }}>Sin remeros en esta tripulación.</p>}
-          {members.map(m => (
-            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <p style={{ color: "#ADADAD", fontSize: 12.5, margin: 0, flex: 1 }}>{m.nickname || m.name}</p>
-              <input
-                defaultValue={values[m.id] || ""}
-                onBlur={e => { if (e.target.value !== (values[m.id] || "")) onSetValue(boat.id, m.id, e.target.value); }}
-                disabled={!editable}
-                placeholder="Sin medida"
-                style={{ ...inputStyle, padding: "9px 10px", fontSize: 16, width: 130, opacity: editable ? 1 : 0.6 }}
-              />
+        <div style={{ marginTop: 10 }}>
+          {members.length === 0 ? (
+            <p style={{ color: "#8A8A8A", fontSize: 12 }}>Sin remeros en esta tripulación.</p>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div>
+                <p style={{ color: "#E61E29", fontSize: 9.5, textTransform: "uppercase", fontWeight: 700, margin: "0 0 6px" }}>Babor</p>
+                {babor.map(m => (
+                  <MeasurementRow key={m.id} m={m} value={values[m.id]} editable={editable} onSetValue={(id, v) => onSetValue(boat.id, id, v)} />
+                ))}
+              </div>
+              <div>
+                <p style={{ color: "#3EA55A", fontSize: 9.5, textTransform: "uppercase", fontWeight: 700, margin: "0 0 6px" }}>Estribor</p>
+                {estribor.map(m => (
+                  <MeasurementRow key={m.id} m={m} value={values[m.id]} editable={editable} onSetValue={(id, v) => onSetValue(boat.id, id, v)} />
+                ))}
+              </div>
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
