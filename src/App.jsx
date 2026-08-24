@@ -1951,7 +1951,7 @@ export default function ViradaPrototype() {
                 <CalendarScreen sessions={coachUpcoming} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} myId={currentUserId} teamName={teamName} showTeamLabel={coachScope === "club"} />
               )}
               {screen === "sessionRower" && openSession && (
-                <SessionRowerScreen session={openSession} onBack={() => setScreen(role === "rower" ? "home" : "calendar")} onToggle={toggleSignup} onSendAlert={sendCantComeAlert} myAlerts={openSession ? alertsFor(openSession.id).filter(a => a.rowerId === currentUserId) : []} myId={currentUserId} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} photoOf={(id) => profilePhotos[id] || null} />
+                <SessionRowerScreen session={openSession} onBack={() => setScreen(role === "rower" ? "home" : "calendar")} onToggle={toggleSignup} onSendAlert={sendCantComeAlert} myAlerts={openSession ? alertsFor(openSession.id).filter(a => a.rowerId === currentUserId) : []} myId={currentUserId} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} photoOf={(id) => profilePhotos[id] || null} fleetBoats={openSession ? fleetBoatsFor(openSession.teamId) : []} boatMeasurements={boatMeasurements} />
               )}
               {screen === "sessionCoach" && openSession && (
                 <SessionCoachScreen
@@ -1986,6 +1986,7 @@ export default function ViradaPrototype() {
                   onToggleSignup={toggleSignup}
                   photoOf={(id) => profilePhotos[id] || null}
                   fleetBoats={fleetBoatsFor(openSession.teamId)}
+                  boatMeasurements={boatMeasurements}
                 />
               )}
               {screen === "notifications" && (
@@ -4719,7 +4720,7 @@ function CalendarScreen({ sessions, onOpen, onToggle, myId, teamName, showTeamLa
   );
 }
 
-function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, myId, nameOf, nicknameOf, sideOf, photoOf }) {
+function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, myId, nameOf, nicknameOf, sideOf, photoOf, fleetBoats, boatMeasurements }) {
   const myCrew = session.crews.find(c => c.seats.includes(myId) || c.patron === myId || c.zodiac.includes(myId) || c.reserves.includes(myId));
   const closedCrews = session.crews.filter(c => c.status === "cerrado");
   const seatIdx = myCrew ? myCrew.seats.indexOf(myId) : -1;
@@ -4785,7 +4786,7 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
               {mySeatLabel() && <p className="vir-mono" style={{ color: "#ADADAD", fontSize: 12.5, margin: "3px 0 0" }}>{mySeatLabel()}</p>}
             </div>
           </div>
-          <BoatDiagram crew={myCrew} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} />
+          <BoatDiagram crew={myCrew} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} fleetBoats={fleetBoats} boatMeasurements={boatMeasurements} />
           {(isCalled || isReserve) && (
             myAlerts && myAlerts.length > 0 ? (
               <p style={{ color: "#8A8A8A", fontSize: 12, marginTop: 16, textAlign: "center" }}>
@@ -4816,7 +4817,7 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
   );
 }
 
-function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, waterStatsFor, gymStatsFor, editable, myId, selected, setSelected, onAssign, onClear, onClose, onReopen, onRemoveCrew, onSetBoat, onSetOars, overlapFor, fleetBoats }) {
+function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, waterStatsFor, gymStatsFor, editable, myId, selected, setSelected, onAssign, onClear, onClose, onReopen, onRemoveCrew, onSetBoat, onSetOars, overlapFor, fleetBoats, boatMeasurements }) {
   const [preEditRoster, setPreEditRoster] = useState(null);
   const handleReopen = () => {
     setPreEditRoster({ seats: [...crew.seats], patron: crew.patron, reserves: [...crew.reserves], zodiac: [...crew.zodiac] });
@@ -4900,7 +4901,7 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
             })}
           </div>
 
-          <BoatDiagram crew={crew} selected={selected} onAssign={(c, type, idx) => onAssign(session, c, type, idx)} onClear={(c, type, idx) => onClear(session, c, type, idx)} readOnly={!editable} nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} />
+          <BoatDiagram crew={crew} selected={selected} onAssign={(c, type, idx) => onAssign(session, c, type, idx)} onClear={(c, type, idx) => onClear(session, c, type, idx)} readOnly={!editable} nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} fleetBoats={fleetBoats} boatMeasurements={boatMeasurements} />
 
           {editable && (
             <button className="vir-btn" disabled={filled === 0} onClick={handleClose} style={{ ...primaryBtn, marginTop: 14, padding: "10px 0", fontSize: 12.5, opacity: filled === 0 ? 0.4 : 1 }}>
@@ -4912,7 +4913,7 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
         <>
           <Badge text="Cerrado" tone="closed" />
           <div style={{ marginTop: 12 }}>
-            <BoatDiagram crew={crew} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} />
+            <BoatDiagram crew={crew} readOnly nicknameOf={nicknameOf} nameOf={nameOf} sideOf={sideOf} photoOf={photoOf} fleetBoats={fleetBoats} boatMeasurements={boatMeasurements} />
           </div>
           {editable && (
             <button className="vir-btn" onClick={handleReopen} style={{ ...ghostBtn, marginTop: 12, padding: "9px 0", fontSize: 12 }}>
@@ -4925,7 +4926,7 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
   );
 }
 
-function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, onAddCrew, onRemoveCrew, onSetCrewBoat, onSetCrewOars, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert, myId, onToggleSignup, photoOf, overlapFor, fleetBoats }) {
+function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, onAddCrew, onRemoveCrew, onSetCrewBoat, onSetCrewOars, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert, myId, onToggleSignup, photoOf, overlapFor, fleetBoats, boatMeasurements }) {
   const [newBoatName, setNewBoatName] = useState("");
   const availableBoats = fleetBoats.filter(b => !session.crews.some(c => c.boat === b.name));
 
@@ -5004,6 +5005,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
             onSetOars={(c, oars) => onSetCrewOars(session.id, c.id, oars)}
             overlapFor={overlapFor}
             fleetBoats={fleetBoats}
+            boatMeasurements={boatMeasurements}
           />
         ))}
       </div>
@@ -5033,7 +5035,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
   );
 }
 
-function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, nameOf, sideOf, photoOf }) {
+function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, nameOf, sideOf, photoOf, fleetBoats, boatMeasurements }) {
   const handleSlot = (type, idx, occupied) => {
     if (readOnly) return;
     if (occupied) { onClear(crew, type, idx); return; }
@@ -5042,12 +5044,16 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
   const canClick = (occupied) => !readOnly && (occupied || !!selected);
   const colorFor = (rowerId) => (sideOf && rowerId && SIDE_META[sideOf(rowerId)]) ? SIDE_META[sideOf(rowerId)].color : "#E61E29";
   const centerX = 150;
+  // Medida que el entrenador haya puesto para este remero en este bote concreto (a través de "Medidas")
+  const boatId = fleetBoats ? fleetBoats.find(b => b.name === crew.boat)?.id : null;
+  const measFor = (rid) => (boatId && boatMeasurements && boatMeasurements[boatId]) ? boatMeasurements[boatId][rid] : null;
 
   // Avatar redondo con aro del color de babor/estribor/ambos/patrón; si no hay foto, círculo de color con iniciales
   const Avatar = ({ x, y, r, filled, rowerId, label, nameBelow }) => {
     const color = colorFor(rowerId);
     const photo = filled && photoOf ? photoOf(rowerId) : null;
     const clipId = `bd-clip-${x}-${y}`;
+    const measurement = filled ? measFor(rowerId) : null;
     return (
       <g style={{ cursor: canClick(filled) ? "pointer" : "default" }} onClick={() => handleSlot(label.type, label.idx, filled)}>
         {photo ? (
@@ -5069,7 +5075,9 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
           </g>
         )}
         {filled && nameBelow && (
-          <text x={x} y={y + r + 15} textAnchor="middle" fontSize="11" fontWeight="600" fill="#F5F5F5">{crewLabel(rowerId, nicknameOf, nameOf)}</text>
+          <text x={x} y={y + r + 15} textAnchor="middle" fontSize="11" fontWeight="600" fill="#F5F5F5">
+            {crewLabel(rowerId, nicknameOf, nameOf)}{measurement ? ` · ${measurement}` : ""}
+          </text>
         )}
       </g>
     );
