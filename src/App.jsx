@@ -456,6 +456,18 @@ export default function ViradaPrototype() {
         });
         setBoatMeasurements(byBoat);
       }
+      const { data: notesRowsData } = await supabase.from("reminder_notes").select("*");
+      if (notesRowsData) {
+        const clubNote = notesRowsData.find(n => n.team_id === null);
+        setClubReminderNote(clubNote ? { id: clubNote.id, text: clubNote.text } : null);
+        const teamNotes = {};
+        notesRowsData.filter(n => n.team_id !== null).forEach(n => { teamNotes[n.team_id] = { id: n.id, text: n.text }; });
+        setTeamReminderNotes(teamNotes);
+      }
+      const { data: broadcastsData } = await supabase.from("reminder_broadcasts").select("*").order("created_at", { ascending: false });
+      if (broadcastsData) {
+        setBroadcasts(broadcastsData.map(mapBroadcastRow));
+      }
   };
 
   useEffect(() => {
@@ -600,6 +612,24 @@ export default function ViradaPrototype() {
     });
     return () => { authListener?.subscription?.unsubscribe(); };
   }, []);
+
+  // Comprueba cada minuto si hay avisos programados cuya hora ya ha llegado, y los manda.
+  // Como no hay un reloj de servidor detrás, se envían la próxima vez que un club/entrenador
+  // tenga la app abierta después de esa hora, no en el segundo exacto.
+  useEffect(() => {
+    if (!(role === "club" || role === "coach" || role === "admin")) return;
+    const checkAndSend = () => {
+      const now = new Date();
+      broadcasts.forEach(b => {
+        if (!b.sentAt && b.scheduledFor && new Date(b.scheduledFor) <= now) {
+          dispatchBroadcast(b);
+        }
+      });
+    };
+    checkAndSend();
+    const interval = setInterval(checkAndSend, 60000);
+    return () => clearInterval(interval);
+  }, [role, broadcasts]);
 
   const setNewPasswordAfterRecovery = async (newPassword) => {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
@@ -1226,6 +1256,96 @@ export default function ViradaPrototype() {
     flash("Notas guardadas");
   };
 
+  // RECORDATORIOS: la nota fija del club (visible a todos) y la de cada equipo (visible a sus remeros)
+  const [clubReminderNote, setClubReminderNote] = useState(null); // {id, text} | null
+  const [teamReminderNotes, setTeamReminderNotes] = useState({}); // { [teamId]: {id, text} }
+  const setClubNote = async (text) => {
+    if (clubReminderNote) {
+      const { error } = await supabase.from("reminder_notes").update({ text, updated_at: new Date().toISOString() }).eq("id", clubReminderNote.id);
+      if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
+      setClubReminderNote({ id: clubReminderNote.id, text });
+    } else {
+      const { data, error } = await supabase.from("reminder_notes").insert({ club_id: currentClubId, team_id: null, text }).select().single();
+      if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
+      setClubReminderNote({ id: data.id, text });
+    }
+    flash("Recordatorio del club actualizado");
+  };
+  const removeClubNote = async () => {
+    if (!clubReminderNote) return;
+    const { error } = await supabase.from("reminder_notes").delete().eq("id", clubReminderNote.id);
+    if (error) { flash("No se pudo eliminar. Inténtalo de nuevo."); return; }
+    setClubReminderNote(null);
+    flash("Recordatorio del club eliminado");
+  };
+  const setTeamNote = async (teamId, text) => {
+    const existing = teamReminderNotes[teamId];
+    if (existing) {
+      const { error } = await supabase.from("reminder_notes").update({ text, updated_at: new Date().toISOString() }).eq("id", existing.id);
+      if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
+      setTeamReminderNotes(prev => ({ ...prev, [teamId]: { id: existing.id, text } }));
+    } else {
+      const { data, error } = await supabase.from("reminder_notes").insert({ club_id: currentClubId, team_id: teamId, text }).select().single();
+      if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
+      setTeamReminderNotes(prev => ({ ...prev, [teamId]: { id: data.id, text } }));
+    }
+    flash("Recordatorio del equipo actualizado");
+  };
+  const removeTeamNote = async (teamId) => {
+    const existing = teamReminderNotes[teamId];
+    if (!existing) return;
+    const { error } = await supabase.from("reminder_notes").delete().eq("id", existing.id);
+    if (error) { flash("No se pudo eliminar. Inténtalo de nuevo."); return; }
+    setTeamReminderNotes(prev => { const next = { ...prev }; delete next[teamId]; return next; });
+    flash("Recordatorio del equipo eliminado");
+  };
+
+  // Avisos difusores: mismo mecanismo que las notificaciones normales, pero se pueden mandar
+  // tantas veces como se quiera, a un equipo o a todo el club, y programarse para más adelante
+  const [broadcasts, setBroadcasts] = useState([]); // [{id, clubId, teamId, audience, text, scheduledFor, sentAt}]
+  const mapBroadcastRow = (b) => ({
+    id: b.id, clubId: b.club_id, teamId: b.team_id, audience: b.audience, text: b.text,
+    scheduledFor: b.scheduled_for, sentAt: b.sent_at,
+  });
+  const recipientsFor = (broadcast) => {
+    if (broadcast.teamId) {
+      return assignedUsers.filter(u => roleOf(u.id) === "rower" && teamOf(u.id) === broadcast.teamId).map(u => u.id);
+    }
+    return assignedUsers.filter(u => {
+      const r = roleOf(u.id);
+      if (broadcast.audience === "coaches") return r === "coach";
+      if (broadcast.audience === "rowers") return r === "rower";
+      return r === "coach" || r === "rower";
+    }).map(u => u.id);
+  };
+  const dispatchBroadcast = async (broadcast) => {
+    const recipients = recipientsFor(broadcast);
+    if (recipients.length > 0) {
+      const { error } = await supabase.from("notifications").insert(
+        recipients.map(rid => ({ rower_id: rid, session_id: null, text: `📌 ${broadcast.text}` }))
+      ).select();
+      if (error) { flash("El aviso se guardó, pero hubo un problema al enviarlo a todos."); }
+    }
+    const sentAt = new Date().toISOString();
+    await supabase.from("reminder_broadcasts").update({ sent_at: sentAt }).eq("id", broadcast.id);
+    setBroadcasts(prev => prev.map(b => b.id === broadcast.id ? { ...b, sentAt } : b));
+  };
+  const sendBroadcast = async ({ teamId, audience, text, scheduledFor }) => {
+    const { data, error } = await supabase.from("reminder_broadcasts").insert({
+      club_id: currentClubId, team_id: teamId || null, audience: teamId ? "rowers" : audience, text,
+      scheduled_for: scheduledFor || null,
+    }).select().single();
+    if (error) { flash("No se pudo crear el aviso. Inténtalo de nuevo."); return; }
+    const mapped = mapBroadcastRow(data);
+    setBroadcasts(prev => [mapped, ...prev]);
+    if (!scheduledFor) {
+      await dispatchBroadcast(mapped);
+      flash("Aviso enviado");
+    } else {
+      flash("Aviso programado");
+    }
+  };
+
   // MEDIDAS: botes con la medida de cada remero, a cargo del entrenador/club
   // BOTES: la flota real del equipo (nombre + disposición), gestionada por el entrenador/club.
   // Se usa tanto para elegir bote al montar un entreno de agua como para Medidas.
@@ -1640,11 +1760,12 @@ export default function ViradaPrototype() {
     if (error) flash("No se pudo eliminar el aviso. Inténtalo de nuevo.");
   };
   const openNotificationSession = (n, forRole) => {
+    markNotificationRead(n.id, forRole);
+    if (!n.sessionId) return; // aviso general (recordatorio), sin entreno al que ir
     const session = sessions.find(s => s.id === n.sessionId);
     if (!session) { flash("Ese entreno ya no está disponible."); return; }
     setOpenSession(session);
     setScreen(forRole === "rower" ? "sessionRower" : "sessionCoach");
-    markNotificationRead(n.id, forRole);
   };
 
   const Logo = ({ size = 22 }) => (
@@ -1725,7 +1846,7 @@ export default function ViradaPrototype() {
                 />
               )}
               {screen === "home" && role === "coach" && (
-                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} onOpenMeasurements={() => setScreen("medidasCoach")} onOpenFleet={() => setScreen("botesCoach")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} />
+                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} onOpenMeasurements={() => setScreen("medidasCoach")} onOpenFleet={() => setScreen("botesCoach")} onOpenReminders={() => setScreen("remindersCoach")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} />
               )}
               {screen === "coachPlan" && (role === "coach" || role === "admin") && (
                 <CoachPlanScreen
@@ -1815,6 +1936,37 @@ export default function ViradaPrototype() {
                   onBack={() => setScreen("home")}
                 />
               )}
+              {screen === "remindersClub" && role === "club" && (
+                <ClubRemindersScreen
+                  note={clubReminderNote}
+                  onSaveNote={setClubNote}
+                  onRemoveNote={removeClubNote}
+                  broadcasts={broadcasts.filter(b => b.teamId === null)}
+                  onSend={(payload) => sendBroadcast({ ...payload, teamId: null })}
+                  onBack={() => setScreen("home")}
+                />
+              )}
+              {screen === "remindersCoach" && (role === "coach" || role === "admin") && (
+                <CoachRemindersScreen
+                  teamId={coachScope}
+                  teams={clubTeams}
+                  setScope={setCoachScope}
+                  note={coachScope !== "club" ? teamReminderNotes[coachScope] : null}
+                  onSaveNote={(text) => setTeamNote(coachScope, text)}
+                  onRemoveNote={() => removeTeamNote(coachScope)}
+                  broadcasts={broadcasts.filter(b => b.teamId === coachScope)}
+                  onSend={(payload) => sendBroadcast({ ...payload, teamId: coachScope })}
+                  editable={role === "admin" ? true : canManage(coachScope)}
+                  onBack={() => setScreen("home")}
+                />
+              )}
+              {screen === "recordatorios" && role === "rower" && (
+                <RowerRemindersScreen
+                  clubNote={clubReminderNote}
+                  teamNote={teamReminderNotes[teamOf(currentUserId)]}
+                  onBack={() => setScreen("home")}
+                />
+              )}
               {screen === "coachTeamStats" && (role === "coach" || role === "admin") && (
                 <CoachTeamStatsScreen
                   onBack={() => setScreen("home")}
@@ -1856,6 +2008,7 @@ export default function ViradaPrototype() {
                   onManageTeams={() => setScreen("teams")}
                   onManageUsers={() => setScreen("users")}
                   onOpenRegattas={() => setScreen("regattas")}
+                  onOpenReminders={() => setScreen("remindersClub")}
                   clubDisplayName={clubDisplayName}
                   clubCode={clubCode}
                   coachCount={[...ROWERS, ...clubAssignedUsers].filter(p => roleOf(p.id) === "coach").length}
@@ -2619,6 +2772,12 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
         { id: "regattas", label: "Calendario de regatas", sub: "Fechas, dosier, horarios y resultados", icon: KeyRound },
       ],
     },
+    {
+      label: "Club",
+      tiles: [
+        { id: "recordatorios", label: "Recordatorios", sub: "Notas del club y de tu equipo", icon: Bell },
+      ],
+    },
   ];
 
   return (
@@ -2690,7 +2849,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
   );
 }
 
-function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenInformes, onOpenMeasurements, onOpenFleet, coachName, teamName, showTeamLabel }) {
+function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenInformes, onOpenMeasurements, onOpenFleet, onOpenReminders, coachName, teamName, showTeamLabel }) {
   return (
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={`Hola, ${coachName} · ${CLUB_NAME}`}>Planificación de botes</SectionTitle>
@@ -2746,10 +2905,17 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
           </div>
           <ChevronRight size={18} color="#8A8A8A" />
         </div>
-        <div className="vir-btn" onClick={onOpenRegattas} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="vir-btn" onClick={onOpenRegattas} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
             <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Calendario de regatas</p>
             <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Fechas, dosieres, horarios y resultados</p>
+          </div>
+          <ChevronRight size={18} color="#8A8A8A" />
+        </div>
+        <div className="vir-btn" onClick={onOpenReminders} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Recordatorios</p>
+            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Nota fija para tu equipo, y avisos puntuales</p>
           </div>
           <ChevronRight size={18} color="#8A8A8A" />
         </div>
@@ -2955,7 +3121,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
   );
 }
 
-function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, clubDisplayName, clubCode, coachCount, rowerCount }) {
+function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, onOpenReminders, clubDisplayName, clubCode, coachCount, rowerCount }) {
   return (
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={`Hola, ${clubDisplayName}`}>Panel del club</SectionTitle>
@@ -2990,10 +3156,18 @@ function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, clubDis
           <ChevronRight size={18} color="#8A8A8A" />
         </div>
 
-        <div className="vir-btn" onClick={onOpenRegattas} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="vir-btn" onClick={onOpenRegattas} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
             <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Calendario de regatas</p>
             <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Fechas, dosieres, horarios y resultados</p>
+          </div>
+          <ChevronRight size={18} color="#8A8A8A" />
+        </div>
+
+        <div className="vir-btn" onClick={onOpenReminders} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Recordatorios</p>
+            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Nota fija para todos, y avisos puntuales</p>
           </div>
           <ChevronRight size={18} color="#8A8A8A" />
         </div>
@@ -3771,6 +3945,220 @@ function MeasurementBoatCard({ boat, members, measurements, editable, onSetValue
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Compone y programa un aviso puntual; se reutiliza en el club y en el entrenador
+function BroadcastComposer({ onSend, audienceOptions }) {
+  const [text, setText] = useState("");
+  const [audience, setAudience] = useState(audienceOptions ? audienceOptions[0].id : "all");
+  const [scheduling, setScheduling] = useState(false);
+  const [dateInput, setDateInput] = useState("");
+  const [timeInput, setTimeInput] = useState("");
+
+  const scheduledFor = () => {
+    if (!scheduling || !dateInput || !timeInput) return null;
+    return new Date(`${dateInput}T${timeInput}:00`).toISOString();
+  };
+  const canSend = text.trim().length > 0 && (!scheduling || (dateInput && timeInput));
+
+  const submit = () => {
+    onSend({ audience: audienceOptions ? audience : undefined, text: text.trim(), scheduledFor: scheduledFor() });
+    setText(""); setScheduling(false); setDateInput(""); setTimeInput("");
+  };
+
+  return (
+    <div style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 12, padding: 14, marginBottom: 20 }}>
+      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Enviar un aviso</p>
+      <textarea
+        value={text} onChange={e => setText(e.target.value)}
+        placeholder="Escribe el aviso..." rows={3}
+        style={{ ...inputStyle, fontSize: 16, padding: "11px", width: "100%", resize: "vertical", marginBottom: 10 }}
+      />
+      {audienceOptions && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          {audienceOptions.map(a => {
+            const active = audience === a.id;
+            return (
+              <button key={a.id} className="vir-btn" onClick={() => setAudience(a.id)} style={{
+                flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 11.5, fontWeight: active ? 700 : 400,
+                background: active ? "#E61E29" : "#404040", border: `1px solid ${active ? "#E61E29" : "#565656"}`, color: "#F5F5F5",
+              }}>{a.label}</button>
+            );
+          })}
+        </div>
+      )}
+      <button className="vir-btn" onClick={() => setScheduling(!scheduling)} style={{ background: "transparent", color: "#ADADAD", fontSize: 11.5, textDecoration: "underline", marginBottom: scheduling ? 10 : 12, display: "block" }}>
+        {scheduling ? "Cancelar programación — enviar ahora" : "Programar para más adelante"}
+      </button>
+      {scheduling && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <input type="date" value={dateInput} onChange={e => setDateInput(e.target.value)} style={{ ...inputStyle, fontSize: 15, padding: "10px", flex: 1 }} />
+          <input type="time" value={timeInput} onChange={e => setTimeInput(e.target.value)} style={{ ...inputStyle, fontSize: 15, padding: "10px", flex: 1 }} />
+        </div>
+      )}
+      <button className="vir-btn" disabled={!canSend} onClick={submit} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13, opacity: canSend ? 1 : 0.4 }}>
+        {scheduling ? "Programar aviso" : "Enviar ahora"}
+      </button>
+    </div>
+  );
+}
+
+function BroadcastLog({ items }) {
+  if (items.length === 0) return <p style={{ color: "#8A8A8A", fontSize: 12.5 }}>Todavía no se ha enviado ningún aviso.</p>;
+  const fmt = (iso) => new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  return (
+    <>
+      {items.map(b => (
+        <div key={b.id} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+          <p style={{ color: "#F5F5F5", fontSize: 12.5, margin: "0 0 6px", lineHeight: 1.4 }}>{b.text}</p>
+          <p style={{ color: b.sentAt ? "#8A8A8A" : "#E67E22", fontSize: 10.5, margin: 0 }}>
+            {b.sentAt ? `Enviado · ${fmt(b.sentAt)}` : `Programado para ${fmt(b.scheduledFor)}`}
+          </p>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function ClubRemindersScreen({ note, onSaveNote, onRemoveNote, broadcasts, onSend, onBack }) {
+  const [editing, setEditing] = useState(false);
+  const [input, setInput] = useState(note?.text || "");
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Recordatorios</h2>
+      <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>La nota se ve fija para todos — entrenadores y remeros. Los avisos se mandan como notificación.</p>
+
+      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Nota fija del club</p>
+      {editing ? (
+        <div style={{ marginBottom: 20 }}>
+          <textarea value={input} onChange={e => setInput(e.target.value)} rows={3} placeholder="Ej. Recordad traer el chaleco los sábados" style={{ ...inputStyle, fontSize: 16, padding: "11px", width: "100%", resize: "vertical", marginBottom: 10 }} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="vir-btn" onClick={() => { onSaveNote(input.trim()); setEditing(false); }} style={{ ...primaryBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>Guardar</button>
+            <button className="vir-btn" onClick={() => { setInput(note?.text || ""); setEditing(false); }} style={{ ...ghostBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
+          {note ? (
+            <>
+              <p style={{ color: "#F5F5F5", fontSize: 13, margin: "0 0 10px", lineHeight: 1.4 }}>{note.text}</p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="vir-btn" onClick={() => { setInput(note.text); setEditing(true); }} style={{ background: "transparent", color: "#ADADAD", fontSize: 11.5, textDecoration: "underline" }}>Editar</button>
+                <button className="vir-btn" onClick={() => { if (window.confirm("¿Quitar la nota fija del club?")) onRemoveNote(); }} style={{ background: "transparent", color: "#FF8890", fontSize: 11.5, textDecoration: "underline" }}>Eliminar</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 10px" }}>Todavía no hay ninguna nota fija.</p>
+              <button className="vir-btn" onClick={() => { setInput(""); setEditing(true); }} style={{ background: "transparent", color: "#E61E29", fontSize: 12, fontWeight: 600 }}>+ Añadir nota</button>
+            </>
+          )}
+        </div>
+      )}
+
+      <BroadcastComposer
+        audienceOptions={[{ id: "all", label: "Todos" }, { id: "coaches", label: "Entrenadores" }, { id: "rowers", label: "Remeros" }]}
+        onSend={onSend}
+      />
+
+      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Avisos del club</p>
+      <BroadcastLog items={broadcasts} />
+    </div>
+  );
+}
+
+function CoachRemindersScreen({ teamId, teams, setScope, note, onSaveNote, onRemoveNote, broadcasts, onSend, editable, onBack }) {
+  const [editing, setEditing] = useState(false);
+  const [input, setInput] = useState(note?.text || "");
+
+  if (teamId === "club") {
+    return (
+      <div style={{ padding: "16px 20px 28px" }}>
+        <BackRow onBack={onBack} />
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Recordatorios</h2>
+        <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Elige una tripulación para gestionar sus recordatorios.</p>
+        {teams.map(t => (
+          <div key={t.id} className="vir-btn" onClick={() => setScope(t.id)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.name}</p>
+            <ChevronRight size={18} color="#8A8A8A" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const teamLabel = teams.find(t => t.id === teamId)?.name || "";
+
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Recordatorios</h2>
+      <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+        Tripulación: <span style={{ color: "#E61E29", fontWeight: 600 }}>{teamLabel}</span> — visible solo a sus remeros
+      </p>
+      {!editable && (
+        <p style={{ color: "#E67E22", fontSize: 12, margin: "0 0 16px", lineHeight: 1.4 }}>
+          🔒 Solo lectura — el club no te ha dado permiso para gestionar esta tripulación.
+        </p>
+      )}
+
+      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Nota fija del equipo</p>
+      {editing ? (
+        <div style={{ marginBottom: 20 }}>
+          <textarea value={input} onChange={e => setInput(e.target.value)} rows={3} placeholder="Ej. Este sábado entreno a las 8h en vez de las 9h" style={{ ...inputStyle, fontSize: 16, padding: "11px", width: "100%", resize: "vertical", marginBottom: 10 }} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="vir-btn" onClick={() => { onSaveNote(input.trim()); setEditing(false); }} style={{ ...primaryBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>Guardar</button>
+            <button className="vir-btn" onClick={() => { setInput(note?.text || ""); setEditing(false); }} style={{ ...ghostBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
+          {note ? (
+            <>
+              <p style={{ color: "#F5F5F5", fontSize: 13, margin: "0 0 10px", lineHeight: 1.4 }}>{note.text}</p>
+              {editable && (
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="vir-btn" onClick={() => { setInput(note.text); setEditing(true); }} style={{ background: "transparent", color: "#ADADAD", fontSize: 11.5, textDecoration: "underline" }}>Editar</button>
+                  <button className="vir-btn" onClick={() => { if (window.confirm("¿Quitar la nota fija del equipo?")) onRemoveNote(); }} style={{ background: "transparent", color: "#FF8890", fontSize: 11.5, textDecoration: "underline" }}>Eliminar</button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: editable ? "0 0 10px" : 0 }}>Todavía no hay ninguna nota fija.</p>
+              {editable && <button className="vir-btn" onClick={() => { setInput(""); setEditing(true); }} style={{ background: "transparent", color: "#E61E29", fontSize: 12, fontWeight: 600 }}>+ Añadir nota</button>}
+            </>
+          )}
+        </div>
+      )}
+
+      {editable && <BroadcastComposer onSend={onSend} />}
+
+      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Avisos de este equipo</p>
+      <BroadcastLog items={broadcasts} />
+    </div>
+  );
+}
+
+function RowerRemindersScreen({ clubNote, teamNote, onBack }) {
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Recordatorios</h2>
+      <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 20px", lineHeight: 1.4 }}>🔒 Solo consulta — las gestionan el club y tu entrenador.</p>
+
+      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Del club</p>
+      <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
+        <p style={{ color: clubNote ? "#F5F5F5" : "#8A8A8A", fontSize: 13, margin: 0, lineHeight: 1.4 }}>{clubNote?.text || "Sin nota del club por ahora."}</p>
+      </div>
+
+      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>De tu equipo</p>
+      <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px" }}>
+        <p style={{ color: teamNote ? "#F5F5F5" : "#8A8A8A", fontSize: 13, margin: 0, lineHeight: 1.4 }}>{teamNote?.text || "Sin nota de tu equipo por ahora."}</p>
+      </div>
     </div>
   );
 }
@@ -5603,6 +5991,7 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
             { id: "zonasErgo", label: "Datos ergo", sub: "Registra tus tiempos y ritmos de ergómetro" },
             { id: "medidas", label: "Medidas", sub: "Tus medidas de bote, a cargo del entrenador" },
             { id: "notas", label: "Notas", sub: "Tus apuntes personales, privados" },
+            { id: "recordatorios", label: "Recordatorios", sub: "Notas del club y de tu equipo" },
             { id: "estadisticas", label: "Estadísticas", sub: "Asistencia, agua y gimnasio, todo junto" },
           ].map(item => (
             <div key={item.id} className="vir-btn" onClick={() => onOpenTraining(item.id)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
