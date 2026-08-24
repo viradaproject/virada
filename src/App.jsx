@@ -47,17 +47,13 @@ const randomClubCode = () => String(Math.floor(Math.random() * 900) + 100); // c
 const DEFAULT_SESSION_TITLE = "ENTRENO DE AGUA";
 const TIME_OPTIONS = ["7:00 – 8:30", "8:00 – 9:30", "9:00 – 10:30", "17:00 – 18:30", "18:00 – 19:30", "19:00 – 20:30", "20:00 – 21:30"];
 
-const BOATS = ["Alarona", "Gaudir", "Llaüt Nou", "Llaüt Vell", "Batel 1", "Batel 2"];
-const OARS = ["Amilibia", "Braka 1.0", "Braka 2.0", "Ami Batel", "Braka Batel"];
-const BOAT_OARS = {
-  "Alarona": ["Amilibia", "Braka 1.0", "Braka 2.0"],
-  "Gaudir": ["Amilibia", "Braka 1.0", "Braka 2.0"],
-  "Llaüt Nou": ["Amilibia", "Braka 1.0", "Braka 2.0"],
-  "Llaüt Vell": ["Amilibia", "Braka 1.0", "Braka 2.0"],
-  "Batel 1": ["Ami Batel", "Braka Batel"],
-  "Batel 2": ["Ami Batel", "Braka Batel"],
-};
-const oarsOptionsFor = (boat) => BOAT_OARS[boat] || OARS;
+const LAYOUTS = [
+  { id: "llagut8", label: "Llagut · 8 puestos", oars: ["Amilibia", "Braka 1.0", "Braka 2.0"] },
+  { id: "llaut9", label: "Llaüt · 9 puestos", oars: ["Amilibia", "Braka 1.0", "Braka 2.0"] },
+  { id: "batel4", label: "Bàtel · 4 puestos", oars: ["Ami Batel", "Braka Batel"] },
+];
+const layoutMeta = (layout) => LAYOUTS.find(l => l.id === layout) || LAYOUTS[0];
+const oarsOptionsForLayout = (layout) => layoutMeta(layout).oars;
 
 const parseTimeRange = (str) => {
   if (!str) return null;
@@ -201,7 +197,7 @@ const mapWaterSessionRow = (s) => ({
   crews: [], // se rellena aparte desde session_crews
 });
 const mapCrewRow = (c) => ({
-  id: c.id, sessionId: c.session_id, boat: c.boat, oars: c.oars, status: c.status,
+  id: c.id, sessionId: c.session_id, boat: c.boat, layout: c.layout || "llagut8", oars: c.oars, status: c.status,
   seats: (c.seats && c.seats.length >= 8) ? [...c.seats, ...Array(Math.max(0, 9 - c.seats.length)).fill(null)] : Array(9).fill(null),
   patron: c.patron || null,
   reserves: (c.reserves && c.reserves.length === 2) ? c.reserves : [null, null],
@@ -221,10 +217,10 @@ const SEAT_LABELS = [
 const seatLabel = (i) => `${SEAT_LABELS[i].num} ${SEAT_LABELS[i].side}`;
 const seatShort = (i) => `${SEAT_LABELS[i].num}${SEAT_LABELS[i].side === "BABOR" ? "B" : "E"}`;
 const BATEL_SEAT_NUMS = ["1", "2", "3", "4"]; // idx 0-3, botel: puestos en línea sin babor/estribor
-const isBatel = (boat) => boat === "Batel 1" || boat === "Batel 2";
-const isLlaut9 = (boat) => boat === "Llaüt Nou" || boat === "Llaüt Vell";
-const seatShortForBoat = (boat, i) => isBatel(boat) ? BATEL_SEAT_NUMS[i] : seatShort(i);
-const seatLabelForBoat = (boat, i) => isBatel(boat) ? `Puesto ${BATEL_SEAT_NUMS[i]}` : seatLabel(i);
+const isBatel = (layout) => layout === "batel4";
+const isLlaut9 = (layout) => layout === "llaut9";
+const seatShortForBoat = (layout, i) => isBatel(layout) ? BATEL_SEAT_NUMS[i] : seatShort(i);
+const seatLabelForBoat = (layout, i) => isBatel(layout) ? `Puesto ${BATEL_SEAT_NUMS[i]}` : seatLabel(i);
 const firstName = (name) => name.split(" ")[0];
 const crewLabel = (id, nicknameOf, nameOf) => {
   const nick = nicknameOf ? nicknameOf(id) : null;
@@ -441,9 +437,9 @@ export default function ViradaPrototype() {
         notesData.forEach(n => { notes[n.rower_id] = n.text || ""; });
         setRowerNotes(notes);
       }
-      const { data: measBoatsData } = await supabase.from("measurement_boats").select("*");
-      if (measBoatsData) {
-        setMeasurementBoats(measBoatsData.map(b => ({ id: b.id, teamId: b.team_id, name: b.name })));
+      const { data: fleetBoatsData } = await supabase.from("fleet_boats").select("*");
+      if (fleetBoatsData) {
+        setFleetBoats(fleetBoatsData.map(b => ({ id: b.id, teamId: b.team_id, name: b.name, layout: b.layout })));
       }
       const { data: measData } = await supabase.from("boat_measurements").select("*");
       if (measData) {
@@ -995,6 +991,7 @@ export default function ViradaPrototype() {
     patchCrewLocal(sessionId, crewId, patch);
     const dbPatch = {};
     if ("boat" in patch) dbPatch.boat = patch.boat;
+    if ("layout" in patch) dbPatch.layout = patch.layout;
     if ("oars" in patch) dbPatch.oars = patch.oars;
     if ("status" in patch) dbPatch.status = patch.status;
     if ("seats" in patch) dbPatch.seats = patch.seats;
@@ -1007,9 +1004,9 @@ export default function ViradaPrototype() {
     if (!data || data.length === 0) { flash("No se pudo guardar: no tienes permiso sobre esta tripulación."); return false; }
     return true;
   };
-  const addCrew = async (session, boat) => {
+  const addCrew = async (session, fleetBoat) => {
     const { data, error } = await supabase.from("session_crews").insert({
-      session_id: session.id, boat, oars: null,
+      session_id: session.id, boat: fleetBoat.name, layout: fleetBoat.layout, oars: null,
       seats: Array(9).fill(null), patron: null, reserves: [null, null], zodiac: [null, null, null, null],
       status: "abierto",
     }).select().single();
@@ -1017,7 +1014,7 @@ export default function ViradaPrototype() {
     const newCrew = mapCrewRow(data);
     setSessions(prev => prev.map(s => s.id === session.id ? { ...s, crews: [...s.crews, newCrew] } : s));
     if (openSession && openSession.id === session.id) setOpenSession(prev => ({ ...prev, crews: [...prev.crews, newCrew] }));
-    flash(`${boat} añadido a este día`);
+    flash(`${fleetBoat.name} añadido a este día`);
   };
   const removeCrew = async (session, crewId) => {
     const { error } = await supabase.from("session_crews").delete().eq("id", crewId);
@@ -1083,7 +1080,7 @@ export default function ViradaPrototype() {
     const notes = assigned.map(rid => {
       let role = "reserva";
       const seatIdx = crew.seats.indexOf(rid);
-      if (seatIdx > -1) role = `puesto ${seatShortForBoat(crew.boat, seatIdx)}`;
+      if (seatIdx > -1) role = `puesto ${seatShortForBoat(crew.layout, seatIdx)}`;
       else if (crew.patron === rid) role = "patrón";
       else if (crew.zodiac.includes(rid)) role = "zodiac";
       return {
@@ -1196,27 +1193,25 @@ export default function ViradaPrototype() {
   };
 
   // MEDIDAS: botes con la medida de cada remero, a cargo del entrenador/club
-  const [measurementBoats, setMeasurementBoats] = useState([]); // [{id, teamId, name}]
-  const [boatMeasurements, setBoatMeasurements] = useState({}); // { [boatId]: { [rowerId]: value } }
-  const measurementBoatsFor = (teamId) => measurementBoats.filter(b => b.teamId === teamId);
-  const addMeasurementBoat = async (teamId, name) => {
-    const { data, error } = await supabase.from("measurement_boats").insert({ team_id: teamId, name }).select().single();
+  // BOTES: la flota real del equipo (nombre + disposición), gestionada por el entrenador/club.
+  // Se usa tanto para elegir bote al montar un entreno de agua como para Medidas.
+  const [fleetBoats, setFleetBoats] = useState([]); // [{id, teamId, name, layout}]
+  const fleetBoatsFor = (teamId) => fleetBoats.filter(b => b.teamId === teamId);
+  const addFleetBoat = async (teamId, name, layout) => {
+    const { data, error } = await supabase.from("fleet_boats").insert({ team_id: teamId, name, layout }).select().single();
     if (error) { flash("No se pudo añadir el bote. Inténtalo de nuevo."); return; }
-    setMeasurementBoats(prev => [...prev, { id: data.id, teamId: data.team_id, name: data.name }]);
-    flash(`Bote "${name}" añadido a Medidas`);
+    setFleetBoats(prev => [...prev, { id: data.id, teamId: data.team_id, name: data.name, layout: data.layout }]);
+    flash(`Bote "${name}" añadido a la flota`);
   };
-  const renameMeasurementBoat = async (boatId, name) => {
-    setMeasurementBoats(prev => prev.map(b => b.id === boatId ? { ...b, name } : b));
-    const { error } = await supabase.from("measurement_boats").update({ name }).eq("id", boatId);
-    if (error) flash("No se pudo renombrar el bote. Inténtalo de nuevo.");
-  };
-  const removeMeasurementBoat = async (boatId) => {
-    const { error } = await supabase.from("measurement_boats").delete().eq("id", boatId);
+  const removeFleetBoat = async (boatId) => {
+    const { error } = await supabase.from("fleet_boats").delete().eq("id", boatId);
     if (error) { flash("No se pudo eliminar el bote. Inténtalo de nuevo."); return; }
-    setMeasurementBoats(prev => prev.filter(b => b.id !== boatId));
+    setFleetBoats(prev => prev.filter(b => b.id !== boatId));
     setBoatMeasurements(prev => { const next = { ...prev }; delete next[boatId]; return next; });
-    flash("Bote eliminado de Medidas");
+    flash("Bote eliminado de la flota");
   };
+
+  const [boatMeasurements, setBoatMeasurements] = useState({}); // { [boatId]: { [rowerId]: value } }
   const setBoatMeasurement = async (boatId, rowerId, value) => {
     setBoatMeasurements(prev => ({ ...prev, [boatId]: { ...(prev[boatId] || {}), [rowerId]: value } }));
     const { error } = await supabase.from("boat_measurements").upsert(
@@ -1673,7 +1668,7 @@ export default function ViradaPrototype() {
                 />
               )}
               {screen === "home" && role === "coach" && (
-                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} onOpenMeasurements={() => setScreen("medidasCoach")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} />
+                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} onOpenMeasurements={() => setScreen("medidasCoach")} onOpenFleet={() => setScreen("botesCoach")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} />
               )}
               {screen === "coachPlan" && (role === "coach" || role === "admin") && (
                 <CoachPlanScreen
@@ -1742,16 +1737,26 @@ export default function ViradaPrototype() {
                   teamId={coachScope}
                   teams={clubTeams}
                   setScope={setCoachScope}
-                  boats={measurementBoatsFor(coachScope)}
+                  boats={fleetBoatsFor(coachScope)}
                   members={[...ROWERS, ...clubAssignedUsers]
                     .filter(p => roleOf(p.id) === "rower" && teamOf(p.id) === coachScope)
                     .map(p => ({ id: p.id, name: p.name || p.username, nickname: nicknameOf(p.id) }))}
                   measurements={boatMeasurements}
                   editable={role === "admin" ? true : canManage(coachScope)}
-                  onAddBoat={addMeasurementBoat}
-                  onRenameBoat={renameMeasurementBoat}
-                  onRemoveBoat={removeMeasurementBoat}
                   onSetValue={setBoatMeasurement}
+                  onBack={() => setScreen("home")}
+                />
+              )}
+              {screen === "botesCoach" && (role === "coach" || role === "admin") && (
+                <CoachFleetScreen
+                  teamId={coachScope}
+                  teams={clubTeams}
+                  setScope={setCoachScope}
+                  boats={fleetBoatsFor(coachScope)}
+                  sessions={coachScope === "club" ? [] : sessions.filter(s => s.teamId === coachScope)}
+                  editable={role === "admin" ? true : canManage(coachScope)}
+                  onAddBoat={addFleetBoat}
+                  onRemoveBoat={removeFleetBoat}
                   onBack={() => setScreen("home")}
                 />
               )}
@@ -1903,10 +1908,9 @@ export default function ViradaPrototype() {
                   onReopen={reopenCrew}
                   onAddCrew={addCrew}
                   onRemoveCrew={removeCrew}
-                  onSetCrewBoat={(sessionId, crew, boat) => {
-                    const validOars = oarsOptionsFor(boat);
-                    const oars = validOars.includes(crew.oars) ? crew.oars : null;
-                    updateCrew(sessionId, crew.id, { boat, oars });
+                  onSetCrewBoat={(sessionId, crew, fleetBoat) => {
+                    const oars = oarsOptionsForLayout(fleetBoat.layout).includes(crew.oars) ? crew.oars : null;
+                    updateCrew(sessionId, crew.id, { boat: fleetBoat.name, layout: fleetBoat.layout, oars });
                   }}
                   onSetCrewOars={(sessionId, crewId, oars) => updateCrew(sessionId, crewId, { oars })}
                   overlapFor={overlapFor}
@@ -1924,6 +1928,7 @@ export default function ViradaPrototype() {
                   myId={currentUserId}
                   onToggleSignup={toggleSignup}
                   photoOf={(id) => profilePhotos[id] || null}
+                  fleetBoats={fleetBoatsFor(openSession.teamId)}
                 />
               )}
               {screen === "notifications" && (
@@ -1998,7 +2003,7 @@ export default function ViradaPrototype() {
               )}
               {screen === "medidas" && role === "rower" && (
                 <RowerMeasurementsScreen
-                  boats={measurementBoatsFor(teamOf(currentUserId))}
+                  boats={fleetBoatsFor(teamOf(currentUserId))}
                   measurements={boatMeasurements}
                   myId={currentUserId}
                   onBack={() => setScreen("profile")}
@@ -2611,7 +2616,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
   );
 }
 
-function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenInformes, onOpenMeasurements, coachName, teamName, showTeamLabel }) {
+function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenInformes, onOpenMeasurements, onOpenFleet, coachName, teamName, showTeamLabel }) {
   return (
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={`Hola, ${coachName} · ${CLUB_NAME}`}>Planificación de botes</SectionTitle>
@@ -2657,6 +2662,13 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
           <div>
             <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Medidas</p>
             <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Medidas de cada remero por bote</p>
+          </div>
+          <ChevronRight size={18} color="#8A8A8A" />
+        </div>
+        <div className="vir-btn" onClick={onOpenFleet} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div>
+            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Botes</p>
+            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Crea o elimina la flota de esta tripulación</p>
           </div>
           <ChevronRight size={18} color="#8A8A8A" />
         </div>
@@ -3594,10 +3606,8 @@ function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended
   );
 }
 
-function MeasurementBoatCard({ boat, members, measurements, editable, onSetValue, onRename, onRemove }) {
+function MeasurementBoatCard({ boat, members, measurements, editable, onSetValue }) {
   const [expanded, setExpanded] = useState(true);
-  const [nameInput, setNameInput] = useState(boat.name);
-  const [renaming, setRenaming] = useState(false);
   const values = measurements[boat.id] || {};
 
   return (
@@ -3606,24 +3616,8 @@ function MeasurementBoatCard({ boat, members, measurements, editable, onSetValue
         <p className="vir-btn" onClick={() => setExpanded(!expanded)} style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 700, margin: 0, flex: 1, cursor: "pointer" }}>
           {boat.name} <span style={{ color: "#8A8A8A", fontSize: 11 }}>{expanded ? "▲" : "▼"}</span>
         </p>
-        {editable && (
-          <div style={{ display: "flex", gap: 4 }}>
-            <button className="vir-btn" onClick={() => { setNameInput(boat.name); setRenaming(!renaming); }} style={{ background: "transparent", color: "#ADADAD", padding: 4 }}>
-              <Pencil size={14} />
-            </button>
-            <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar el bote "${boat.name}" de Medidas? Se perderán todas las medidas registradas en él.`)) onRemove(boat.id); }} style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}>
-              <X size={14} />
-            </button>
-          </div>
-        )}
+        <span style={{ color: "#8A8A8A", fontSize: 10 }}>{layoutMeta(boat.layout).label}</span>
       </div>
-
-      {renaming && (
-        <div style={{ marginTop: 10 }}>
-          <input value={nameInput} onChange={e => setNameInput(e.target.value)} style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 8 }} />
-          <button className="vir-btn" onClick={() => { if (nameInput.trim()) onRename(boat.id, nameInput.trim()); setRenaming(false); }} style={{ ...primaryBtn, padding: "9px 0", fontSize: 12.5, width: "100%" }}>Guardar</button>
-        </div>
-      )}
 
       {expanded && (
         <div style={{ marginTop: 12 }}>
@@ -3646,9 +3640,97 @@ function MeasurementBoatCard({ boat, members, measurements, editable, onSetValue
   );
 }
 
-function CoachMeasurementsScreen({ teamId, teams, setScope, boats, members, measurements, editable, onAddBoat, onRenameBoat, onRemoveBoat, onSetValue, onBack }) {
-  const [newBoat, setNewBoat] = useState("");
+function CoachFleetScreen({ teamId, teams, setScope, boats, sessions, editable, onAddBoat, onRemoveBoat, onBack }) {
+  const [newName, setNewName] = useState("");
+  const [newLayout, setNewLayout] = useState(LAYOUTS[0].id);
 
+  if (teamId === "club") {
+    return (
+      <div style={{ padding: "16px 20px 28px" }}>
+        <BackRow onBack={onBack} />
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Botes</h2>
+        <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Elige una tripulación para gestionar su flota de botes.</p>
+        {teams.map(t => (
+          <div key={t.id} className="vir-btn" onClick={() => setScope(t.id)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.name}</p>
+            <ChevronRight size={18} color="#8A8A8A" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const teamLabel = teams.find(t => t.id === teamId)?.name || "";
+  // Un bote no se puede eliminar si está siendo usado en algún entreno (para no dejar tripulaciones huérfanas)
+  const boatInUse = (boatName) => sessions.some(s => (s.crews || []).some(c => c.boat === boatName));
+
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Botes</h2>
+      <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+        Tripulación: <span style={{ color: "#E61E29", fontWeight: 600 }}>{teamLabel}</span> · esta flota se usa tanto al montar los entrenos de agua como en Medidas
+      </p>
+      {!editable && (
+        <p style={{ color: "#E67E22", fontSize: 12, margin: "0 0 16px", lineHeight: 1.4 }}>
+          🔒 Solo lectura — el club no te ha dado permiso para gestionar esta tripulación.
+        </p>
+      )}
+
+      {boats.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13, marginBottom: 14 }}>Todavía no hay ningún bote en la flota.</p>}
+      {boats.map(b => (
+        <div key={b.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+          <div>
+            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{b.name}</p>
+            <p style={{ color: "#8A8A8A", fontSize: 11, margin: "3px 0 0" }}>{layoutMeta(b.layout).label}</p>
+          </div>
+          {editable && (
+            <button
+              className="vir-btn"
+              onClick={() => {
+                const inUse = boatInUse(b.name);
+                const msg = inUse
+                  ? `"${b.name}" ya se ha usado en algún entreno de agua. Si lo eliminas, esos entrenos conservarán su alineación, pero no podrás volver a seleccionar este bote. ¿Eliminarlo igualmente?`
+                  : `¿Eliminar el bote "${b.name}" de la flota?`;
+                if (window.confirm(msg)) onRemoveBoat(b.id);
+              }}
+              style={{ background: "transparent", color: "#8A8A8A", padding: 6 }}
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+      ))}
+
+      {editable && (
+        <div style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 12, padding: 14, marginTop: 6 }}>
+          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Añadir bote</p>
+          <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Nombre del bote</label>
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Ej. Alarona" style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 12 }} />
+
+          <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Disposición de la tripulación</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+            {LAYOUTS.map(l => {
+              const active = newLayout === l.id;
+              return (
+                <button key={l.id} className="vir-btn" onClick={() => setNewLayout(l.id)} style={{
+                  textAlign: "left", padding: "10px 12px", borderRadius: 10, fontSize: 12.5, fontWeight: active ? 700 : 400,
+                  background: active ? "#E61E29" : "#404040",
+                  border: `1px solid ${active ? "#E61E29" : "#565656"}`,
+                  color: "#F5F5F5",
+                }}>{l.label}</button>
+              );
+            })}
+          </div>
+
+          <button className="vir-btn" onClick={() => { if (newName.trim()) { onAddBoat(teamId, newName.trim(), newLayout); setNewName(""); setNewLayout(LAYOUTS[0].id); } }} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13 }}>Añadir a la flota</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CoachMeasurementsScreen({ teamId, teams, setScope, boats, members, measurements, editable, onSetValue, onBack }) {
   if (teamId === "club") {
     return (
       <div style={{ padding: "16px 20px 28px" }}>
@@ -3680,21 +3762,14 @@ function CoachMeasurementsScreen({ teamId, teams, setScope, boats, members, meas
         </p>
       )}
 
-      {boats.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13, marginBottom: 14 }}>Todavía no hay ningún bote con medidas en esta tripulación.</p>}
-      {boats.map(b => (
-        <MeasurementBoatCard
-          key={b.id} boat={b} members={members} measurements={measurements} editable={editable}
-          onSetValue={onSetValue} onRename={onRenameBoat} onRemove={onRemoveBoat}
-        />
-      ))}
-
-      {editable && (
-        <div style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 12, padding: 14, marginTop: 6 }}>
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Añadir bote</p>
-          <label style={{ fontSize: 12, color: "#ADADAD", marginBottom: 6, display: "block" }}>Nombre del bote</label>
-          <input value={newBoat} onChange={e => setNewBoat(e.target.value)} placeholder="Ej. Alarona" style={{ ...inputStyle, padding: "11px", fontSize: 16, width: "100%", marginBottom: 10 }} />
-          <button className="vir-btn" onClick={() => { if (newBoat.trim()) { onAddBoat(teamId, newBoat.trim()); setNewBoat(""); } }} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13 }}>Añadir</button>
-        </div>
+      {boats.length === 0 ? (
+        <p style={{ color: "#8A8A8A", fontSize: 13, marginBottom: 14 }}>
+          Todavía no hay ningún bote en la flota de esta tripulación. Añádelos desde "Botes" en el inicio.
+        </p>
+      ) : (
+        boats.map(b => (
+          <MeasurementBoatCard key={b.id} boat={b} members={members} measurements={measurements} editable={editable} onSetValue={onSetValue} />
+        ))
       )}
     </div>
   );
@@ -4582,7 +4657,7 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
   const isReserve = myCrew ? (!isCalled && reserveIdx > -1) : false;
   const mySeatLabel = () => {
     if (!myCrew) return null;
-    if (seatIdx > -1) return seatLabelForBoat(myCrew.boat, seatIdx);
+    if (seatIdx > -1) return seatLabelForBoat(myCrew.layout, seatIdx);
     if (isPatron) return "0 · Patrón";
     if (isZodiac) return `Zodiac ${zodiacIdx === 0 ? "Z" : `Z${zodiacIdx}`}`;
     if (reserveIdx > -1) return `Reserva R${reserveIdx + 1}`;
@@ -4667,7 +4742,7 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
   );
 }
 
-function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, waterStatsFor, gymStatsFor, editable, myId, selected, setSelected, onAssign, onClear, onClose, onReopen, onRemoveCrew, onSetBoat, onSetOars, overlapFor }) {
+function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, waterStatsFor, gymStatsFor, editable, myId, selected, setSelected, onAssign, onClear, onClose, onReopen, onRemoveCrew, onSetBoat, onSetOars, overlapFor, fleetBoats }) {
   const [preEditRoster, setPreEditRoster] = useState(null);
   const handleReopen = () => {
     setPreEditRoster({ seats: [...crew.seats], patron: crew.patron, reserves: [...crew.reserves], zodiac: [...crew.zodiac] });
@@ -4693,8 +4768,8 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
     <div style={{ flex: "1 1 100%", minWidth: "100%", background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: 14, marginBottom: 14 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ flex: 1 }}>
-          <select value={crew.boat} onChange={e => onSetBoat(crew, e.target.value)} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12.5, fontWeight: 700, opacity: canEdit ? 1 : 0.6 }}>
-            {BOATS.filter(b => b === crew.boat || !session.crews.some(c => c.id !== crew.id && c.boat === b)).map(b => <option key={b} value={b}>{b}</option>)}
+          <select value={crew.boat} onChange={e => { const fb = fleetBoats.find(b => b.name === e.target.value); if (fb) onSetBoat(crew, fb); }} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12.5, fontWeight: 700, opacity: canEdit ? 1 : 0.6 }}>
+            {fleetBoats.filter(b => b.name === crew.boat || !session.crews.some(c => c.id !== crew.id && c.boat === b.name)).map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
           </select>
         </div>
         {editable && canEdit && (
@@ -4711,7 +4786,7 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
 
       <select value={crew.oars || ""} onChange={e => onSetOars(crew, e.target.value || null)} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12, marginBottom: 8, opacity: canEdit ? 1 : 0.6 }}>
         <option value="">Sin rems</option>
-        {oarsOptionsFor(crew.boat).map(o => <option key={o} value={o}>{o}</option>)}
+        {oarsOptionsForLayout(crew.layout).map(o => <option key={o} value={o}>{o}</option>)}
       </select>
 
       {clash && (
@@ -4776,9 +4851,9 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
   );
 }
 
-function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, onAddCrew, onRemoveCrew, onSetCrewBoat, onSetCrewOars, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert, myId, onToggleSignup, photoOf, overlapFor }) {
-  const [newBoat, setNewBoat] = useState(BOATS[0]);
-  const availableBoats = BOATS.filter(b => !session.crews.some(c => c.boat === b));
+function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, onAddCrew, onRemoveCrew, onSetCrewBoat, onSetCrewOars, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert, myId, onToggleSignup, photoOf, overlapFor, fleetBoats }) {
+  const [newBoatName, setNewBoatName] = useState("");
+  const availableBoats = fleetBoats.filter(b => !session.crews.some(c => c.boat === b.name));
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
@@ -4851,9 +4926,10 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
             waterStatsFor={waterStatsFor} gymStatsFor={gymStatsFor} editable={editable} myId={myId}
             selected={selected} setSelected={setSelected}
             onAssign={onAssign} onClear={onClear} onClose={onClose} onReopen={onReopen} onRemoveCrew={onRemoveCrew}
-            onSetBoat={(c, boat) => onSetCrewBoat(session.id, c, boat)}
+            onSetBoat={(c, fleetBoat) => onSetCrewBoat(session.id, c, fleetBoat)}
             onSetOars={(c, oars) => onSetCrewOars(session.id, c.id, oars)}
             overlapFor={overlapFor}
+            fleetBoats={fleetBoats}
           />
         ))}
       </div>
@@ -4861,14 +4937,20 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
       {editable && (
         <div style={{ background: "#404040", border: "1px dashed #565656", borderRadius: 12, padding: 14, marginTop: 6 }}>
           <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Añadir otro bote a este día</p>
-          {availableBoats.length === 0 ? (
-            <p style={{ color: "#8A8A8A", fontSize: 12 }}>Ya están añadidos todos los botes disponibles.</p>
+          {fleetBoats.length === 0 ? (
+            <p style={{ color: "#8A8A8A", fontSize: 12 }}>Todavía no hay ningún bote en la flota — créalos desde "Botes" en el inicio.</p>
+          ) : availableBoats.length === 0 ? (
+            <p style={{ color: "#8A8A8A", fontSize: 12 }}>Ya están añadidos todos los botes de la flota.</p>
           ) : (
             <div style={{ display: "flex", gap: 8 }}>
-              <select value={availableBoats.includes(newBoat) ? newBoat : availableBoats[0]} onChange={e => setNewBoat(e.target.value)} style={{ ...inputStyle, padding: "8px 10px", fontSize: 12.5, flex: 1 }}>
-                {availableBoats.map(b => <option key={b} value={b}>{b}</option>)}
+              <select value={availableBoats.some(b => b.name === newBoatName) ? newBoatName : availableBoats[0].name} onChange={e => setNewBoatName(e.target.value)} style={{ ...inputStyle, padding: "8px 10px", fontSize: 12.5, flex: 1 }}>
+                {availableBoats.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
               </select>
-              <button className="vir-btn" onClick={() => { const boat = availableBoats.includes(newBoat) ? newBoat : availableBoats[0]; onAddCrew(session, boat); setNewBoat(BOATS[0]); }} style={{ ...primaryBtn, padding: "8px 16px", fontSize: 12.5 }}>Añadir</button>
+              <button className="vir-btn" onClick={() => {
+                const chosen = availableBoats.find(b => b.name === newBoatName) || availableBoats[0];
+                onAddCrew(session, chosen);
+                setNewBoatName("");
+              }} style={{ ...primaryBtn, padding: "8px 16px", fontSize: 12.5 }}>Añadir</button>
             </div>
           )}
         </div>
@@ -4933,7 +5015,7 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
   };
 
   // ---------- BÀTEL: 4 puestos en una sola columna (4,3,2,1) + patrón, sin babor/estribor ----------
-  if (isBatel(crew.boat)) {
+  if (isBatel(crew.layout)) {
     const seatY = (i) => 46 + i * 66; // i=0 arriba (puesto 4) ... i=3 abajo (puesto 1)
     const seatIdxForRow = [3, 2, 1, 0]; // fila de arriba a abajo: idx3="4", idx2="3", idx1="2", idx0="1"
     const patronY = seatY(3) + 66;
@@ -4960,7 +5042,7 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
   }
 
   // ---------- LLAÜT: 9 puestos (4 babor + 5 estribor), estribor desplazado una fila hacia arriba ----------
-  if (isLlaut9(crew.boat)) {
+  if (isLlaut9(crew.layout)) {
     const rowY = (row) => 118 + row * 66;
     const rows = [
       { babor: null, estribor: 7 }, // 4E sola, sin pareja en babor
@@ -4992,10 +5074,10 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
             <g key={row}>
               {r.babor !== null && (
                 <Avatar x={cx.babor} y={rowY(row)} r={24} filled={!!crew.seats[r.babor]} rowerId={crew.seats[r.babor]}
-                  label={{ type: "seat", idx: r.babor, text: seatShortForBoat(crew.boat, r.babor) }} nameBelow />
+                  label={{ type: "seat", idx: r.babor, text: seatShortForBoat(crew.layout, r.babor) }} nameBelow />
               )}
               <Avatar x={cx.estribor} y={rowY(row)} r={24} filled={!!crew.seats[r.estribor]} rowerId={crew.seats[r.estribor]}
-                label={{ type: "seat", idx: r.estribor, text: seatShortForBoat(crew.boat, r.estribor) }} nameBelow />
+                label={{ type: "seat", idx: r.estribor, text: seatShortForBoat(crew.layout, r.estribor) }} nameBelow />
             </g>
           ))}
 
