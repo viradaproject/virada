@@ -1922,7 +1922,8 @@ export default function ViradaPrototype() {
                   members={[
                     ...ROWERS.map(r => ({ id: r.id, name: r.name, nickname: nicknameOf(r.id), side: sideOf(r.id) })),
                     ...clubAssignedUsers.map(u => ({ id: u.id, name: u.username, nickname: nicknameOf(u.id), side: sideOf(u.id) })),
-                  ].filter(m => roleOf(m.id) === "rower" && teamOf(m.id) === openTeam.id)}
+                  ].filter(m => (roleOf(m.id) === "rower" && teamOf(m.id) === openTeam.id) || (roleOf(m.id) === "coach" && managedTeamsOf(m.id).includes(openTeam.id)))
+                    .map(m => ({ ...m, isCoach: roleOf(m.id) === "coach" }))}
                   onExport={() => setScreen("teamExport")}
                 />
               )}
@@ -3418,8 +3419,11 @@ function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetR
 
   const visible = people.filter(p => {
     if (filter !== "all") {
-      if (roleOf(p.id) === "coach") return false; // los entrenadores no están sujetos a una única categoría
-      if (teamOf(p.id) !== filter) return false;
+      if (roleOf(p.id) === "coach") {
+        if (!managedTeamsOf(p.id).includes(filter)) return false; // solo se muestra si gestiona esta tripulación
+      } else if (teamOf(p.id) !== filter) {
+        return false;
+      }
     }
     const q = search.trim().toLowerCase();
     if (q && !p.name.toLowerCase().includes(q) && !(p.nickname || "").toLowerCase().includes(q)) return false;
@@ -3643,12 +3647,16 @@ function ClubTeamsScreen({ teams, onAddTeam, onRemoveTeam, onOpenTeam, teamOf, r
 }
 
 function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended, onExport }) {
+  const rowerCount = members.filter(m => !m.isCoach).length;
+  const coachCount = members.filter(m => m.isCoach).length;
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>{team.name}</h2>
       <p className="vir-mono" style={{ color: "#E61E29", fontSize: 13, margin: "0 0 4px" }}>{team.code}</p>
-      <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "0 0 16px" }}>{members.length} remeros</p>
+      <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "0 0 16px" }}>
+        {rowerCount} remero{rowerCount === 1 ? "" : "s"}{coachCount > 0 ? ` · ${coachCount} entrenador${coachCount === 1 ? "" : "es"}` : ""}
+      </p>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
         <StatCard label="Días entrenados de agua" value={trainedDays} />
@@ -3664,7 +3672,7 @@ function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended
       </div>
 
       {members.length === 0 && (
-        <p style={{ color: "#8A8A8A", fontSize: 13 }}>Todavía no hay remeros asignados a esta tripulación.</p>
+        <p style={{ color: "#8A8A8A", fontSize: 13 }}>Todavía no hay nadie asignado a esta tripulación.</p>
       )}
       {members.map(m => (
         <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
@@ -3672,7 +3680,9 @@ function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended
             <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{m.name}</p>
             {m.nickname && <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "2px 0 0" }}>"{m.nickname}"</p>}
           </div>
-          {m.side && <SideBadge side={m.side} />}
+          {m.isCoach ? (
+            <span style={{ color: "#E67E22", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", border: "1px solid #E67E22", borderRadius: 8, padding: "3px 8px" }}>Entrenador</span>
+          ) : m.side && <SideBadge side={m.side} />}
         </div>
       ))}
     </div>
