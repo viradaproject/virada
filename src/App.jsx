@@ -2257,7 +2257,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
       {view === "loginClub" && (
         <>
           <BackRow onBack={() => goTo("menu")} />
-          <div style={{ display: "flex", justifyContent: "center", margin: "18px 0 22px" }}><Logo size={38} /></div>
+          <div style={{ display: "flex", justifyContent: "center", margin: "28px 0 36px" }}><Logo size={58} /></div>
           <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "10px 0 18px" }}>Acceso club</h2>
           {usernamePasswordFields}
           {recoveryBlock}
@@ -2268,7 +2268,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
       {view === "loginUser" && (
         <>
           <BackRow onBack={() => goTo("menu")} />
-          <div style={{ display: "flex", justifyContent: "center", margin: "18px 0 22px" }}><Logo size={38} /></div>
+          <div style={{ display: "flex", justifyContent: "center", margin: "28px 0 36px" }}><Logo size={58} /></div>
           <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "10px 0 4px" }}>Acceso usuario</h2>
           <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>Entras con el rol que el club te haya asignado (entrenador o remero).</p>
           {usernamePasswordFields}
@@ -2280,7 +2280,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
       {view === "registerClub" && (
         <>
           <BackRow onBack={() => goTo("menu")} />
-          <div style={{ display: "flex", justifyContent: "center", margin: "18px 0 22px" }}><Logo size={38} /></div>
+          <div style={{ display: "flex", justifyContent: "center", margin: "28px 0 36px" }}><Logo size={58} /></div>
           <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "0 0 4px" }}>Registro del club</h2>
           <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "0 0 18px", lineHeight: 1.4 }}>
             Al crear la cuenta, VIRADA generará automáticamente el código de acceso de tu club. Compártelo con tus entrenadores y remeros para que puedan registrarse dentro de tu club y no de otro.
@@ -2367,7 +2367,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
       {view === "registerUser" && (
         <>
           <BackRow onBack={() => goTo("menu")} />
-          <div style={{ display: "flex", justifyContent: "center", margin: "18px 0 22px" }}><Logo size={38} /></div>
+          <div style={{ display: "flex", justifyContent: "center", margin: "28px 0 36px" }}><Logo size={58} /></div>
           <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "10px 0 4px" }}>Registro de usuario</h2>
           <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
             Con el código de tu club accedes a su paraguas de gestión. Una vez dentro, será el club quien te asigne el rol — entrenador o remero — y, si corresponde, la tripulación.
