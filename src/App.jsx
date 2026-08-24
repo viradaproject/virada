@@ -1090,40 +1090,43 @@ export default function ViradaPrototype() {
   const closeCrew = async (session, crew, previousRoster) => {
     const ok = await updateCrew(session.id, crew.id, { status: "cerrado" });
     if (!ok) return; // si no se pudo cerrar de verdad, no mandamos notificaciones con datos que no cuadran
-    const assigned = [...crew.seats, crew.patron, ...crew.reserves, ...crew.zodiac].filter(Boolean);
-    const notes = assigned.map(rid => {
-      let role = "reserva";
-      const seatIdx = crew.seats.indexOf(rid);
-      if (seatIdx > -1) role = `puesto ${seatShortForBoat(crew.layout, seatIdx)}`;
-      else if (crew.patron === rid) role = "patrón";
-      else if (crew.zodiac.includes(rid)) role = "zodiac";
-      return {
-        rowerId: rid,
-        text: `Has sido convocado al entreno de agua del ${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}, ${session.time} (${crew.boat}). Rol: ${role}.`,
-      };
-    });
-    // Si venimos de reabrir y modificar una convocatoria ya cerrada, avisamos aparte
-    // a quien haya quedado fuera, con un mensaje distinto al de "convocado"
-    if (previousRoster) {
-      const prevAssigned = [...previousRoster.seats, previousRoster.patron, ...previousRoster.reserves, ...(previousRoster.zodiac || [])].filter(Boolean);
-      const removed = prevAssigned.filter(rid => !assigned.includes(rid));
-      removed.forEach(rid => {
-        notes.push({
-          rowerId: rid,
-          text: `Ya no estás convocado/a al entreno de agua del ${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}, ${session.time} (${crew.boat}). La convocatoria ha cambiado.`,
-        });
-      });
-    }
-    if (notes.length > 0) {
-      const { data, error } = await supabase.from("notifications").insert(
-        notes.map(n => ({ rower_id: n.rowerId, session_id: session.id, text: n.text }))
-      ).select();
-      if (!error && data) {
-        setNotifications(prev => [...data.map(mapNotificationRow), ...prev]);
-      } else if (error) {
-        flash("Tripulación cerrada, pero hubo un problema guardando las notificaciones.");
-        return;
+    const called = [...crew.seats, crew.patron, ...crew.zodiac].filter(Boolean);
+    const reserve = crew.reserves.filter(Boolean);
+    const dayLabel = `${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}`;
+
+    // Un aviso individual a cada uno de los que se apuntaron: convocado, de reserva, o no convocado
+    const notes = [];
+    [...session.signups].forEach(rid => {
+      let text;
+      if (called.includes(rid)) {
+        let role = "puesto";
+        const seatIdx = crew.seats.indexOf(rid);
+        if (seatIdx > -1) role = `puesto ${seatShortForBoat(crew.layout, seatIdx)}`;
+        else if (crew.patron === rid) role = "patrón";
+        else if (crew.zodiac.includes(rid)) role = "zodiac";
+        text = `Convocado/a al entreno de agua del ${dayLabel}, ${session.time} (${crew.boat}). Rol: ${role}.`;
+      } else if (reserve.includes(rid)) {
+        text = `De reserva para el entreno de agua del ${dayLabel}, ${session.time} (${crew.boat}).`;
+      } else {
+        text = `No convocado/a al entreno de agua del ${dayLabel}, ${session.time} (${crew.boat}).`;
       }
+      notes.push({ rowerId: rid, text });
+    });
+
+    // Un único aviso resumen para el propio entrenador, que le lleva directo a la convocatoria al tocarlo
+    notes.push({
+      rowerId: null,
+      text: `Has cerrado la convocatoria de "${crew.boat}" para el día ${dayLabel} a las ${session.time}h.`,
+    });
+
+    const { data, error } = await supabase.from("notifications").insert(
+      notes.map(n => ({ rower_id: n.rowerId, session_id: session.id, text: n.text }))
+    ).select();
+    if (!error && data) {
+      setNotifications(prev => [...data.map(mapNotificationRow), ...prev]);
+    } else if (error) {
+      flash("Tripulación cerrada, pero hubo un problema guardando las notificaciones.");
+      return;
     }
     flash(`${crew.boat} cerrado y notificaciones enviadas`);
   };
@@ -1603,7 +1606,7 @@ export default function ViradaPrototype() {
   };
 
   const myNotifications = notifications.filter(n => n.rowerId === currentUserId && !n.hiddenForRower);
-  const coachNotifications = notifications.filter(n => !n.hiddenForCoach);
+  const coachNotifications = notifications.filter(n => n.rowerId === null && !n.hiddenForCoach);
 
   const markNotificationRead = async (id, forRole) => {
     const col = forRole === "coach" ? "readByCoach" : "read";
@@ -5263,7 +5266,7 @@ function NotificationsScreen({ items, role, nameOf, onOpen, onMarkRead, onHide }
             key={n.id}
             n={n}
             isRead={role === "rower" ? n.read : n.readByCoach}
-            subtitle={role !== "rower" ? nameOf(n.rowerId) : null}
+            subtitle={null}
             onOpen={() => onOpen(n)}
             onMarkRead={() => onMarkRead(n.id)}
             onHide={() => onHide(n.id)}
