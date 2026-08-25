@@ -471,54 +471,11 @@ export default function ViradaPrototype() {
       }
   };
 
-  // Al abrir la app, comprueba si el navegador ya tiene una sesión válida guardada (del último
-  // acceso) y, si la hay, entra directamente sin pedir usuario/contraseña otra vez
-  const restoreSession = async (authUserId) => {
-    const { data: adminRow } = await supabase.from("admins").select("*").eq("auth_user_id", authUserId).maybeSingle();
-    if (adminRow) {
-      setRole("admin");
-      setScreen("home");
-      return true;
-    }
-    const { data: clubRow } = await supabase.from("clubs").select("*").eq("auth_user_id", authUserId).maybeSingle();
-    if (clubRow) {
-      setClubs(prev => prev.some(c => c.id === clubRow.id) ? prev : [...prev, {
-        id: clubRow.id, code: clubRow.access_code, name: clubRow.name, username: clubRow.username, createdAt: clubRow.created_at, photoUrl: clubRow.photo_url || null,
-      }]);
-      setCurrentClubId(clubRow.id);
-      setRole("club");
-      setScreen("home");
-      return true;
-    }
-    const { data: userRow } = await supabase.from("users").select("*").eq("auth_user_id", authUserId).maybeSingle();
-    if (userRow) {
-      if (userRow.status === "pending") {
-        const entry = { id: userRow.id, clubId: userRow.club_id, username: userRow.username, apodo: userRow.nickname, side: userRow.side };
-        setLastRegistered(entry);
-        setCurrentClubId(userRow.club_id);
-        setScreen("pendingRole");
-        return true;
-      }
-      setCurrentUserId(userRow.id);
-      setCurrentClubId(userRow.club_id ?? null);
-      if (userRow.role) setRoleOverrides(prev => ({ ...prev, [userRow.id]: userRow.role }));
-      setRole(userRow.role || "rower");
-      setScreen("home");
-      return true;
-    }
-    return false; // el token existe pero no corresponde a ningún club/usuario/admin ya (cuenta eliminada, etc.)
-  };
+  // Nota: la restauración automática de sesión al abrir la app se ha probado y aparcado por ahora
+  // (pendiente de retomar más adelante) — de momento la app siempre pide entrar con usuario/contraseña.
 
   useEffect(() => {
-    const init = async () => {
-      await loadData(); // primero los datos públicos, sin depender de la sesión
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const restored = await restoreSession(session.user.id);
-        if (restored) await loadData(); // ahora sí, con la sesión activa, para traer los datos privados de ese club/usuario
-      }
-    };
-    init();
+    loadData();
   }, []);
 
   // Tiempo real: si otra persona activa un día, se apunta, monta la alineación o cierra/reabre
