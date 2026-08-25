@@ -4061,8 +4061,8 @@ function ClubRemindersScreen({ note, onSaveNote, onRemoveNote, broadcasts, onSen
       <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Nota fija del club</p>
       {editing ? (
         <div style={{ marginBottom: 20 }}>
-          <textarea value={input} onChange={e => setInput(e.target.value)} rows={3} placeholder="Ej. Recordad traer el chaleco los sábados" style={{ ...inputStyle, fontSize: 16, padding: "11px", width: "100%", resize: "vertical", marginBottom: 10 }} />
-          <div style={{ display: "flex", gap: 8 }}>
+          <RichTextEditor value={input} onChange={setInput} rows={3} placeholder="Ej. Recordad traer el chaleco los sábados" />
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button className="vir-btn" onClick={() => { onSaveNote(input.trim()); setEditing(false); }} style={{ ...primaryBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>Guardar</button>
             <button className="vir-btn" onClick={() => { setInput(note?.text || ""); setEditing(false); }} style={{ ...ghostBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>Cancelar</button>
           </div>
@@ -4071,7 +4071,7 @@ function ClubRemindersScreen({ note, onSaveNote, onRemoveNote, broadcasts, onSen
         <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
           {note ? (
             <>
-              <p style={{ color: "#F5F5F5", fontSize: 13, margin: "0 0 10px", lineHeight: 1.4 }}>{note.text}</p>
+              <RichText text={note.text} style={{ color: "#F5F5F5", fontSize: 12.5, margin: "0 0 10px", lineHeight: 1.4 }} />
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="vir-btn" onClick={() => { setInput(note.text); setEditing(true); }} style={{ background: "transparent", color: "#ADADAD", fontSize: 11.5, textDecoration: "underline" }}>Editar</button>
                 <button className="vir-btn" onClick={() => { if (window.confirm("¿Quitar la nota fija del club?")) onRemoveNote(); }} style={{ background: "transparent", color: "#FF8890", fontSize: 11.5, textDecoration: "underline" }}>Eliminar</button>
@@ -4135,8 +4135,8 @@ function CoachRemindersScreen({ teamId, teams, setScope, note, onSaveNote, onRem
       <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Nota fija del equipo</p>
       {editing ? (
         <div style={{ marginBottom: 20 }}>
-          <textarea value={input} onChange={e => setInput(e.target.value)} rows={3} placeholder="Ej. Este sábado entreno a las 8h en vez de las 9h" style={{ ...inputStyle, fontSize: 16, padding: "11px", width: "100%", resize: "vertical", marginBottom: 10 }} />
-          <div style={{ display: "flex", gap: 8 }}>
+          <RichTextEditor value={input} onChange={setInput} rows={3} placeholder="Ej. Este sábado entreno a las 8h en vez de las 9h" />
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button className="vir-btn" onClick={() => { onSaveNote(input.trim()); setEditing(false); }} style={{ ...primaryBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>Guardar</button>
             <button className="vir-btn" onClick={() => { setInput(note?.text || ""); setEditing(false); }} style={{ ...ghostBtn, flex: 1, padding: "10px 0", fontSize: 12.5 }}>Cancelar</button>
           </div>
@@ -4145,7 +4145,7 @@ function CoachRemindersScreen({ teamId, teams, setScope, note, onSaveNote, onRem
         <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
           {note ? (
             <>
-              <p style={{ color: "#F5F5F5", fontSize: 13, margin: "0 0 10px", lineHeight: 1.4 }}>{note.text}</p>
+              <RichText text={note.text} style={{ color: "#F5F5F5", fontSize: 12.5, margin: "0 0 10px", lineHeight: 1.4 }} />
               {editable && (
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="vir-btn" onClick={() => { setInput(note.text); setEditing(true); }} style={{ background: "transparent", color: "#ADADAD", fontSize: 11.5, textDecoration: "underline" }}>Editar</button>
@@ -4179,12 +4179,12 @@ function RowerRemindersScreen({ clubNote, teamNote, onBack }) {
 
       <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Del club</p>
       <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
-        <p style={{ color: clubNote ? "#F5F5F5" : "#8A8A8A", fontSize: 13, margin: 0, lineHeight: 1.4 }}>{clubNote?.text || "Sin nota del club por ahora."}</p>
+        {clubNote ? <RichText text={clubNote.text} style={{ color: "#F5F5F5", fontSize: 12.5, margin: 0, lineHeight: 1.4 }} /> : <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: 0 }}>Sin nota del club por ahora.</p>}
       </div>
 
       <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>De tu equipo</p>
       <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px" }}>
-        <p style={{ color: teamNote ? "#F5F5F5" : "#8A8A8A", fontSize: 13, margin: 0, lineHeight: 1.4 }}>{teamNote?.text || "Sin nota de tu equipo por ahora."}</p>
+        {teamNote ? <RichText text={teamNote.text} style={{ color: "#F5F5F5", fontSize: 12.5, margin: 0, lineHeight: 1.4 }} /> : <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: 0 }}>Sin nota de tu equipo por ahora.</p>}
       </div>
     </div>
   );
@@ -6188,6 +6188,75 @@ const wattsFromTestTime = (timeStr, distanceM = 1600) => {
   return 2.8 / Math.pow(splitPer500 / 500, 3);
 };
 
+// Editor de texto simple con negrita/cursiva/subrayado (marca el texto con **, _ y ~ por debajo,
+// para poder guardarlo como texto plano sin depender de HTML)
+function RichTextEditor({ value, onChange, placeholder, rows = 5 }) {
+  const taRef = useRef(null);
+  const wrap = (mark) => {
+    const ta = taRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    const selected = value.slice(start, end);
+    const already = value.slice(start - mark.length, start) === mark && value.slice(end, end + mark.length) === mark;
+    let newValue, cursorStart, cursorEnd;
+    if (already) {
+      newValue = value.slice(0, start - mark.length) + selected + value.slice(end + mark.length);
+      cursorStart = start - mark.length; cursorEnd = end - mark.length;
+    } else {
+      newValue = value.slice(0, start) + mark + selected + mark + value.slice(end);
+      cursorStart = start + mark.length; cursorEnd = end + mark.length;
+    }
+    onChange(newValue);
+    requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(cursorStart, cursorEnd); });
+  };
+  const toolBtn = { background: "#333333", border: "1px solid #565656", borderRadius: 6, width: 30, height: 28, color: "#F5F5F5", fontSize: 12.5 };
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        <button type="button" className="vir-btn" onClick={() => wrap("**")} style={{ ...toolBtn, fontWeight: 800 }}>N</button>
+        <button type="button" className="vir-btn" onClick={() => wrap("_")} style={{ ...toolBtn, fontStyle: "italic" }}>K</button>
+        <button type="button" className="vir-btn" onClick={() => wrap("~")} style={{ ...toolBtn, textDecoration: "underline" }}>S</button>
+      </div>
+      <textarea
+        ref={taRef}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={rows}
+        style={{ ...inputStyle, fontSize: 14, padding: "11px", width: "100%", resize: "vertical" }}
+      />
+    </div>
+  );
+}
+
+// Interpreta las marcas **negrita**, _cursiva_ y ~subrayado~ de un texto guardado en plano
+const parseRichSegments = (line) => {
+  const parts = [];
+  let remaining = line;
+  let key = 0;
+  const re = /\*\*(.+?)\*\*|_(.+?)_|~(.+?)~/;
+  while (remaining.length > 0) {
+    const m = remaining.match(re);
+    if (!m) { parts.push(remaining); break; }
+    if (m.index > 0) parts.push(remaining.slice(0, m.index));
+    if (m[1] !== undefined) parts.push(<strong key={key++}>{m[1]}</strong>);
+    else if (m[2] !== undefined) parts.push(<em key={key++}>{m[2]}</em>);
+    else if (m[3] !== undefined) parts.push(<u key={key++}>{m[3]}</u>);
+    remaining = remaining.slice(m.index + m[0].length);
+  }
+  return parts;
+};
+function RichText({ text, style }) {
+  if (!text) return null;
+  return (
+    <p style={style}>
+      {text.split("\n").map((line, i) => (
+        <span key={i}>{i > 0 && <br />}{parseRichSegments(line)}</span>
+      ))}
+    </p>
+  );
+}
+
 function NotesScreen({ notes, onSave, onBack }) {
   const [text, setText] = useState(notes || "");
   const dirty = text !== (notes || "");
@@ -6198,13 +6267,7 @@ function NotesScreen({ notes, onSave, onBack }) {
       <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
         Tus apuntes personales — solo tú los ves, ni el club ni el entrenador tienen acceso a ellos.
       </p>
-      <textarea
-        value={text}
-        onChange={e => setText(e.target.value)}
-        placeholder="Escribe aquí lo que necesites recordar..."
-        rows={12}
-        style={{ ...inputStyle, fontSize: 16, padding: "12px", resize: "vertical", width: "100%" }}
-      />
+      <RichTextEditor value={text} onChange={setText} placeholder="Escribe aquí lo que necesites recordar..." rows={12} />
       <button className="vir-btn" disabled={!dirty} onClick={() => onSave(text)} style={{ ...primaryBtn, marginTop: 16, opacity: dirty ? 1 : 0.4 }}>
         Guardar
       </button>
