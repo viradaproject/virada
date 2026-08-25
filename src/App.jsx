@@ -1762,7 +1762,13 @@ export default function ViradaPrototype() {
   };
   const openNotificationSession = (n, forRole) => {
     markNotificationRead(n.id, forRole);
-    if (!n.sessionId) return; // aviso general (recordatorio), sin entreno al que ir
+    if (!n.sessionId) {
+      // aviso general (recordatorio, sin entreno asociado): lleva a la pantalla de Recordatorios
+      if (role === "rower") setScreen("recordatorios");
+      else if (role === "club") setScreen("remindersClub");
+      else setScreen("remindersCoach"); // entrenador o admin
+      return;
+    }
     const session = sessions.find(s => s.id === n.sessionId);
     if (!session) { flash("Ese entreno ya no está disponible."); return; }
     setOpenSession(session);
