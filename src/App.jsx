@@ -1331,7 +1331,8 @@ export default function ViradaPrototype() {
 
   // Comprueba cada minuto si hay avisos programados cuya hora ya ha llegado, y los manda.
   // Como no hay un reloj de servidor detrás, se envían la próxima vez que un club/entrenador
-  // tenga la app abierta después de esa hora, no en el segundo exacto.
+  // tenga la app abierta después de esa hora, no en el segundo exacto. De paso, elimina del
+  // registro los avisos que ya llevan más de 10 días enviados.
   useEffect(() => {
     if (!(role === "club" || role === "coach" || role === "admin")) return;
     const checkAndSend = () => {
@@ -1342,8 +1343,17 @@ export default function ViradaPrototype() {
         }
       });
     };
+    const cleanupOld = async () => {
+      const cutoff = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+      const expired = broadcasts.filter(b => b.sentAt && b.sentAt < cutoff);
+      if (expired.length === 0) return;
+      const ids = expired.map(b => b.id);
+      const { error } = await supabase.from("reminder_broadcasts").delete().in("id", ids);
+      if (!error) setBroadcasts(prev => prev.filter(b => !ids.includes(b.id)));
+    };
     checkAndSend();
-    const interval = setInterval(checkAndSend, 60000);
+    cleanupOld();
+    const interval = setInterval(() => { checkAndSend(); cleanupOld(); }, 60000);
     return () => clearInterval(interval);
   }, [role, broadcasts]);
 
@@ -1850,10 +1860,11 @@ export default function ViradaPrototype() {
                   myId={currentUserId}
                   myName={displayNameOf(currentUserId)}
                   myTeam={teamOf(currentUserId)}
+                  alertsFor={alertsFor}
                 />
               )}
               {screen === "home" && role === "coach" && (
-                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} onOpenMeasurements={() => setScreen("medidasCoach")} onOpenFleet={() => setScreen("botesCoach")} onOpenReminders={() => setScreen("remindersCoach")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} />
+                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} onOpenMeasurements={() => setScreen("medidasCoach")} onOpenFleet={() => setScreen("botesCoach")} onOpenReminders={() => setScreen("remindersCoach")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} alertsFor={alertsFor} />
               )}
               {screen === "coachPlan" && (role === "coach" || role === "admin") && (
                 <CoachPlanScreen
@@ -2108,10 +2119,10 @@ export default function ViradaPrototype() {
                 <ClubUsersScreen teams={clubTeams} teamName={teamName} teamOf={teamOf} roleOf={roleOf} onAssignTeam={assignTeam} onSetRole={setPersonRole} pendingUsers={clubPendingUsers} assignedUsers={clubAssignedUsers} onAssignPending={assignPendingUser} onRejectPending={rejectPendingUser} onRemoveUser={removeAssignedUser} managedTeamsOf={managedTeamsOf} onToggleCoachTeam={toggleCoachTeam} />
               )}
               {screen === "calendar" && role === "rower" && (
-                <CalendarScreen sessions={rowerUpcoming} onOpen={(s) => { setOpenSession(s); setScreen("sessionRower"); }} onToggle={toggleSignup} myId={currentUserId} />
+                <CalendarScreen sessions={rowerUpcoming} onOpen={(s) => { setOpenSession(s); setScreen("sessionRower"); }} onToggle={toggleSignup} myId={currentUserId} alertsFor={alertsFor} />
               )}
               {screen === "calendar" && role === "coach" && (
-                <CalendarScreen sessions={coachUpcoming} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} myId={currentUserId} teamName={teamName} showTeamLabel={coachScope === "club"} />
+                <CalendarScreen sessions={coachUpcoming} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} myId={currentUserId} teamName={teamName} showTeamLabel={coachScope === "club"} alertsFor={alertsFor} />
               )}
               {screen === "sessionRower" && openSession && (
                 <SessionRowerScreen session={openSession} onBack={() => setScreen(role === "rower" ? "home" : "calendar")} onToggle={toggleSignup} onSendAlert={sendCantComeAlert} myAlerts={openSession ? alertsFor(openSession.id).filter(a => a.rowerId === currentUserId) : []} myId={currentUserId} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} photoOf={(id) => profilePhotos[id] || null} fleetBoats={openSession ? fleetBoatsFor(openSession.teamId) : []} boatMeasurements={boatMeasurements} />
@@ -2695,7 +2706,7 @@ function SectionTitle({ children, sub }) {
   );
 }
 
-function SessionRow({ s, onOpen, right, teamLabel, semaphore }) {
+function SessionRow({ s, onOpen, right, teamLabel, semaphore, hasAlert }) {
   const dow = DAYS_ES[s.dow];
   const closedBoats = (s.crews || []).filter(c => c.status === "cerrado").map(c => c.boat);
   return (
@@ -2718,6 +2729,7 @@ function SessionRow({ s, onOpen, right, teamLabel, semaphore }) {
       </div>
       {closedBoats.length > 0 && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #565656", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span title={hasAlert ? "Alguien se ha dado de baja — revisa la alineación" : "Todo confirmado y cerrado"} style={{ width: 8, height: 8, borderRadius: "50%", background: hasAlert ? "#E61E29" : "#3EA55A", flexShrink: 0 }} />
           <Anchor size={11} color="#8A8A8A" style={{ flexShrink: 0 }} />
           <span style={{ color: "#ADADAD", fontSize: 11 }}>{closedBoats.join(" · ")}</span>
         </div>
@@ -2757,7 +2769,7 @@ function Badge({ text, tone, onClick }) {
   );
 }
 
-function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendance, crewStats, pesosExercises, ergoTest, onNavigate, myId, myName, myTeam }) {
+function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendance, crewStats, pesosExercises, ergoTest, onNavigate, myId, myName, myTeam, alertsFor }) {
   const registeredExercises = pesosExercises.filter(ex => ex.baseKg).length;
   const pct = attendance.year.total > 0 ? Math.round((attendance.year.attended / attendance.year.total) * 100) : 0;
 
@@ -2848,7 +2860,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
         {sessions.map(s => {
           const anyClosed = (s.crews || []).some(c => c.status === "cerrado");
           return (
-            <SessionRow key={s.id} s={s} onOpen={onOpen} semaphore={rowerSemaphore(s, myId)} right={
+            <SessionRow key={s.id} s={s} onOpen={onOpen} semaphore={rowerSemaphore(s, myId)} hasAlert={alertsFor(s.id).length > 0} right={
               anyClosed
                 ? <Badge text={inCrew(s, myId) ? "Seleccionado" : "Cerrado"} tone={inCrew(s, myId) ? "selected" : "closed"} />
                 : <Badge text={s.signups.has(myId) ? "Apuntado ✓" : "Apuntarse"} tone={s.signups.has(myId) ? "signed" : "action"} onClick={() => onToggle(s)} />
@@ -2860,7 +2872,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
   );
 }
 
-function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenInformes, onOpenMeasurements, onOpenFleet, onOpenReminders, coachName, teamName, showTeamLabel }) {
+function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenInformes, onOpenMeasurements, onOpenFleet, onOpenReminders, coachName, teamName, showTeamLabel, alertsFor }) {
   return (
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={`Hola, ${coachName} · ${CLUB_NAME}`}>Planificación de botes</SectionTitle>
@@ -2937,7 +2949,7 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
           const allClosed = s.crews.length > 0 && s.crews.every(c => c.status === "cerrado");
           const totalFilled = s.crews.reduce((sum, c) => sum + seatFill(c), 0);
           return (
-            <SessionRow key={s.id} s={s} onOpen={onOpen} teamLabel={showTeamLabel ? teamName(s.teamId) : null} right={
+            <SessionRow key={s.id} s={s} onOpen={onOpen} teamLabel={showTeamLabel ? teamName(s.teamId) : null} hasAlert={alertsFor(s.id).length > 0} right={
               allClosed ? <Badge text="Cerrado" tone="closed" />
                 : <Badge text={`${s.signups.size} apuntados · ${totalFilled} asig.`} tone={s.crews.length > 0 ? "selected" : "open"} />
             } />
@@ -5141,7 +5153,7 @@ function ToggleSwitch({ checked, onChange, disabled }) {
   );
 }
 
-function CalendarScreen({ sessions, onOpen, onToggle, myId, teamName, showTeamLabel }) {
+function CalendarScreen({ sessions, onOpen, onToggle, myId, teamName, showTeamLabel, alertsFor }) {
   const weeks = {};
   [...sessions].sort((a, b) => a.iso.localeCompare(b.iso)).forEach(s => {
     const key = MONTHS_ES[s.date.getMonth()] + " " + s.date.getFullYear();
@@ -5166,7 +5178,7 @@ function CalendarScreen({ sessions, onOpen, onToggle, myId, teamName, showTeamLa
                 const signed = s.signups.has(myId);
                 right = <Badge text={signed ? "Apuntado ✓" : "Apuntarse"} tone={signed ? "signed" : "action"} onClick={() => onToggle(s)} />;
               }
-              return <SessionRow key={s.id} s={s} onOpen={onOpen} right={right} teamLabel={showTeamLabel && teamName ? teamName(s.teamId) : null} semaphore={onToggle ? rowerSemaphore(s, myId) : null} />;
+              return <SessionRow key={s.id} s={s} onOpen={onOpen} right={right} teamLabel={showTeamLabel && teamName ? teamName(s.teamId) : null} semaphore={onToggle ? rowerSemaphore(s, myId) : null} hasAlert={alertsFor(s.id).length > 0} />;
             })}
           </div>
         ))}
