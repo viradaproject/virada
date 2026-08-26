@@ -572,7 +572,10 @@ export default function ViradaPrototype() {
           return;
         }
         const u = payload.new;
-        const entry = { id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side };
+        const entry = {
+          id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
+          firstName: u.first_name || "", lastName: u.last_name || "", birthDate: u.birth_date || "", phone: u.phone || "",
+        };
         if (u.status === "active") {
           setAssignedUsers(prev => {
             const exists = prev.some(x => x.id === u.id);
