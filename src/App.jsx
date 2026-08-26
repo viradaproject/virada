@@ -5641,7 +5641,7 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
     const reserveY = zodiacY + 76;
     const viewH = reserveY + 50;
     return (
-      <div style={{ background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
+      <div style={{ background: "#666666", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
         <svg viewBox={`0 0 300 ${viewH}`} width="100%" height={viewH * 0.92}>
           {seatIdxForRow.map((idx, row) => (
             <Avatar key={idx} x={centerX} y={seatY(row)} r={24} filled={!!crew.seats[idx]} rowerId={crew.seats[idx]}
@@ -5677,7 +5677,7 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
     const zodiacY = patronPos.y + 116;
     const viewH = zodiacY + 60;
     return (
-      <div style={{ background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
+      <div style={{ background: "#666666", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
         <svg viewBox={`0 0 300 ${viewH}`} width="100%" height={viewH * 0.92}>
           <line x1={centerX} y1={lineTop} x2={centerX} y2={lineBottom} stroke="#767676" strokeWidth="2" />
           <text x={cx.babor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">BABOR</text>
@@ -5720,7 +5720,7 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
   const viewH = zodiacY + 60;
 
   return (
-    <div style={{ background: "#3A3A3A", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
+    <div style={{ background: "#666666", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
       <svg viewBox={`0 0 300 ${viewH}`} width="100%" height={viewH * 0.92}>
         <line x1={centerX} y1={lineTop} x2={centerX} y2={lineBottom} stroke="#767676" strokeWidth="2" />
 
