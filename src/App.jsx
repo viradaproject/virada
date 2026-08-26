@@ -5382,28 +5382,25 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
   };
   return (
     <div style={{ flex: "1 1 100%", minWidth: "100%", background: "var(--vir-bg-surface-alt, var(--vir-bg-surface-alt, #3A3A3A))", border: "1px solid var(--vir-border, var(--vir-border, #565656))", borderRadius: 14, padding: 14, marginBottom: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={{ flex: 1 }}>
-          <select value={crew.boat} onChange={e => { const fb = fleetBoats.find(b => b.name === e.target.value); if (fb) onSetBoat(crew, fb); }} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12.5, fontWeight: 700, opacity: canEdit ? 1 : 0.6 }}>
-            {fleetBoats.filter(b => b.name === crew.boat || !session.crews.some(c => c.id !== crew.id && c.boat === b.name)).map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
-          </select>
-        </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <select value={crew.boat} onChange={e => { const fb = fleetBoats.find(b => b.name === e.target.value); if (fb) onSetBoat(crew, fb); }} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12.5, fontWeight: 700, flex: 1, opacity: canEdit ? 1 : 0.6 }}>
+          {fleetBoats.filter(b => b.name === crew.boat || !session.crews.some(c => c.id !== crew.id && c.boat === b.name)).map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+        </select>
+        <select value={crew.oars || ""} onChange={e => onSetOars(crew, e.target.value || null)} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12, flex: 1, opacity: canEdit ? 1 : 0.6 }}>
+          <option value="">Sin rems</option>
+          {oarsOptionsForLayout(crew.layout).map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
         {editable && canEdit && (
           <button className="vir-btn" onClick={() => {
             const msg = filled > 0
               ? `¿Quitar "${crew.boat}" de este día? Hay ${filled} puesto${filled === 1 ? "" : "s"} asignado${filled === 1 ? "" : "s"} que se perderán.`
               : `¿Quitar "${crew.boat}" de este día?`;
             if (window.confirm(msg)) onRemoveCrew(session, crew.id);
-          }} style={{ background: "transparent", color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", padding: "4px 8px", marginLeft: 8 }}>
+          }} style={{ background: "transparent", color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", padding: "4px 6px", flexShrink: 0 }}>
             <X size={16} />
           </button>
         )}
       </div>
-
-      <select value={crew.oars || ""} onChange={e => onSetOars(crew, e.target.value || null)} disabled={!canEdit} style={{ ...inputStyle, padding: "6px 8px", fontSize: 12, marginBottom: 8, opacity: canEdit ? 1 : 0.6 }}>
-        <option value="">Sin rems</option>
-        {oarsOptionsForLayout(crew.layout).map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
 
       {clash && (
         <p style={{ color: "var(--vir-orange, var(--vir-orange, #E67E22))", fontSize: 10.5, margin: "0 0 8px", lineHeight: 1.4 }}>
