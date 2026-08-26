@@ -1832,8 +1832,8 @@ export default function ViradaPrototype() {
           --vir-bg-surface-alt: #F7F7F7;
           --vir-bg-input: #FFFFFF;
           --vir-border: #DADADA;
-          --vir-text-primary: #232323;
-          --vir-text-secondary: #5A5A5A;
+          --vir-text-primary: #333333;
+          --vir-text-secondary: #666666;
           --vir-text-muted: #7A7A7A;
           --vir-red: #D8151F;
           --vir-green: #2E8B4F;
