@@ -1138,7 +1138,10 @@ export default function ViradaPrototype() {
     // Si venimos de reabrir y modificar una convocatoria ya cerrada, solo avisamos a quien de verdad
     // le haya cambiado algo, con un mensaje que deja claro que es una modificación.
     const notes = [];
-    [...session.signups].forEach(rid => {
+    // Blindaje: si algún apuntado ya no existe de verdad (cuenta eliminada sin limpiar del todo),
+    // lo ignoramos aquí en vez de dejar que rompa el guardado de todas las notificaciones
+    const validIds = new Set(assignedUsers.map(u => u.id));
+    [...session.signups].filter(rid => validIds.has(rid)).forEach(rid => {
       const newStatus = statusFor(rid, crew.seats, crew.patron, crew.reserves, crew.zodiac);
       if (previousRoster) {
         const prevStatus = statusFor(rid, previousRoster.seats, previousRoster.patron, previousRoster.reserves, previousRoster.zodiac || []);
