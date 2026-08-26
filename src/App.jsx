@@ -5436,7 +5436,7 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
                     background: meta ? meta.color : "var(--vir-border, var(--vir-border, #565656))", color: "#FFFFFF", fontSize: 7.5, fontWeight: 800,
                   }}>{meta ? meta.letter : "?"}</span>
                   {label}
-                  <span className="vir-mono" style={{ color: isSel ? "#FFD9DB" : "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 9.5 }}>· {pct}%</span>
+                  <span className="vir-mono" style={{ color: isSel ? "#FFD9DB" : "var(--vir-text-secondary, #ADADAD)", fontSize: 11, fontWeight: 600 }}>· {pct}%</span>
                 </button>
               );
             })}
