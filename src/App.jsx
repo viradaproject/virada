@@ -5076,14 +5076,14 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
     return (
       <div style={{ padding: "16px 20px 28px" }}>
         <BackRow onBack={onBack} />
-        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Entrenos de agua</h2>
-        <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Entrenos de agua</h2>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
           Cada tripulación sale al agua en días y horas distintos. Elige una tripulación para planificar su calendario.
         </p>
         {teams.map(t => (
-          <div key={t.id} className="vir-btn" onClick={() => setScope(t.id)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.name}</p>
-            <ChevronRight size={18} color="#8A8A8A" />
+          <div key={t.id} className="vir-btn" onClick={() => setScope(t.id)} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.name}</p>
+            <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
           </div>
         ))}
       </div>
@@ -5100,33 +5100,33 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
-      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Entrenos de agua</h2>
-      <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 4px", lineHeight: 1.4 }}>
-        Tripulación: <span style={{ color: "#E61E29", fontWeight: 600 }}>{teamLabel}</span>
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Entrenos de agua</h2>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 4px", lineHeight: 1.4 }}>
+        Tripulación: <span style={{ color: "var(--vir-red, #E61E29)", fontWeight: 600 }}>{teamLabel}</span>
       </p>
       {editable ? (
-        <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
           Activa o desactiva cada día, ajusta su hora, el título y el bote/rems. Por defecto: "{DEFAULT_SESSION_TITLE}".
         </p>
       ) : (
-        <p style={{ color: "#E67E22", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
+        <p style={{ color: "var(--vir-orange, #E67E22)", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
           🔒 Solo lectura — el club no te ha dado permiso para gestionar esta tripulación.
         </p>
       )}
       {Object.entries(weeks).map(([label, items]) => (
         <div key={label}>
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, margin: "12px 4px 8px" }}>{label}</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, margin: "12px 4px 8px" }}>{label}</p>
           {items.map(s => {
             const clashes = (s.crews || []).map(c => overlapFor(s, c)).filter(Boolean);
             return (
-              <div key={s.id} style={{ background: "#404040", border: `1px solid ${clashes.length > 0 ? "#E67E22" : "#565656"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10, opacity: s.active ? 1 : 0.65 }}>
+              <div key={s.id} style={{ background: "var(--vir-bg-surface, #404040)", border: `1px solid ${clashes.length > 0 ? "var(--vir-orange, #E67E22)" : "var(--vir-border, #565656)"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10, opacity: s.active ? 1 : 0.65 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ width: 38, textAlign: "center" }}>
-                      <div className="vir-mono" style={{ color: s.active ? "#E61E29" : "#8A8A8A", fontSize: 17, lineHeight: 1 }}>{s.date.getDate()}</div>
-                      <div style={{ color: "#8A8A8A", fontSize: 9.5, textTransform: "uppercase" }}>{DAYS_ES[s.dow]}</div>
+                      <div className="vir-mono" style={{ color: s.active ? "var(--vir-red, #E61E29)" : "var(--vir-text-muted, #8A8A8A)", fontSize: 17, lineHeight: 1 }}>{s.date.getDate()}</div>
+                      <div style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 9.5, textTransform: "uppercase" }}>{DAYS_ES[s.dow]}</div>
                     </div>
-                    <div className="vir-mono" style={{ color: "#ADADAD", fontSize: 11.5 }}>{s.time}</div>
+                    <div className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5 }}>{s.time}</div>
                   </div>
                   <ToggleSwitch checked={s.active} onChange={() => editable && onToggleActive(s)} disabled={!editable} />
                 </div>
@@ -5150,18 +5150,18 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
                       </select>
                     </div>
                     {clashes.map((clash, i) => (
-                      <p key={i} style={{ color: "#E67E22", fontSize: 11, margin: "8px 0 0", lineHeight: 1.4 }}>
+                      <p key={i} style={{ color: "var(--vir-orange, #E67E22)", fontSize: 11, margin: "8px 0 0", lineHeight: 1.4 }}>
                         ⚠ Mismo bote ({clash.boat}) que {clash.team}, que lo usa a las {clash.time}
                       </p>
                     ))}
-                    <p style={{ color: "#8A8A8A", fontSize: 11, margin: "10px 0 0", lineHeight: 1.4 }}>
+                    <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, margin: "10px 0 0", lineHeight: 1.4 }}>
                       {s.crews.length === 0 ? "Sin botes añadidos todavía." : s.crews.map(c => c.boat).join(", ")}
                       {" — "}gestiona los botes de este día desde su ficha completa.
                     </p>
                   </>
                 )}
                 {!s.active && s.suspendedReason && (
-                  <p style={{ color: "#FF8890", fontSize: 11.5, margin: "8px 0 0" }}>Suspendido: {s.suspendedReason}</p>
+                  <p style={{ color: "var(--vir-error, #FF8890)", fontSize: 11.5, margin: "8px 0 0" }}>Suspendido: {s.suspendedReason}</p>
                 )}
               </div>
             );
