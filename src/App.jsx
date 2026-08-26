@@ -1822,6 +1822,7 @@ export default function ViradaPrototype() {
           --vir-green: #3EA55A;
           --vir-orange: #E67E22;
           --vir-danger: #E24B4A;
+          --vir-danger-bg: #402226;
           --vir-error: #FF8890;
         }
         [data-theme="light"] {
@@ -1838,6 +1839,7 @@ export default function ViradaPrototype() {
           --vir-green: #2E8B4F;
           --vir-orange: #C96A16;
           --vir-danger: #C93A38;
+          --vir-danger-bg: #FBE4E3;
           --vir-error: #C93A38;
         }
 
@@ -1878,9 +1880,9 @@ export default function ViradaPrototype() {
 
         {screen !== "login" && screen !== "pendingRole" && screen !== "resetPassword" && (
           <>
-            <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid #565656", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid var(--vir-border, #565656)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Logo size={20} />
-              <button className="vir-btn" onClick={async () => { await supabase.auth.signOut(); setScreen("login"); setRole(null); setOpenSession(null); setCurrentClubId(null); setCurrentUserId(null); }} style={{ background: "transparent", color: "#ADADAD" }}>
+              <button className="vir-btn" onClick={async () => { await supabase.auth.signOut(); setScreen("login"); setRole(null); setOpenSession(null); setCurrentClubId(null); setCurrentUserId(null); }} style={{ background: "transparent", color: "var(--vir-text-secondary, #ADADAD)" }}>
                 <LogOut size={18} />
               </button>
             </div>
@@ -2852,22 +2854,22 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
       <SectionTitle sub={`Hola, ${myName} · ${CLUB_NAME} · ${teamName(myTeam)}`}>Tu evolución</SectionTitle>
 
       <div style={{ padding: "0 16px 6px" }}>
-        <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 14, padding: 16 }}>
+        <div style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 14, padding: 16 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
             <div>
-              <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 4px" }}>Asistencia este año</p>
-              <p className="vir-mono" style={{ color: "#F5F5F5", fontSize: 26, fontWeight: 700, margin: 0 }}>{pct}%</p>
+              <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 4px" }}>Asistencia este año</p>
+              <p className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 26, fontWeight: 700, margin: 0 }}>{pct}%</p>
             </div>
             <div style={{ textAlign: "right" }}>
-              <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 4px" }}>Convocado / Entrenado</p>
-              <p className="vir-mono" style={{ color: "#F5F5F5", fontSize: 15, fontWeight: 700, margin: 0 }}>{crewStats.convocado} / {crewStats.entrenado}</p>
+              <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 4px" }}>Convocado / Entrenado</p>
+              <p className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 15, fontWeight: 700, margin: 0 }}>{crewStats.convocado} / {crewStats.entrenado}</p>
             </div>
           </div>
-          <div style={{ borderTop: "1px solid #565656", paddingTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
-            <p style={{ color: "#ADADAD", fontSize: 11.5, margin: 0 }}>
+          <div style={{ borderTop: "1px solid var(--vir-border, #565656)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+            <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5, margin: 0 }}>
               {registeredExercises > 0 ? `Datos de gim: ${registeredExercises} ejercicio${registeredExercises > 1 ? "s" : ""} registrado${registeredExercises > 1 ? "s" : ""}` : "Todavía no has registrado ningún dato de gim."}
             </p>
-            <p style={{ color: "#ADADAD", fontSize: 11.5, margin: 0 }}>
+            <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5, margin: 0 }}>
               {ergoTest ? `TEST 1600: ${ergoTest} W` : "Todavía no has registrado tu TEST 1600 de ergómetro."}
             </p>
           </div>
@@ -2876,19 +2878,19 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
 
       {tileGroups.map(group => (
         <div key={group.label} style={{ padding: "10px 16px 4px" }}>
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>{group.label}</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>{group.label}</p>
           <div style={{ display: "grid", gridTemplateColumns: group.tiles.length === 1 ? "1fr" : "1fr 1fr", gap: 10 }}>
             {group.tiles.map(t => {
               const Icon = t.icon;
               return (
                 <div key={t.id} className="vir-btn" onClick={() => onNavigate(t.id)} style={{
-                  aspectRatio: group.tiles.length === 1 ? "3.2" : "1", background: "#404040", border: "1px solid #565656", borderRadius: 14,
+                  aspectRatio: group.tiles.length === 1 ? "3.2" : "1", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 14,
                   padding: 14, display: "flex", flexDirection: group.tiles.length === 1 ? "row" : "column", alignItems: group.tiles.length === 1 ? "center" : "stretch", gap: group.tiles.length === 1 ? 12 : 0, justifyContent: "space-between",
                 }}>
-                  <Icon size={20} color="#E61E29" />
+                  <Icon size={20} color="var(--vir-red, #E61E29)" />
                   <div style={{ flex: 1 }}>
-                    <p style={{ color: "#F5F5F5", fontSize: 13, fontWeight: 700, margin: 0, lineHeight: 1.2 }}>{t.label}</p>
-                    <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "3px 0 0" }}>{t.sub}</p>
+                    <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13, fontWeight: 700, margin: 0, lineHeight: 1.2 }}>{t.label}</p>
+                    <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "3px 0 0" }}>{t.sub}</p>
                   </div>
                 </div>
               );
@@ -2898,7 +2900,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
       ))}
 
       <div style={{ padding: "14px 16px 0" }}>
-        <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Próximos entrenos</p>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Próximos entrenos</p>
       </div>
       <div style={{ padding: "0 16px" }}>
         {sessions.map(s => {
@@ -2921,7 +2923,7 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={`Hola, ${coachName} · ${CLUB_NAME}`}>Planificación de botes</SectionTitle>
       <div style={{ padding: "6px 16px 4px" }}>
-        <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Alcance de acceso</p>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Alcance de acceso</p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <ScopeChip active={scope === "club"} onClick={() => setScope("club")} label="Todo el club" />
           {teams.map(t => (
@@ -2930,65 +2932,65 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
         </div>
       </div>
       <div style={{ padding: "4px 16px 10px" }}>
-        <div className="vir-btn" onClick={onPlanCalendar} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div className="vir-btn" onClick={onPlanCalendar} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Entrenos de agua</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Activa días de entreno y edita su título</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Entrenos de agua</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Activa días de entreno y edita su título</p>
           </div>
-          <ChevronRight size={18} color="#8A8A8A" />
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onGymPlan} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div className="vir-btn" onClick={onGymPlan} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Plan de gimnasio semanal</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Marca los días de la semana y sube el contenido</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Plan de gimnasio semanal</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Marca los días de la semana y sube el contenido</p>
           </div>
-          <ChevronRight size={18} color="#8A8A8A" />
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onTeamStats} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div className="vir-btn" onClick={onTeamStats} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Estadísticas de tripulación</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Frecuencia, convocatorias y entrenos de agua</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Estadísticas de tripulación</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Frecuencia, convocatorias y entrenos de agua</p>
           </div>
-          <ChevronRight size={18} color="#8A8A8A" />
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onOpenInformes} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div className="vir-btn" onClick={onOpenInformes} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Informes</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Diario, semanal y mensual · exportables a PDF</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Informes</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Diario, semanal y mensual · exportables a PDF</p>
           </div>
-          <ChevronRight size={18} color="#8A8A8A" />
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onOpenMeasurements} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div className="vir-btn" onClick={onOpenMeasurements} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Medidas</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Medidas de cada remero por bote</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Medidas</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Medidas de cada remero por bote</p>
           </div>
-          <ChevronRight size={18} color="#8A8A8A" />
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onOpenFleet} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div className="vir-btn" onClick={onOpenFleet} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Botes</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Crea o elimina la flota de esta tripulación</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Botes</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Crea o elimina la flota de esta tripulación</p>
           </div>
-          <ChevronRight size={18} color="#8A8A8A" />
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onOpenRegattas} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div className="vir-btn" onClick={onOpenRegattas} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Calendario de regatas</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Fechas, dosieres, horarios y resultados</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Calendario de regatas</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Fechas, dosieres, horarios y resultados</p>
           </div>
-          <ChevronRight size={18} color="#8A8A8A" />
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onOpenReminders} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="vir-btn" onClick={onOpenReminders} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Recordatorios</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Nota fija para tu equipo, y avisos puntuales</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Recordatorios</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Nota fija para tu equipo, y avisos puntuales</p>
           </div>
-          <ChevronRight size={18} color="#8A8A8A" />
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
       </div>
       <div style={{ padding: "10px 16px" }}>
-        {sessions.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13 }}>Esta tripulación no tiene entrenos activos próximamente.</p>}
+        {sessions.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>Esta tripulación no tiene entrenos activos próximamente.</p>}
         {sessions.map(s => {
           const allClosed = s.crews.length > 0 && s.crews.every(c => c.status === "cerrado");
           const totalFilled = s.crews.reduce((sum, c) => sum + seatFill(c), 0);
@@ -3030,8 +3032,8 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
-      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Estadísticas de tripulación</h2>
-      <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "0 0 16px" }}>Alcance: {scope === "club" ? "todo el club" : teamName(scope)}{scope !== "club" ? ` · ${scopeTotalPastActive} entrenos de agua realizados` : ""}</p>
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Estadísticas de tripulación</h2>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "0 0 16px" }}>Alcance: {scope === "club" ? "todo el club" : teamName(scope)}{scope !== "club" ? ` · ${scopeTotalPastActive} entrenos de agua realizados` : ""}</p>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
         <StatCard label="Convocatorias totales" value={aggregate.convocado} />
@@ -3039,34 +3041,34 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
         <StatCard label="Asistencia media" value={`${avgFreq}%`} />
       </div>
 
-      {people.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13 }}>No hay remeros en este alcance.</p>}
+      {people.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>No hay remeros en este alcance.</p>}
 
       {groups.map(g => (
         <div key={g.id} style={{ marginBottom: 18 }}>
           {scope === "club" && (
-            <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>{g.label} · {g.total} entrenos de agua realizados</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>{g.label} · {g.total} entrenos de agua realizados</p>
           )}
           {g.members.map(p => {
             const s = statsFor(p.id);
             const freq = g.total > 0 ? Math.round((s.entrenado / g.total) * 100) : 0;
             return (
-              <div key={p.id} className="vir-btn" onClick={() => onOpenPerson(p)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+              <div key={p.id} className="vir-btn" onClick={() => onOpenPerson(p)} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <div>
-                    <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{p.name}</p>
-                    {p.nickname && <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "2px 0 0" }}>"{p.nickname}"</p>}
+                    <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{p.name}</p>
+                    {p.nickname && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "2px 0 0" }}>"{p.nickname}"</p>}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span className="vir-mono" style={{ color: "#F5F5F5", fontSize: 16, fontWeight: 700 }}>{freq}%</span>
-                    <ChevronRight size={16} color="#8A8A8A" />
+                    <span className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 16, fontWeight: 700 }}>{freq}%</span>
+                    <ChevronRight size={16} color="var(--vir-text-muted, #8A8A8A)" />
                   </div>
                 </div>
-                <div style={{ height: 5, background: "#565656", borderRadius: 3, marginBottom: 10, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${freq}%`, background: "#E61E29", borderRadius: 3 }} />
+                <div style={{ height: 5, background: "var(--vir-border, #565656)", borderRadius: 3, marginBottom: 10, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${freq}%`, background: "var(--vir-red, #E61E29)", borderRadius: 3 }} />
                 </div>
                 <div style={{ display: "flex", gap: 16 }}>
-                  <span style={{ fontSize: 11.5, color: "#ADADAD" }}>Convocado al entreno de agua: <span className="vir-mono" style={{ color: "#F5F5F5" }}>{s.convocado}</span></span>
-                  <span style={{ fontSize: 11.5, color: "#ADADAD" }}>Entrenado agua: <span className="vir-mono" style={{ color: "#F5F5F5" }}>{s.entrenado}</span></span>
+                  <span style={{ fontSize: 11.5, color: "var(--vir-text-secondary, #ADADAD)" }}>Convocado al entreno de agua: <span className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)" }}>{s.convocado}</span></span>
+                  <span style={{ fontSize: 11.5, color: "var(--vir-text-secondary, #ADADAD)" }}>Entrenado agua: <span className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)" }}>{s.entrenado}</span></span>
                 </div>
               </div>
             );
@@ -3089,32 +3091,32 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
       <div style={{ display: "flex", alignItems: "center", gap: 14, margin: "10px 0 20px" }}>
-        <div style={{ width: 52, height: 52, borderRadius: 26, background: "#454545", display: "flex", alignItems: "center", justifyContent: "center", color: "#E61E29", fontWeight: 700, fontSize: 18, fontFamily: "'Big Shoulders Display', sans-serif" }}>
+        <div style={{ width: 52, height: 52, borderRadius: 26, background: "var(--vir-bg-surface-alt, #454545)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--vir-red, #E61E29)", fontWeight: 700, fontSize: 18, fontFamily: "'Big Shoulders Display', sans-serif" }}>
           {person.name.split(" ").map(n => n[0]).join("")}
         </div>
         <div>
-          <p style={{ color: "#F5F5F5", fontWeight: 700, fontSize: 16, margin: 0 }}>{person.name}</p>
-          <p style={{ color: "#8A8A8A", fontSize: 12, margin: "3px 0 0" }}>
+          <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontWeight: 700, fontSize: 16, margin: 0 }}>{person.name}</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12, margin: "3px 0 0" }}>
             {person.nickname ? `"${person.nickname}" · ` : ""}{teamName(teamId)}
           </p>
         </div>
       </div>
 
-      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Entrenos de agua</p>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Entrenos de agua</p>
       <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
         <StatCard label="Convocado" value={s.convocado} />
         <StatCard label="Entrenado" value={s.entrenado} />
         <StatCard label="Frecuencia" value={`${freq}%`} />
       </div>
-      <div style={{ height: 6, background: "#565656", borderRadius: 3, marginBottom: 14, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${freq}%`, background: "#E61E29", borderRadius: 3 }} />
+      <div style={{ height: 6, background: "var(--vir-border, #565656)", borderRadius: 3, marginBottom: 14, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${freq}%`, background: "var(--vir-red, #E61E29)", borderRadius: 3 }} />
       </div>
       <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
         <AttendanceCard label={`Agua · semana ${currentWeek}`} attended={waterWeekMonth.weekDone} total={waterWeekMonth.weekTotal} />
         <AttendanceCard label="Agua · este mes" attended={waterWeekMonth.monthDone} total={waterWeekMonth.monthTotal} />
       </div>
 
-      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Entrenos de gim · check semanal</p>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Entrenos de gim · check semanal</p>
       <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
         <AttendanceCard label={`Gim · semana ${currentWeek}`} attended={gymWeekMonth.weekDone} total={gymWeekMonth.weekTotal} unitLabel="hecho" />
         <AttendanceCard label="Gim · este mes" attended={gymWeekMonth.monthDone} total={gymWeekMonth.monthTotal} unitLabel="hecho" />
@@ -3125,25 +3127,25 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
         if (items.length === 0) return null;
         return (
           <div key={week} style={{ marginBottom: 14 }}>
-            <p style={{ color: "#ADADAD", fontSize: 11, margin: "0 0 6px" }}>Semana {week}{week === currentWeek ? " · actual" : ""}</p>
+            <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11, margin: "0 0 6px" }}>Semana {week}{week === currentWeek ? " · actual" : ""}</p>
             {items.map(slot => {
               const record = recordFor(teamId, week, slot);
               const done = !!(record && record.done);
               return (
-                <div key={slot} style={{ display: "flex", alignItems: "center", gap: 10, background: "#404040", border: `1px solid ${done ? "#3EA55A" : "#565656"}`, borderRadius: 10, padding: "9px 12px", marginBottom: 6 }}>
+                <div key={slot} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--vir-bg-surface, #404040)", border: `1px solid ${done ? "var(--vir-green, #3EA55A)" : "var(--vir-border, #565656)"}`, borderRadius: 10, padding: "9px 12px", marginBottom: 6 }}>
                   <div style={{
                     width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                    background: done ? "#3EA55A" : "#565656",
+                    background: done ? "var(--vir-green, #3EA55A)" : "var(--vir-border, #565656)",
                   }}>
                     {done && <Check size={13} color="#FFFFFF" />}
                   </div>
-                  <p style={{ color: "#F5F5F5", fontSize: 12.5, margin: 0, flex: 1 }}>{FISICO_LABELS[slot]}</p>
+                  <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, margin: 0, flex: 1 }}>{FISICO_LABELS[slot]}</p>
                   {done && record.photos && record.photos.length > 0 && (
                     <div style={{ display: "flex", gap: 3 }}>
                       {record.photos.slice(0, 3).map((p, i) => (
                         p.kind === "pdf" ? (
-                          <div key={i} onClick={() => window.open(p.dataUrl, "_blank")} style={{ width: 30, height: 30, borderRadius: 6, background: "#333333", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
-                            <KeyRound size={13} color="#ADADAD" />
+                          <div key={i} onClick={() => window.open(p.dataUrl, "_blank")} style={{ width: 30, height: 30, borderRadius: 6, background: "var(--vir-bg-surface-alt, #333333)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                            <KeyRound size={13} color="var(--vir-text-secondary, #ADADAD)" />
                           </div>
                         ) : (
                           <img
@@ -3155,7 +3157,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
                           />
                         )
                       ))}
-                      {record.photos.length > 3 && <span style={{ color: "#8A8A8A", fontSize: 10, alignSelf: "center" }}>+{record.photos.length - 3}</span>}
+                      {record.photos.length > 3 && <span style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10, alignSelf: "center" }}>+{record.photos.length - 3}</span>}
                     </div>
                   )}
                 </div>
@@ -3165,10 +3167,10 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
         );
       })}
       {weeks.every(week => FISICO_SLOTS.every(slot => !weekPlanFor(teamId, week)[slot])) && (
-        <p style={{ color: "#8A8A8A", fontSize: 12.5 }}>Todavía no hay plan de gimnasio subido para esta tripulación.</p>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5 }}>Todavía no hay plan de gimnasio subido para esta tripulación.</p>
       )}
 
-      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 10px" }}>Datos de gim y datos ergo</p>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "22px 0 10px" }}>Datos de gim y datos ergo</p>
       {hasGymLogs ? (
         <>
           <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
@@ -3177,7 +3179,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
           </div>
         </>
       ) : (
-        <p style={{ color: "#8A8A8A", fontSize: 12.5, lineHeight: 1.5, marginBottom: 12 }}>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, lineHeight: 1.5, marginBottom: 12 }}>
           Todavía no hay ningún registro de pesos ni de ergo para este remero.
         </p>
       )}
@@ -3193,10 +3195,10 @@ function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, onOpenR
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={`Hola, ${clubDisplayName}`}>Panel del club</SectionTitle>
       <div style={{ padding: "10px 16px" }}>
-        <div style={{ background: "#404040", border: "1px solid #565656", borderRadius: 14, padding: 16, marginBottom: 14 }}>
-          <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 6px" }}>Número de club</p>
-          <p className="vir-mono" style={{ color: "#F5F5F5", fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: 1 }}>{clubCode}</p>
-          <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "8px 0 0", lineHeight: 1.4 }}>
+        <div style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 14, padding: 16, marginBottom: 14 }}>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 6px" }}>Número de club</p>
+          <p className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: 1 }}>{clubCode}</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "8px 0 0", lineHeight: 1.4 }}>
             Se generó automáticamente al crear la cuenta. Compártelo con tus entrenadores para que accedan a sus tripulaciones, y úsalo también para volver a entrar como club desde la pantalla de inicio.
           </p>
         </div>
@@ -3207,36 +3209,36 @@ function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, onOpenR
           <StatCard label="Remeros" value={rowerCount} />
         </div>
 
-        <div className="vir-btn" onClick={onManageUsers} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div className="vir-btn" onClick={onManageUsers} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Usuarios del club</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Filtra por categoría, asigna tripulaciones y cambia roles</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Usuarios del club</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Filtra por categoría, asigna tripulaciones y cambia roles</p>
           </div>
-          <ChevronRight size={18} color="#8A8A8A" />
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
 
-        <div className="vir-btn" onClick={onManageTeams} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div className="vir-btn" onClick={onManageTeams} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Tripulaciones y categorías</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>{teams.map(t => t.name).join(" · ")}</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Tripulaciones y categorías</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>{teams.map(t => t.name).join(" · ")}</p>
           </div>
-          <ChevronRight size={18} color="#8A8A8A" />
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
 
-        <div className="vir-btn" onClick={onOpenRegattas} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div className="vir-btn" onClick={onOpenRegattas} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <div>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Calendario de regatas</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Fechas, dosieres, horarios y resultados</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Calendario de regatas</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Fechas, dosieres, horarios y resultados</p>
           </div>
-          <ChevronRight size={18} color="#8A8A8A" />
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
 
-        <div className="vir-btn" onClick={onOpenReminders} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="vir-btn" onClick={onOpenReminders} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Recordatorios</p>
-            <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Nota fija para todos, y avisos puntuales</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Recordatorios</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Nota fija para todos, y avisos puntuales</p>
           </div>
-          <ChevronRight size={18} color="#8A8A8A" />
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
       </div>
     </div>
@@ -3245,9 +3247,9 @@ function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, onOpenR
 
 function StatCard({ label, value }) {
   return (
-    <div style={{ flex: 1, background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 10px", textAlign: "center" }}>
-      <p className="vir-mono" style={{ color: "#F5F5F5", fontSize: 20, fontWeight: 700, margin: 0 }}>{value}</p>
-      <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "4px 0 0" }}>{label}</p>
+    <div style={{ flex: 1, background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "12px 10px", textAlign: "center" }}>
+      <p className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 20, fontWeight: 700, margin: 0 }}>{value}</p>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "4px 0 0" }}>{label}</p>
     </div>
   );
 }
@@ -3273,45 +3275,45 @@ function AdminHome({ onOpenRegattas, onOpenUsers, onOpenTeams, onOpenWater, onOp
       <div style={{ paddingBottom: 20 }}>
         <SectionTitle sub="Control abierto de todos los aspectos de la aplicación">Panel de administración</SectionTitle>
         <div style={{ padding: "10px 16px" }}>
-          <div style={{ background: "#402226", border: "1px solid #E61E29", borderRadius: 14, padding: 16, marginBottom: 18 }}>
-            <p style={{ color: "#FF8890", fontSize: 11.5, fontWeight: 700, margin: "0 0 6px" }}>Acceso de soporte y administración</p>
-            <p style={{ color: "#F5F5F5", fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
+          <div style={{ background: "var(--vir-danger-bg, #402226)", border: "1px solid var(--vir-red, #E61E29)", borderRadius: 14, padding: 16, marginBottom: 18 }}>
+            <p style={{ color: "var(--vir-error, #FF8890)", fontSize: 11.5, fontWeight: 700, margin: "0 0 6px" }}>Acceso de soporte y administración</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
               VIRADA está pensada para dar servicio a varios clubes a la vez, cada uno con su propio código de acceso y su estructura de entrenadores y remeros, completamente independiente del resto. Elige un club para entrar en su estructura.
             </p>
           </div>
 
           <StatCard label="Clubes dados de alta en esta sesión" value={clubs.length} />
 
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "18px 0 10px" }}>Clubes</p>
-          {clubs.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13 }}>Todavía no se ha registrado ningún club en esta sesión.</p>}
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "18px 0 10px" }}>Clubes</p>
+          {clubs.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>Todavía no se ha registrado ningún club en esta sesión.</p>}
           {clubs.map(c => (
-            <div key={c.id} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", marginBottom: 10 }}>
+            <div key={c.id} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", marginBottom: 10 }}>
               <div className="vir-btn" onClick={() => onSwitchClub(c.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div>
-                  <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{c.name}</p>
-                  <p className="vir-mono" style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>Código {c.code}</p>
+                  <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{c.name}</p>
+                  <p className="vir-mono" style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Código {c.code}</p>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <button
                     className="vir-btn"
                     onClick={(e) => { e.stopPropagation(); setDeletingId(deletingId === c.id ? null : c.id); setConfirmText(""); }}
-                    style={{ background: "transparent", color: "#8A8A8A", padding: 4 }}
+                    style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", padding: 4 }}
                     title="Eliminar club"
                   >
                     <X size={16} />
                   </button>
-                  <ChevronRight size={18} color="#8A8A8A" />
+                  <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
                 </div>
               </div>
 
               {deletingId === c.id && (
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #565656" }}>
-                  <p style={{ color: "#FF8890", fontSize: 12, fontWeight: 700, margin: "0 0 6px" }}>⚠ Esto elimina el club por completo</p>
-                  <p style={{ color: "#ADADAD", fontSize: 11.5, lineHeight: 1.5, margin: "0 0 12px" }}>
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--vir-border, #565656)" }}>
+                  <p style={{ color: "var(--vir-error, #FF8890)", fontSize: 12, fontWeight: 700, margin: "0 0 6px" }}>⚠ Esto elimina el club por completo</p>
+                  <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5, lineHeight: 1.5, margin: "0 0 12px" }}>
                     Se borrarán para siempre el club "{c.name}", todos sus usuarios, tripulaciones, entrenos de agua y plan de gimnasio. No se puede deshacer.
                   </p>
-                  <label style={{ fontSize: 11.5, color: "#ADADAD", marginBottom: 6, display: "block" }}>
-                    Escribe <span style={{ color: "#F5F5F5", fontWeight: 700 }}>{c.name}</span> para confirmar
+                  <label style={{ fontSize: 11.5, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>
+                    Escribe <span style={{ color: "var(--vir-text-primary, #F5F5F5)", fontWeight: 700 }}>{c.name}</span> para confirmar
                   </label>
                   <input
                     value={confirmText}
@@ -3324,7 +3326,7 @@ function AdminHome({ onOpenRegattas, onOpenUsers, onOpenTeams, onOpenWater, onOp
                       disabled={confirmText !== c.name}
                       onClick={() => { onDeleteClub(c.id); setDeletingId(null); setConfirmText(""); }}
                       style={{
-                        flex: 1, background: confirmText === c.name ? "#E61E29" : "#565656", color: "#F5F5F5",
+                        flex: 1, background: confirmText === c.name ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)", color: "var(--vir-text-primary, #F5F5F5)",
                         fontWeight: 700, fontSize: 12.5, padding: "10px 0", borderRadius: 10,
                         opacity: confirmText === c.name ? 1 : 0.5, cursor: confirmText === c.name ? "pointer" : "not-allowed",
                       }}
@@ -3349,8 +3351,8 @@ function AdminHome({ onOpenRegattas, onOpenUsers, onOpenTeams, onOpenWater, onOp
       <SectionTitle sub="Control abierto de todos los aspectos de la aplicación">Panel de administración</SectionTitle>
       <div style={{ padding: "10px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: 0 }}>Explorando: <span style={{ color: "#F5F5F5", fontWeight: 600 }}>{clubDisplayName}</span></p>
-          <button className="vir-btn" onClick={() => onSwitchClub(null)} style={{ background: "transparent", color: "#ADADAD", fontSize: 11, textDecoration: "underline" }}>Cambiar de club</button>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: 0 }}>Explorando: <span style={{ color: "var(--vir-text-primary, #F5F5F5)", fontWeight: 600 }}>{clubDisplayName}</span></p>
+          <button className="vir-btn" onClick={() => onSwitchClub(null)} style={{ background: "transparent", color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11, textDecoration: "underline" }}>Cambiar de club</button>
         </div>
 
         <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
@@ -3359,17 +3361,17 @@ function AdminHome({ onOpenRegattas, onOpenUsers, onOpenTeams, onOpenWater, onOp
           <StatCard label="Entrenadores" value={coachCount} />
           <StatCard label="Remeros" value={rowerCount} />
         </div>
-        <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "0 0 18px", lineHeight: 1.4 }}>
           Club: {clubDisplayName} (código {clubCode}).
         </p>
 
         {links.map(l => (
-          <div key={l.label} className="vir-btn" onClick={l.onClick} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div key={l.label} className="vir-btn" onClick={l.onClick} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <div>
-              <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{l.label}</p>
-              <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>{l.sub}</p>
+              <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{l.label}</p>
+              <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>{l.sub}</p>
             </div>
-            <ChevronRight size={18} color="#8A8A8A" />
+            <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
           </div>
         ))}
       </div>
@@ -6793,7 +6795,7 @@ function TabBar({ screen, setScreen, notifCount, role }) {
     : profileGroup.includes(screen) ? "profile"
     : screen;
   return (
-    <div style={{ display: "flex", borderTop: "1px solid #565656", background: "#3A3A3A" }}>
+    <div style={{ display: "flex", borderTop: "1px solid var(--vir-border, #565656)", background: "var(--vir-bg-surface-alt, #3A3A3A)" }}>
       {tabs.map(t => {
         const Icon = t.icon;
         const isActive = active === t.id;
@@ -6801,9 +6803,9 @@ function TabBar({ screen, setScreen, notifCount, role }) {
           <button key={t.id} className="vir-btn" onClick={() => setScreen(t.id)} style={{
             flex: 1, background: "transparent", padding: "10px 0 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, position: "relative",
           }}>
-            <Icon size={19} color={isActive ? "#E61E29" : "#8A8A8A"} />
-            {!!t.badge && <span style={{ position: "absolute", top: 5, right: "28%", width: 7, height: 7, borderRadius: 4, background: "#FF8890" }} />}
-            <span style={{ fontSize: 10, color: isActive ? "#E61E29" : "#8A8A8A", fontWeight: isActive ? 600 : 400 }}>{t.label}</span>
+            <Icon size={19} color={isActive ? "var(--vir-red, #E61E29)" : "var(--vir-text-muted, #8A8A8A)"} />
+            {!!t.badge && <span style={{ position: "absolute", top: 5, right: "28%", width: 7, height: 7, borderRadius: 4, background: "var(--vir-error, #FF8890)" }} />}
+            <span style={{ fontSize: 10, color: isActive ? "var(--vir-red, #E61E29)" : "var(--vir-text-muted, #8A8A8A)", fontWeight: isActive ? 600 : 400 }}>{t.label}</span>
           </button>
         );
       })}
