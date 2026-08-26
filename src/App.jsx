@@ -265,6 +265,8 @@ export default function ViradaPrototype() {
   const [screen, setScreen] = useState("login");
   const [role, setRole] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(ME_ROWER);
+  const [theme, setTheme] = useState(() => localStorage.getItem("vir-theme") || "dark"); // "dark" | "light" — se guarda en este dispositivo
+  useEffect(() => { localStorage.setItem("vir-theme", theme); }, [theme]);
   const [openSession, setOpenSession] = useState(null);
   const [openTeam, setOpenTeam] = useState(null);
   const [openPerson, setOpenPerson] = useState(null);
@@ -1793,7 +1795,7 @@ export default function ViradaPrototype() {
   );
 
   return (
-    <div style={{ display: "flex", justifyContent: "center", padding: "24px 8px", background: "#262626" }}>
+    <div data-theme={theme} style={{ display: "flex", justifyContent: "center", padding: "24px 8px", background: "var(--vir-bg-page, #262626)" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap');
         .vir-app * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
@@ -1803,14 +1805,48 @@ export default function ViradaPrototype() {
         .vir-scroll::-webkit-scrollbar { display: none; }
         .vir-chip { transition: background .15s ease, border-color .15s ease; }
         .vir-seat { transition: fill .15s ease, stroke .15s ease; cursor: pointer; }
+
+        /* Paleta de colores por tema — todo lo que se vaya adaptando usará estas variables
+           en vez de un color fijo, para que cambiar de tema sea instantáneo en toda la app */
+        [data-theme="dark"] {
+          --vir-bg-page: #262626;
+          --vir-bg-phone: #333333;
+          --vir-bg-surface: #404040;
+          --vir-bg-surface-alt: #3A3A3A;
+          --vir-bg-input: #404040;
+          --vir-border: #565656;
+          --vir-text-primary: #F5F5F5;
+          --vir-text-secondary: #ADADAD;
+          --vir-text-muted: #8A8A8A;
+          --vir-red: #E61E29;
+          --vir-green: #3EA55A;
+          --vir-orange: #E67E22;
+          --vir-danger: #E24B4A;
+        }
+        [data-theme="light"] {
+          --vir-bg-page: #E9E9E9;
+          --vir-bg-phone: #FFFFFF;
+          --vir-bg-surface: #F2F2F2;
+          --vir-bg-surface-alt: #F7F7F7;
+          --vir-bg-input: #FFFFFF;
+          --vir-border: #DADADA;
+          --vir-text-primary: #232323;
+          --vir-text-secondary: #5A5A5A;
+          --vir-text-muted: #7A7A7A;
+          --vir-red: #D8151F;
+          --vir-green: #2E8B4F;
+          --vir-orange: #C96A16;
+          --vir-danger: #C93A38;
+        }
+
         @media print {
           body * { visibility: hidden; }
           .vir-print-area, .vir-print-area * { visibility: visible; }
           .vir-print-area { position: absolute; top: 0; left: 0; width: 100%; background: #FFFFFF !important; color: #111 !important; }
         }
       `}</style>
-      <div className="vir-app vir-scroll" style={{
-        width: 380, height: 780, background: "#333333",
+      <div className="vir-app vir-scroll" data-theme={theme} style={{
+        width: 380, height: 780, background: "var(--vir-bg-phone)",
         borderRadius: 40, border: "10px solid #1A1A1A", boxShadow: "0 30px 60px rgba(0,0,0,.5)",
         overflow: "hidden", position: "relative", display: "flex", flexDirection: "column"
       }}>
@@ -2206,6 +2242,8 @@ export default function ViradaPrototype() {
                   clubProfile={currentClub}
                   onUpdateClubProfile={updateClubProfile}
                   onUpdateClubPhoto={updateClubPhoto}
+                  theme={theme}
+                  onToggleTheme={setTheme}
                 />
               )}
               {screen === "testPesos" && role === "rower" && (
@@ -5817,7 +5855,7 @@ function NotificationsScreen({ items, role, nameOf, onOpen, onMarkRead, onHide }
   );
 }
 
-function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, teamCode, onOpenTraining, myId, myDisplayName, myNickname, mySide, myTeam, myEmail, myFirstName, myLastName, myBirthDate, myPhone, myRowerCode, myPhoto, onUpdateMyProfile, onUpdateMyPhoto, clubDisplayName, clubCode, clubPhoto, clubProfile, onUpdateClubProfile, onUpdateClubPhoto }) {
+function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, teamCode, onOpenTraining, myId, myDisplayName, myNickname, mySide, myTeam, myEmail, myFirstName, myLastName, myBirthDate, myPhone, myRowerCode, myPhoto, onUpdateMyProfile, onUpdateMyPhoto, clubDisplayName, clubCode, clubPhoto, clubProfile, onUpdateClubProfile, onUpdateClubPhoto, theme, onToggleTheme }) {
   const name = role === "coach" ? myDisplayName : role === "club" ? clubDisplayName : myDisplayName;
   const roleLabel = role === "coach" ? "Entrenador" : role === "club" ? "Club" : "Remero";
   const photo = role === "club" ? clubPhoto : myPhoto;
@@ -5903,6 +5941,11 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
             <Pencil size={15} />
           </button>
         )}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
+        <p style={{ color: "#F5F5F5", fontSize: 13, margin: 0 }}>Modo {theme === "dark" ? "oscuro" : "claro"}</p>
+        <ToggleSwitch checked={theme === "light"} onChange={() => onToggleTheme(theme === "dark" ? "light" : "dark")} />
       </div>
 
       {editing && (role === "rower" || role === "coach") && (
