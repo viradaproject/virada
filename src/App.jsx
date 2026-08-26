@@ -1883,8 +1883,8 @@ export default function ViradaPrototype() {
 
         {screen !== "login" && screen !== "pendingRole" && screen !== "resetPassword" && (
           <>
-            <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid var(--vir-border, #565656)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <Logo size={20} />
+            <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--vir-border, #565656)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Logo size={26} />
               <button className="vir-btn" onClick={async () => { await supabase.auth.signOut(); setScreen("login"); setRole(null); setOpenSession(null); setCurrentClubId(null); setCurrentUserId(null); }} style={{ background: "transparent", color: "var(--vir-text-secondary, #ADADAD)" }}>
                 <LogOut size={18} />
               </button>
@@ -2749,8 +2749,8 @@ function PendingRoleScreen({ user, onBack }) {
 function SectionTitle({ children, sub }) {
   return (
     <div style={{ padding: "20px 20px 4px" }}>
-      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 24, color: "#F5F5F5", margin: 0, letterSpacing: 0.4 }}>{children}</h2>
-      {sub && <p style={{ color: "#ADADAD", fontSize: 12.5, margin: "3px 0 0" }}>{sub}</p>}
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 24, color: "var(--vir-text-primary, #F5F5F5)", margin: 0, letterSpacing: 0.4 }}>{children}</h2>
+      {sub && <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12.5, margin: "3px 0 0" }}>{sub}</p>}
     </div>
   );
 }
@@ -5940,8 +5940,8 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <AvatarPicker photo={photo} initials={name.split(" ").map(n => n[0]).join("")} onChange={onChangePhoto} />
           <div>
-            <p style={{ color: "#F5F5F5", fontWeight: 600, fontSize: 16, margin: 0 }}>{name}</p>
-            <p style={{ color: "#ADADAD", fontSize: 12.5, margin: "3px 0 0" }}>{roleLabel}{role !== "club" ? ` · ${clubDisplayName}` : ""}</p>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontWeight: 600, fontSize: 16, margin: 0 }}>{name}</p>
+            <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12.5, margin: "3px 0 0" }}>{roleLabel}{role !== "club" ? ` · ${clubDisplayName}` : ""}</p>
           </div>
         </div>
         {editable && !editing && (
