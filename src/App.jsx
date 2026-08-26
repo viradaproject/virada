@@ -1840,6 +1840,9 @@ export default function ViradaPrototype() {
           --vir-success-bg: #1E3A2A;
           --vir-warning-bg: #3D2E17;
           --vir-error: #FF8890;
+          --vir-boat-bg: #666666;
+          --vir-boat-label: #8A8A8A;
+          --vir-boat-name: #F5F5F5;
         }
         [data-theme="light"] {
           --vir-bg-page: #E9E9E9;
@@ -1859,6 +1862,9 @@ export default function ViradaPrototype() {
           --vir-success-bg: #E3F3E9;
           --vir-warning-bg: #FBEFDF;
           --vir-error: #C93A38;
+          --vir-boat-bg: #E6E6E6;
+          --vir-boat-label: #333333;
+          --vir-boat-name: #333333;
         }
 
         @media print {
@@ -5602,7 +5608,7 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
           <circle cx={x} cy={y} r={r} fill={filled ? color : "#404040"} stroke={filled ? color : "#6E6E6E"} strokeWidth="1.5" />
         )}
         {!photo && (
-          <text x={x} y={y + r * 0.28} textAnchor="middle" fontSize={r * 0.62} fontWeight="700" fill={filled ? "#FFFFFF" : "#8A8A8A"}>{label.text}</text>
+          <text x={x} y={y + r * 0.28} textAnchor="middle" fontSize={r * 0.62} fontWeight="700" fill="#FFFFFF">{label.text}</text>
         )}
         {filled && photo && (
           <g>
@@ -5611,7 +5617,7 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
           </g>
         )}
         {filled && nameBelow && (
-          <text x={x} y={y + r + 15} textAnchor="middle" fontSize="11" fontWeight="600" fill="#F5F5F5">
+          <text x={x} y={y + r + 15} textAnchor="middle" fontSize="11" fontWeight="700" fill="var(--vir-boat-name, #F5F5F5)">
             {crewLabel(rowerId, nicknameOf, nameOf)}{measurement ? ` · ${measurement}` : ""}
           </text>
         )}
@@ -5623,7 +5629,7 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
     const zodiacPos = [66, 122, 178, 234].map(x => ({ x, y }));
     return (
       <>
-        <rect x="25" y={y - 40} width="250" height="80" rx="14" fill="#333333" stroke="#565656" strokeWidth="1.5" />
+        <rect x="25" y={y - 40} width="250" height="80" rx="14" fill="var(--vir-boat-bg, #333333)" stroke="#565656" strokeWidth="1.5" />
         {[0, 1, 2, 3].map(i => (
           <Avatar key={`z${i}`} x={zodiacPos[i].x} y={zodiacPos[i].y} r={17} filled={!!crew.zodiac[i]} rowerId={crew.zodiac[i]}
             label={{ type: "zodiac", idx: i, text: i === 0 ? "Z" : `Z${i}` }} nameBelow />
@@ -5641,7 +5647,7 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
     const reserveY = zodiacY + 76;
     const viewH = reserveY + 50;
     return (
-      <div style={{ background: "#666666", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
+      <div style={{ background: "var(--vir-boat-bg, #666666)", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
         <svg viewBox={`0 0 300 ${viewH}`} width="100%" height={viewH * 0.92}>
           {seatIdxForRow.map((idx, row) => (
             <Avatar key={idx} x={centerX} y={seatY(row)} r={24} filled={!!crew.seats[idx]} rowerId={crew.seats[idx]}
@@ -5677,11 +5683,11 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
     const zodiacY = patronPos.y + 116;
     const viewH = zodiacY + 60;
     return (
-      <div style={{ background: "#666666", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
+      <div style={{ background: "var(--vir-boat-bg, #666666)", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
         <svg viewBox={`0 0 300 ${viewH}`} width="100%" height={viewH * 0.92}>
           <line x1={centerX} y1={lineTop} x2={centerX} y2={lineBottom} stroke="#767676" strokeWidth="2" />
-          <text x={cx.babor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">BABOR</text>
-          <text x={cx.estribor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ESTRIBOR</text>
+          <text x={cx.babor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="700" fill="var(--vir-boat-label, #8A8A8A)" letterSpacing="0.5">BABOR</text>
+          <text x={cx.estribor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="700" fill="var(--vir-boat-label, #8A8A8A)" letterSpacing="0.5">ESTRIBOR</text>
 
           {[0, 1].map(i => (
             <Avatar key={`r${i}`} x={reservePos[i].x} y={reservePos[i].y} r={22} filled={!!crew.reserves[i]} rowerId={crew.reserves[i]}
@@ -5720,12 +5726,12 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
   const viewH = zodiacY + 60;
 
   return (
-    <div style={{ background: "#666666", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
+    <div style={{ background: "var(--vir-boat-bg, #666666)", border: "1px solid #565656", borderRadius: 14, padding: "16px 0 10px" }}>
       <svg viewBox={`0 0 300 ${viewH}`} width="100%" height={viewH * 0.92}>
         <line x1={centerX} y1={lineTop} x2={centerX} y2={lineBottom} stroke="#767676" strokeWidth="2" />
 
-        <text x={cx.babor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">BABOR</text>
-        <text x={cx.estribor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="#8A8A8A" letterSpacing="0.5">ESTRIBOR</text>
+        <text x={cx.babor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="700" fill="var(--vir-boat-label, #8A8A8A)" letterSpacing="0.5">BABOR</text>
+        <text x={cx.estribor} y={18} textAnchor="middle" fontSize="9.5" fontWeight="700" fill="var(--vir-boat-label, #8A8A8A)" letterSpacing="0.5">ESTRIBOR</text>
 
         {[0, 1].map(i => (
           <Avatar key={`r${i}`} x={reservePos[i].x} y={reservePos[i].y} r={22} filled={!!crew.reserves[i]} rowerId={crew.reserves[i]}
