@@ -5573,7 +5573,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
                 const chosen = availableBoats.find(b => b.name === newBoatName) || availableBoats[0];
                 onAddCrew(session, chosen);
                 setNewBoatName("");
-              }} style={{ ...primaryBtn, padding: "8px 16px", fontSize: 12.5 }}>Añadir</button>
+              }} style={{ ...primaryBtn, width: "auto", padding: "8px 16px", fontSize: 12.5, whiteSpace: "nowrap" }}>Añadir</button>
             </div>
           )}
         </div>
