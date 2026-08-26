@@ -1840,7 +1840,7 @@ export default function ViradaPrototype() {
           --vir-success-bg: #1E3A2A;
           --vir-warning-bg: #3D2E17;
           --vir-error: #FF8890;
-          --vir-boat-bg: #666666;
+          --vir-boat-bg: #333333;
           --vir-boat-zodiac-bg: #333333;
           --vir-boat-label: #8A8A8A;
           --vir-boat-name: #F5F5F5;
