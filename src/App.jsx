@@ -2435,11 +2435,11 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
   }, [view]);
 
   return (
-    <div ref={scrollRef} data-theme={view === "menu" ? "dark" : undefined} style={{
+    <div ref={scrollRef} data-theme="dark" style={{
       flex: 1, display: "flex", flexDirection: "column", overflowY: "auto",
       justifyContent: (view === "menu" || view === "loginClub" || view === "loginUser") ? "center" : "flex-start",
       padding: (view === "menu" || view === "loginClub" || view === "loginUser") ? "0 28px" : "28px 28px 0",
-      background: view === "menu" ? "#333333" : "var(--vir-bg-phone, #333333)",
+      background: "var(--vir-bg-phone, #333333)",
     }}>
       {view === "menu" && (
         <>
