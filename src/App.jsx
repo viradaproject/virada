@@ -5292,21 +5292,31 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
         <SeasonSetupForm existing={team} onCancel={() => setShowSeasonForm(false)} onSave={(s, e) => { onSetSeason(teamId, s, e); setShowSeasonForm(false); }} />
       )}
 
-      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8, marginBottom: 14 }}>
-        {seasonMonths.map(m => {
-          const active = m.key === activeMonthKey;
-          return (
-            <button key={m.key} className="vir-btn" onClick={() => setSelectedMonthKey(m.key)} style={{
-              flexShrink: 0, padding: "8px 14px", borderRadius: 20, fontSize: 11.5, fontWeight: active ? 700 : 500, whiteSpace: "nowrap",
-              background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
-              border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
-              color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
-            }}>
-              {m.label}
-            </button>
-          );
-        })}
-      </div>
+      {(() => {
+        const byYear = {};
+        seasonMonths.forEach(m => { (byYear[m.year] = byYear[m.year] || []).push(m); });
+        return Object.entries(byYear).map(([year, months]) => (
+          <div key={year} style={{ marginBottom: 10 }}>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, fontWeight: 700, margin: "0 0 6px" }}>{year}</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+              {months.map(m => {
+                const active = m.key === activeMonthKey;
+                return (
+                  <button key={m.key} className="vir-btn" onClick={() => setSelectedMonthKey(m.key)} style={{
+                    padding: "8px 4px", borderRadius: 10, fontSize: 11, fontWeight: active ? 700 : 500, whiteSpace: "nowrap", textAlign: "center",
+                    background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+                    border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                    color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                  }}>
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ));
+      })()}
+      <div style={{ marginBottom: 4 }} />
 
       {Object.entries(weeksInMonth).sort(([a], [b]) => a.localeCompare(b)).map(([weekKey, items], wi) => (
         <div key={weekKey}>
