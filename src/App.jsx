@@ -1841,6 +1841,7 @@ export default function ViradaPrototype() {
           --vir-warning-bg: #3D2E17;
           --vir-error: #FF8890;
           --vir-boat-bg: #666666;
+          --vir-boat-zodiac-bg: #333333;
           --vir-boat-label: #8A8A8A;
           --vir-boat-name: #F5F5F5;
         }
@@ -1863,6 +1864,7 @@ export default function ViradaPrototype() {
           --vir-warning-bg: #FBEFDF;
           --vir-error: #C93A38;
           --vir-boat-bg: #E6E6E6;
+          --vir-boat-zodiac-bg: #E6E6E6;
           --vir-boat-label: #333333;
           --vir-boat-name: #333333;
         }
@@ -5439,7 +5441,7 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
                     background: meta ? meta.color : "var(--vir-border, var(--vir-border, #565656))", color: "#FFFFFF", fontSize: 7.5, fontWeight: 800,
                   }}>{meta ? meta.letter : "?"}</span>
                   {label}
-                  <span className="vir-mono" style={{ color: isSel ? "#FFD9DB" : "var(--vir-text-secondary, #ADADAD)", fontSize: 11, fontWeight: 600 }}>· {pct}%</span>
+                  <span className="vir-mono" style={{ color: isSel ? "#FFD9DB" : "var(--vir-text-primary, #F5F5F5)", fontSize: 11, fontWeight: 600 }}>· {pct}%</span>
                 </button>
               );
             })}
@@ -5629,7 +5631,7 @@ function BoatDiagram({ crew, selected, onAssign, onClear, readOnly, nicknameOf, 
     const zodiacPos = [66, 122, 178, 234].map(x => ({ x, y }));
     return (
       <>
-        <rect x="25" y={y - 40} width="250" height="80" rx="14" fill="var(--vir-boat-bg, #333333)" stroke="#565656" strokeWidth="1.5" />
+        <rect x="25" y={y - 40} width="250" height="80" rx="14" fill="var(--vir-boat-zodiac-bg, #333333)" stroke="#565656" strokeWidth="1.5" />
         {[0, 1, 2, 3].map(i => (
           <Avatar key={`z${i}`} x={zodiacPos[i].x} y={zodiacPos[i].y} r={17} filled={!!crew.zodiac[i]} rowerId={crew.zodiac[i]}
             label={{ type: "zodiac", idx: i, text: i === 0 ? "Z" : `Z${i}` }} nameBelow />
