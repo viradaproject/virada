@@ -1911,6 +1911,7 @@ export default function ViradaPrototype() {
           --vir-error: #FF8890;
           --vir-boat-bg: #333333;
           --vir-boat-zodiac-bg: #333333;
+          --vir-week-divider: #565656;
           --vir-boat-label: #8A8A8A;
           --vir-boat-name: #F5F5F5;
         }
@@ -1934,6 +1935,7 @@ export default function ViradaPrototype() {
           --vir-error: #C93A38;
           --vir-boat-bg: #E6E6E6;
           --vir-boat-zodiac-bg: #E6E6E6;
+          --vir-week-divider: #E61E29;
           --vir-boat-label: #333333;
           --vir-boat-name: #333333;
         }
@@ -5319,8 +5321,7 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
       <div style={{ marginBottom: 4 }} />
 
       {Object.entries(weeksInMonth).sort(([a], [b]) => a.localeCompare(b)).map(([weekKey, items], wi) => (
-        <div key={weekKey}>
-          {wi > 0 && <div style={{ borderTop: "1px solid var(--vir-border, #565656)", margin: "14px 0" }} />}
+        <div key={weekKey} style={{ borderTop: "1px solid var(--vir-week-divider, #565656)", borderBottom: "1px solid var(--vir-week-divider, #565656)", paddingTop: 14, paddingBottom: 4, marginBottom: 14 }}>
           {items.map(s => {
             const clashes = (s.crews || []).map(c => overlapFor(s, c)).filter(Boolean);
             const isPast = s.date < today && s.iso !== today.toISOString().slice(0, 10);
