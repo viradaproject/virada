@@ -230,6 +230,9 @@ const isLlaut8 = (layout) => layout === "llaut8";
 const seatShortForBoat = (layout, i) => isBatel(layout) ? BATEL_SEAT_NUMS[i] : seatShort(i);
 const seatLabelForBoat = (layout, i) => isBatel(layout) ? `Puesto ${BATEL_SEAT_NUMS[i]}` : seatLabel(i);
 const firstName = (name) => name.split(" ")[0];
+// Pone en mayúscula solo la primera letra, sin tocar el resto de lo que haya escrito la persona
+// (si escribe todo en mayúsculas o minúsculas, se respeta tal cual a partir de la segunda letra)
+const capitalizeFirst = (str) => (str && str.length > 0) ? str.charAt(0).toUpperCase() + str.slice(1) : str;
 const crewLabel = (id, nicknameOf, nameOf) => {
   const nick = nicknameOf ? nicknameOf(id) : null;
   if (nick) return nick;
@@ -658,8 +661,13 @@ export default function ViradaPrototype() {
     if (id === COACH_ID) return COACH_NAME;
     const rower = ROWERS.find(r => r.id === id);
     if (rower) return rower.name;
-    const au = assignedUsers.find(u => u.id === id);
-    if (au) return au.username;
+    const au = assignedUsers.find(u => u.id === id) || pendingUsers.find(u => u.id === id);
+    if (au) {
+      const fullName = `${au.firstName || ""} ${au.lastName || ""}`.trim();
+      if (fullName) return fullName;
+      if (au.apodo) return au.apodo;
+      return au.username;
+    }
     return "Usuario";
   };
   const nameOf = displayNameOf;
@@ -672,9 +680,9 @@ export default function ViradaPrototype() {
     return `${joinYear}${clubCode}${String(seq).padStart(4, "0")}`;
   };
   const updateMyProfile = async ({ apodo, side, email, newPassword, firstName, lastName, birthDate, phone }) => {
-    const updates = { nickname: apodo, side };
-    if (firstName !== undefined) updates.first_name = firstName.trim();
-    if (lastName !== undefined) updates.last_name = lastName.trim();
+    const updates = { nickname: capitalizeFirst((apodo || "").trim()), side };
+    if (firstName !== undefined) updates.first_name = capitalizeFirst(firstName.trim());
+    if (lastName !== undefined) updates.last_name = capitalizeFirst(lastName.trim());
     if (birthDate !== undefined) updates.birth_date = birthDate || null;
     if (phone !== undefined) updates.phone = phone.trim() || null;
     const emailChanged = email !== undefined && email.trim() && email.trim().toLowerCase() !== (recoveryEmails[currentUserId] || "").trim().toLowerCase();
@@ -693,13 +701,13 @@ export default function ViradaPrototype() {
       const { error: pwError } = await supabase.auth.updateUser({ password: newPassword });
       if (pwError) { flash("Perfil actualizado, pero no se pudo cambiar la contraseña. Inténtalo de nuevo."); return; }
     }
-    setNicknameOverrides(prev => ({ ...prev, [currentUserId]: apodo }));
+    setNicknameOverrides(prev => ({ ...prev, [currentUserId]: updates.nickname }));
     setSideOverrides(prev => ({ ...prev, [currentUserId]: side }));
     if (emailChanged) setRecoveryEmails(prev => ({ ...prev, [currentUserId]: email.trim().toLowerCase() }));
     setAssignedUsers(prev => prev.map(u => u.id === currentUserId ? {
-      ...u, apodo, side,
-      firstName: firstName !== undefined ? firstName.trim() : u.firstName,
-      lastName: lastName !== undefined ? lastName.trim() : u.lastName,
+      ...u, apodo: updates.nickname, side,
+      firstName: firstName !== undefined ? updates.first_name : u.firstName,
+      lastName: lastName !== undefined ? updates.last_name : u.lastName,
       birthDate: birthDate !== undefined ? birthDate : u.birthDate,
       phone: phone !== undefined ? phone.trim() : u.phone,
     } : u));
@@ -726,8 +734,8 @@ export default function ViradaPrototype() {
     if (fields.address !== undefined) updates.address = fields.address.trim() || null;
     if (fields.city !== undefined) updates.city = fields.city.trim() || null;
     if (fields.postalCode !== undefined) updates.postal_code = fields.postalCode.trim() || null;
-    if (fields.contactFirstName !== undefined) updates.contact_first_name = fields.contactFirstName.trim();
-    if (fields.contactLastName !== undefined) updates.contact_last_name = fields.contactLastName.trim();
+    if (fields.contactFirstName !== undefined) updates.contact_first_name = capitalizeFirst(fields.contactFirstName.trim());
+    if (fields.contactLastName !== undefined) updates.contact_last_name = capitalizeFirst(fields.contactLastName.trim());
     if (fields.contactRole !== undefined) updates.contact_role = fields.contactRole.trim();
     if (fields.contactPhone !== undefined) updates.contact_phone = fields.contactPhone.trim() || null;
     const club = clubs.find(c => c.id === currentClubId);
@@ -751,8 +759,8 @@ export default function ViradaPrototype() {
       address: fields.address !== undefined ? fields.address.trim() : c.address,
       city: fields.city !== undefined ? fields.city.trim() : c.city,
       postalCode: fields.postalCode !== undefined ? fields.postalCode.trim() : c.postalCode,
-      contactFirstName: fields.contactFirstName !== undefined ? fields.contactFirstName.trim() : c.contactFirstName,
-      contactLastName: fields.contactLastName !== undefined ? fields.contactLastName.trim() : c.contactLastName,
+      contactFirstName: fields.contactFirstName !== undefined ? capitalizeFirst(fields.contactFirstName.trim()) : c.contactFirstName,
+      contactLastName: fields.contactLastName !== undefined ? capitalizeFirst(fields.contactLastName.trim()) : c.contactLastName,
       contactRole: fields.contactRole !== undefined ? fields.contactRole.trim() : c.contactRole,
       contactPhone: fields.contactPhone !== undefined ? fields.contactPhone.trim() : c.contactPhone,
     } : c));
@@ -845,9 +853,9 @@ export default function ViradaPrototype() {
       club_id: clubRow.id,
       username: cleanUsername,
       auth_user_id: authUserId,
-      first_name: person.firstName.trim(),
-      last_name: person.lastName.trim(),
-      nickname: person.apodo.trim(),
+      first_name: capitalizeFirst(person.firstName.trim()),
+      last_name: capitalizeFirst(person.lastName.trim()),
+      nickname: capitalizeFirst(person.apodo.trim()),
       birth_date: person.birthDate,
       email: cleanEmail,
       phone: person.phone?.trim() || null,
@@ -1655,8 +1663,8 @@ export default function ViradaPrototype() {
       address: club.address?.trim() || null,
       city: club.city?.trim() || null,
       postal_code: club.postalCode?.trim() || null,
-      contact_first_name: club.contactFirstName.trim(),
-      contact_last_name: club.contactLastName.trim(),
+      contact_first_name: capitalizeFirst(club.contactFirstName.trim()),
+      contact_last_name: capitalizeFirst(club.contactLastName.trim()),
       contact_role: club.contactRole.trim(),
       contact_phone: club.contactPhone?.trim() || null,
     }).select().single();
