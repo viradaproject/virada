@@ -87,6 +87,28 @@ function buildSessions(teamId) {
   return sessions;
 }
 
+// Genera un día por cada fecha entre el inicio y el fin de temporada (ambos incluidos)
+function buildSeasonSessions(teamId, startDateStr, endDateStr) {
+  const sessions = [];
+  const start = new Date(startDateStr + "T00:00:00");
+  const end = new Date(endDateStr + "T00:00:00");
+  const d = new Date(start);
+  while (d <= end) {
+    const dow = d.getDay();
+    const iso = d.toISOString().slice(0, 10);
+    sessions.push({
+      id: `${teamId}-${iso}`, teamId, date: new Date(d), iso, dow, time: TIME_OPTIONS[5],
+      title: DEFAULT_SESSION_TITLE,
+      active: false,
+      suspendedReason: null,
+      signups: new Set(),
+      crews: [],
+    });
+    d.setDate(d.getDate() + 1);
+  }
+  return sessions;
+}
+
 const SUSPEND_REASONS = ["No hay entreno", "Falta de remeros", "Falta de patrón", "Mal tiempo", "Mala organización de botes"];
 
 // ---- Calendario de regatas ----
@@ -404,7 +426,7 @@ export default function ViradaPrototype() {
       await refetchCoachPerms();
       const { data: teamsData, error: teamsErr } = await supabase.from("teams").select("*");
       if (!teamsErr && teamsData) {
-        setTeams(teamsData.map(t => ({ id: t.id, clubId: t.club_id, name: t.name, code: t.code })));
+        setTeams(teamsData.map(t => ({ id: t.id, clubId: t.club_id, name: t.name, code: t.code, seasonStart: t.season_start, seasonEnd: t.season_end })));
       }
       const { data: waterSessionsData, error: waterErr } = await supabase.from("water_sessions").select("*").order("iso", { ascending: true });
       const { data: crewsData } = await supabase.from("session_crews").select("*").order("created_at", { ascending: true });
@@ -931,19 +953,63 @@ export default function ViradaPrototype() {
       club_id: currentClubId, name, code,
     }).select().single();
     if (error) { flash("No se pudo crear la tripulación. Inténtalo de nuevo."); return; }
-    const newTeam = { id: data.id, clubId: data.club_id, name: data.name, code: data.code };
+    const newTeam = { id: data.id, clubId: data.club_id, name: data.name, code: data.code, seasonStart: null, seasonEnd: null };
     setTeams(prev => [...prev, newTeam]);
-    const newSessions = buildSessions(data.id);
-    setSessions(prev => [...prev, ...newSessions]);
-    const rows = newSessions.map(s => ({
-      id: s.id, team_id: s.teamId, date: s.iso, iso: s.iso, dow: s.dow, time: s.time, title: s.title,
-      active: s.active, suspended_reason: s.suspendedReason,
-      signups: [],
-    }));
-    const { error: sessErr } = await supabase.from("water_sessions").insert(rows);
-    if (sessErr) { flash("Tripulación creada, pero hubo un problema guardando el calendario."); return; }
-    flash(`Tripulación "${name}" creada`);
+    flash(`Tripulación "${name}" creada — configura su temporada desde "Entrenos de agua"`);
   };
+  // Define (o vuelve a definir) el inicio y el fin de temporada de una tripulación, y regenera
+  // desde cero todo su calendario de entrenos de agua para que cubra la temporada entera
+  // Amplía o recorta la temporada de una tripulación:
+  // - Lo que ya existía dentro del nuevo rango se deja intacto, tal cual estaba
+  // - Lo que se añade (rango ampliado) se genera nuevo, vacío
+  // - Lo que queda fuera (rango acortado) se elimina, avisando antes si tenía actividad de por medio
+  const setTeamSeason = async (teamId, startDate, endDate) => {
+    const existingForTeam = sessions.filter(s => s.teamId === teamId);
+    const outOfRange = existingForTeam.filter(s => s.iso < startDate || s.iso > endDate);
+
+    if (outOfRange.length > 0) {
+      const withData = outOfRange.filter(s => s.active || (s.crews && s.crews.length > 0) || s.signups.size > 0);
+      if (withData.length > 0) {
+        const ok = window.confirm(
+          `Al acortar la temporada se perderían ${withData.length} día${withData.length === 1 ? "" : "s"} que ya tenía${withData.length === 1 ? "" : "n"} actividad (entreno activado, botes o gente apuntada). ¿Seguro que quieres continuar?`
+        );
+        if (!ok) return;
+      }
+      const idsToDelete = outOfRange.map(s => s.id);
+      const { error: delErr } = await supabase.from("water_sessions").delete().in("id", idsToDelete);
+      if (delErr) { flash("No se pudo actualizar el calendario. Inténtalo de nuevo."); return; }
+    }
+
+    const { error: teamErr } = await supabase.from("teams").update({ season_start: startDate, season_end: endDate }).eq("id", teamId);
+    if (teamErr) { flash("No se pudo guardar la temporada. Inténtalo de nuevo."); return; }
+
+    // Solo generamos los días del nuevo rango que todavía no existieran
+    const existingIsos = new Set(existingForTeam.filter(s => s.iso >= startDate && s.iso <= endDate).map(s => s.iso));
+    const allSeasonDays = buildSeasonSessions(teamId, startDate, endDate);
+    const missingDays = allSeasonDays.filter(s => !existingIsos.has(s.iso));
+
+    if (missingDays.length > 0) {
+      const rows = missingDays.map(s => ({
+        id: s.id, team_id: s.teamId, date: s.iso, iso: s.iso, dow: s.dow, time: s.time, title: s.title,
+        active: s.active, suspended_reason: s.suspendedReason, signups: [],
+      }));
+      for (let i = 0; i < rows.length; i += 200) {
+        const { error } = await supabase.from("water_sessions").insert(rows.slice(i, i + 200));
+        if (error) { flash("Temporada guardada, pero hubo un problema generando parte del calendario."); return; }
+      }
+    }
+
+    setTeams(prev => prev.map(t => t.id === teamId ? { ...t, seasonStart: startDate, seasonEnd: endDate } : t));
+    setSessions(prev => [
+      ...prev.filter(s => !(s.teamId === teamId && (s.iso < startDate || s.iso > endDate))),
+      ...missingDays,
+    ]);
+    const parts = [];
+    if (missingDays.length > 0) parts.push(`${missingDays.length} día${missingDays.length === 1 ? "" : "s"} nuevo${missingDays.length === 1 ? "" : "s"}`);
+    if (outOfRange.length > 0) parts.push(`${outOfRange.length} eliminado${outOfRange.length === 1 ? "" : "s"}`);
+    flash(parts.length > 0 ? `Temporada actualizada: ${parts.join(", ")}` : "Temporada guardada");
+  };
+
   const removeTeam = async (id) => {
     const t = teams.find(t => t.id === id);
     const { error } = await supabase.from("teams").delete().eq("id", id);
@@ -1950,6 +2016,7 @@ export default function ViradaPrototype() {
                   onUpdateSession={updateSession}
                   overlapFor={overlapFor}
                   editable={role === "admin" ? true : canManage(coachScope)}
+                  onSetSeason={setTeamSeason}
                 />
               )}
               {screen === "coachGymPlan" && (role === "coach" || role === "admin") && (
@@ -5082,7 +5149,43 @@ function FisicoRecordRow({ slot, content, record, overdue, onAddPhoto, onRemoveP
   );
 }
 
-function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleActive, onRename, onUpdateSession, overlapFor, editable }) {
+function SeasonSetupForm({ onSave, existing, onCancel }) {
+  const [start, setStart] = useState(existing?.seasonStart || "");
+  const [end, setEnd] = useState(existing?.seasonEnd || "");
+  const canSave = start && end && start < end;
+  return (
+    <div style={{ background: "var(--vir-bg-surface, #404040)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, marginBottom: 18 }}>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>
+        {existing?.seasonStart ? "Ampliar o acortar la temporada" : "Configura la temporada"}
+      </p>
+      <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Inicio de temporada</label>
+      <input type="date" value={start} onChange={e => setStart(e.target.value)} style={{ ...inputStyle, fontSize: 15, padding: "10px", width: "100%", marginBottom: 12 }} />
+      <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Final de temporada</label>
+      <input type="date" value={end} onChange={e => setEnd(e.target.value)} style={{ ...inputStyle, fontSize: 15, padding: "10px", width: "100%", marginBottom: 12 }} />
+      {existing?.seasonStart && (
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "0 0 12px", lineHeight: 1.4 }}>
+          Lo que ya tenías dentro del nuevo rango se queda tal cual. Si acortas la temporada y hay días con actividad de por medio, te avisamos antes de tocar nada.
+        </p>
+      )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          className="vir-btn"
+          disabled={!canSave}
+          onClick={() => onSave(start, end)}
+          style={{ ...primaryBtn, width: "auto", flex: 1, padding: "10px 0", fontSize: 12.5, opacity: canSave ? 1 : 0.4 }}
+        >
+          {existing?.seasonStart ? "Guardar cambios" : "Generar temporada"}
+        </button>
+        {onCancel && <button className="vir-btn" onClick={onCancel} style={{ ...ghostBtn, width: "auto", padding: "10px 16px", fontSize: 12.5 }}>Cancelar</button>}
+      </div>
+    </div>
+  );
+}
+
+function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleActive, onRename, onUpdateSession, overlapFor, editable, onSetSeason }) {
+  const [showSeasonForm, setShowSeasonForm] = useState(false);
+  const [selectedMonthKey, setSelectedMonthKey] = useState(null);
+
   if (teamId === "club") {
     return (
       <div style={{ padding: "16px 20px 28px" }}>
@@ -5101,12 +5204,61 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
     );
   }
 
-  const weeks = {};
-  [...sessions].sort((a, b) => a.iso.localeCompare(b.iso)).forEach(s => {
-    const key = MONTHS_ES[s.date.getMonth()] + " " + s.date.getFullYear();
-    (weeks[key] = weeks[key] || []).push(s);
+  const team = teams.find(t => t.id === teamId);
+  const teamLabel = team?.name || "";
+  const today = new Date();
+
+  // Sin temporada configurada todavía: se pide antes de mostrar nada de calendario
+  if (!team?.seasonStart || !team?.seasonEnd) {
+    return (
+      <div style={{ padding: "16px 20px 28px" }}>
+        <BackRow onBack={onBack} />
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Entrenos de agua</h2>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 4px", lineHeight: 1.4 }}>
+          Tripulación: <span style={{ color: "var(--vir-red, #E61E29)", fontWeight: 600 }}>{teamLabel}</span>
+        </p>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+          Todavía no has definido el inicio y el fin de temporada de esta tripulación. Hazlo primero para generar su calendario.
+        </p>
+        {editable ? <SeasonSetupForm onSave={(s, e) => onSetSeason(teamId, s, e)} /> : (
+          <p style={{ color: "var(--vir-orange, #E67E22)", fontSize: 12, lineHeight: 1.4 }}>🔒 El club no te ha dado permiso para configurar esta tripulación.</p>
+        )}
+      </div>
+    );
+  }
+
+  // Meses que componen la temporada, de inicio a fin
+  const seasonMonths = [];
+  {
+    const d = new Date(team.seasonStart + "T00:00:00");
+    d.setDate(1);
+    const end = new Date(team.seasonEnd + "T00:00:00");
+    while (d.getFullYear() < end.getFullYear() || (d.getFullYear() === end.getFullYear() && d.getMonth() <= end.getMonth())) {
+      seasonMonths.push({ year: d.getFullYear(), month: d.getMonth(), key: `${d.getFullYear()}-${d.getMonth()}`, label: MONTHS_ES[d.getMonth()] });
+      d.setMonth(d.getMonth() + 1);
+    }
+  }
+  const currentMonthKey = `${today.getFullYear()}-${today.getMonth()}`;
+  const activeMonthKey = selectedMonthKey && seasonMonths.some(m => m.key === selectedMonthKey)
+    ? selectedMonthKey
+    : (seasonMonths.some(m => m.key === currentMonthKey) ? currentMonthKey : seasonMonths[0]?.key);
+
+  const daysInMonth = sessions
+    .filter(s => `${s.date.getFullYear()}-${s.date.getMonth()}` === activeMonthKey)
+    .sort((a, b) => a.iso.localeCompare(b.iso));
+
+  // Agrupa los días del mes por semana (lunes a domingo)
+  const mondayOf = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+    return d.toISOString().slice(0, 10);
+  };
+  const weeksInMonth = {};
+  daysInMonth.forEach(s => {
+    const key = mondayOf(s.date);
+    (weeksInMonth[key] = weeksInMonth[key] || []).push(s);
   });
-  const teamLabel = teams.find(t => t.id === teamId)?.name || "";
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
@@ -5116,21 +5268,57 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
         Tripulación: <span style={{ color: "var(--vir-red, #E61E29)", fontWeight: 600 }}>{teamLabel}</span>
       </p>
       {editable ? (
-        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 10px", lineHeight: 1.4 }}>
           Activa o desactiva cada día, ajusta su hora, el título y el bote/rems. Por defecto: "{DEFAULT_SESSION_TITLE}".
         </p>
       ) : (
-        <p style={{ color: "var(--vir-orange, #E67E22)", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
+        <p style={{ color: "var(--vir-orange, #E67E22)", fontSize: 12, margin: "0 0 10px", lineHeight: 1.4 }}>
           🔒 Solo lectura — el club no te ha dado permiso para gestionar esta tripulación.
         </p>
       )}
-      {Object.entries(weeks).map(([label, items]) => (
-        <div key={label}>
-          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, margin: "12px 4px 8px" }}>{label}</p>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13, fontWeight: 800, letterSpacing: 0.5, margin: 0, textTransform: "uppercase" }}>
+          Temporada {seasonMonths[0]?.year}-{seasonMonths[seasonMonths.length - 1]?.year}
+        </p>
+        {editable && (
+          <button className="vir-btn" onClick={() => setShowSeasonForm(!showSeasonForm)} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textDecoration: "underline" }}>
+            {showSeasonForm ? "Cerrar" : "Editar temporada"}
+          </button>
+        )}
+      </div>
+
+      {showSeasonForm && (
+        <SeasonSetupForm existing={team} onCancel={() => setShowSeasonForm(false)} onSave={(s, e) => { onSetSeason(teamId, s, e); setShowSeasonForm(false); }} />
+      )}
+
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8, marginBottom: 14 }}>
+        {seasonMonths.map(m => {
+          const active = m.key === activeMonthKey;
+          return (
+            <button key={m.key} className="vir-btn" onClick={() => setSelectedMonthKey(m.key)} style={{
+              flexShrink: 0, padding: "8px 14px", borderRadius: 20, fontSize: 11.5, fontWeight: active ? 700 : 500, whiteSpace: "nowrap",
+              background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+              border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+              color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+            }}>
+              {m.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {Object.entries(weeksInMonth).sort(([a], [b]) => a.localeCompare(b)).map(([weekKey, items], wi) => (
+        <div key={weekKey}>
+          {wi > 0 && <div style={{ borderTop: "1px solid var(--vir-border, #565656)", margin: "14px 0" }} />}
           {items.map(s => {
             const clashes = (s.crews || []).map(c => overlapFor(s, c)).filter(Boolean);
+            const isPast = s.date < today && s.iso !== today.toISOString().slice(0, 10);
             return (
-              <div key={s.id} style={{ background: "var(--vir-bg-surface, #404040)", border: `1px solid ${clashes.length > 0 ? "var(--vir-orange, #E67E22)" : "var(--vir-border, #565656)"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10, opacity: s.active ? 1 : 0.65 }}>
+              <div key={s.id} style={{
+                background: "var(--vir-bg-surface, #404040)", border: `1px solid ${clashes.length > 0 ? "var(--vir-orange, #E67E22)" : "var(--vir-border, #565656)"}`,
+                borderRadius: 12, padding: "12px 14px", marginBottom: 10, opacity: !s.active ? 0.65 : (isPast ? 0.55 : 1),
+              }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ width: 38, textAlign: "center" }}>
