@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Home, CalendarDays, Bell, User, ChevronLeft, ChevronRight, Check, X, KeyRound, Lock, LogOut, Users, RotateCw, Anchor, Search, Camera, Pencil, Trash2, Ruler } from "lucide-react";
+import { Home, CalendarDays, Bell, User, ChevronLeft, ChevronRight, Check, X, KeyRound, Lock, LogOut, Users, RotateCw, Anchor, Search, Camera, Pencil, Trash2, Ruler, Waves, Dumbbell, BarChart3, ClipboardList, Sailboat, Trophy, StickyNote } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 async function hashPassword(password) {
@@ -2935,57 +2935,65 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
         </div>
       </div>
       <div style={{ padding: "4px 16px 10px" }}>
-        <div className="vir-btn" onClick={onPlanCalendar} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div>
+        <div className="vir-btn" onClick={onPlanCalendar} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <Waves size={20} color="var(--vir-red, #E61E29)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Entrenos de agua</p>
             <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Activa días de entreno y edita su título</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onGymPlan} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div>
+        <div className="vir-btn" onClick={onGymPlan} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <Dumbbell size={20} color="var(--vir-red, #E61E29)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Plan de gimnasio semanal</p>
             <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Marca los días de la semana y sube el contenido</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onTeamStats} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div>
+        <div className="vir-btn" onClick={onTeamStats} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <BarChart3 size={20} color="var(--vir-red, #E61E29)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Estadísticas de tripulación</p>
             <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Frecuencia, convocatorias y entrenos de agua</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onOpenInformes} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div>
+        <div className="vir-btn" onClick={onOpenInformes} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <ClipboardList size={20} color="var(--vir-red, #E61E29)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Informes</p>
             <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Diario, semanal y mensual · exportables a PDF</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onOpenMeasurements} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div>
+        <div className="vir-btn" onClick={onOpenMeasurements} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <Ruler size={20} color="var(--vir-red, #E61E29)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Medidas</p>
             <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Medidas de cada remero por bote</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onOpenFleet} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div>
+        <div className="vir-btn" onClick={onOpenFleet} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <Sailboat size={20} color="var(--vir-red, #E61E29)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Botes</p>
             <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Crea o elimina la flota de esta tripulación</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onOpenRegattas} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div>
+        <div className="vir-btn" onClick={onOpenRegattas} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <Trophy size={20} color="var(--vir-red, #E61E29)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Calendario de regatas</p>
             <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Fechas, dosieres, horarios y resultados</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
-        <div className="vir-btn" onClick={onOpenReminders} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
+        <div className="vir-btn" onClick={onOpenReminders} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between" }}>
+          <StickyNote size={20} color="var(--vir-red, #E61E29)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Recordatorios</p>
             <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Nota fija para tu equipo, y avisos puntuales</p>
           </div>
@@ -3228,16 +3236,18 @@ function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, onOpenR
           <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
 
-        <div className="vir-btn" onClick={onOpenRegattas} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div>
+        <div className="vir-btn" onClick={onOpenRegattas} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <Trophy size={20} color="var(--vir-red, #E61E29)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Calendario de regatas</p>
             <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Fechas, dosieres, horarios y resultados</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
         </div>
 
-        <div className="vir-btn" onClick={onOpenReminders} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
+        <div className="vir-btn" onClick={onOpenReminders} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between" }}>
+          <StickyNote size={20} color="var(--vir-red, #E61E29)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Recordatorios</p>
             <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>Nota fija para todos, y avisos puntuales</p>
           </div>
