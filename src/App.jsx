@@ -1822,6 +1822,7 @@ export default function ViradaPrototype() {
           --vir-green: #3EA55A;
           --vir-orange: #E67E22;
           --vir-danger: #E24B4A;
+          --vir-error: #FF8890;
         }
         [data-theme="light"] {
           --vir-bg-page: #E9E9E9;
@@ -1837,6 +1838,7 @@ export default function ViradaPrototype() {
           --vir-green: #2E8B4F;
           --vir-orange: #C96A16;
           --vir-danger: #C93A38;
+          --vir-error: #C93A38;
         }
 
         @media print {
@@ -2400,11 +2402,11 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
 
   const usernamePasswordFields = (
     <>
-      <label style={{ fontSize: 12, color: "#ADADAD", margin: "0 0 6px" }}>Usuario</label>
+      <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", margin: "0 0 6px" }}>Usuario</label>
       <input value={usernameInput} onChange={e => setUsernameInput(e.target.value)} style={inputStyle} />
-      <label style={{ fontSize: 12, color: "#ADADAD", margin: "14px 0 6px" }}>Contraseña</label>
+      <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", margin: "14px 0 6px" }}>Contraseña</label>
       <div style={{ position: "relative" }}>
-        <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+        <Lock size={15} color="var(--vir-text-muted, #8A8A8A)" style={{ position: "absolute", left: 12, top: 12 }} />
         <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} style={{ ...inputStyle, paddingLeft: 34 }} />
       </div>
     </>
@@ -2412,16 +2414,16 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
 
   const recoveryBlock = (
     <>
-      {loginError && <p style={{ color: "#FF8890", fontSize: 11.5, margin: "8px 2px 0" }}>{loginError}</p>}
-      <button className="vir-btn" onClick={() => { setShowRecovery(!showRecovery); setRecoverySent(false); }} style={{ background: "transparent", color: "#ADADAD", fontSize: 11.5, marginTop: 8, textDecoration: "underline", alignSelf: "flex-start" }}>
+      {loginError && <p style={{ color: "var(--vir-error, #FF8890)", fontSize: 11.5, margin: "8px 2px 0" }}>{loginError}</p>}
+      <button className="vir-btn" onClick={() => { setShowRecovery(!showRecovery); setRecoverySent(false); }} style={{ background: "transparent", color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5, marginTop: 8, textDecoration: "underline", alignSelf: "flex-start" }}>
         ¿Has olvidado tu contraseña?
       </button>
       {showRecovery && (
-        <div style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 10, padding: 12, marginTop: 8 }}>
-          <label style={{ fontSize: 11, color: "#ADADAD", marginBottom: 4, display: "block" }}>Correo de recuperación</label>
+        <div style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 10, padding: 12, marginTop: 8 }}>
+          <label style={{ fontSize: 11, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 4, display: "block" }}>Correo de recuperación</label>
           <input type="email" value={recoveryEmail} onChange={e => setRecoveryEmail(e.target.value)} placeholder="tucorreo@ejemplo.com" style={{ ...inputStyle, padding: "8px 10px", fontSize: 12, marginBottom: 8 }} />
           <button className="vir-btn" onClick={sendRecovery} style={{ ...ghostBtn, width: "100%", padding: "8px 0", fontSize: 12 }}>Enviar enlace de recuperación</button>
-          {recoverySent && <p style={{ color: "#8A8A8A", fontSize: 11, margin: "8px 2px 0", lineHeight: 1.4 }}>Si el usuario existe, hemos enviado un enlace a su correo de recuperación.</p>}
+          {recoverySent && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, margin: "8px 2px 0", lineHeight: 1.4 }}>Si el usuario existe, hemos enviado un enlace a su correo de recuperación.</p>}
         </div>
       )}
     </>
@@ -2433,10 +2435,11 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
   }, [view]);
 
   return (
-    <div ref={scrollRef} style={{
+    <div ref={scrollRef} data-theme={view === "menu" ? "dark" : undefined} style={{
       flex: 1, display: "flex", flexDirection: "column", overflowY: "auto",
       justifyContent: (view === "menu" || view === "loginClub" || view === "loginUser") ? "center" : "flex-start",
       padding: (view === "menu" || view === "loginClub" || view === "loginUser") ? "0 28px" : "28px 28px 0",
+      background: view === "menu" ? "#333333" : "var(--vir-bg-phone, #333333)",
     }}>
       {view === "menu" && (
         <>
@@ -2447,19 +2450,19 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
 
       {view === "menu" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <button className="vir-btn" onClick={() => goTo("loginUser")} style={{ ...primaryBtn, textAlign: "center", padding: "16px 16px", fontSize: 14, letterSpacing: 0.5, textTransform: "uppercase", borderRadius: 30 }}>
+          <button className="vir-btn" onClick={() => goTo("loginUser")} style={{ ...primaryBtn, background: "#E61E29", color: "#F5F5F5", textAlign: "center", padding: "16px 16px", fontSize: 14, letterSpacing: 0.5, textTransform: "uppercase", borderRadius: 30 }}>
             Acceso usuario
           </button>
 
-          <button className="vir-btn" onClick={() => setShowRegisterMenu(!showRegisterMenu)} style={{ ...ghostBtn, textAlign: "center", padding: "14px 16px", letterSpacing: 0.5, textTransform: "uppercase", borderRadius: 30 }}>
+          <button className="vir-btn" onClick={() => setShowRegisterMenu(!showRegisterMenu)} style={{ ...ghostBtn, border: "1px solid #565656", color: "#E8E8E8", textAlign: "center", padding: "14px 16px", letterSpacing: 0.5, textTransform: "uppercase", borderRadius: 30 }}>
             Registro
           </button>
           {showRegisterMenu && (
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="vir-btn" onClick={() => goTo("registerClub")} style={{ ...ghostBtn, flex: 1, padding: "12px 0", fontSize: 11.5, letterSpacing: 0.3, textTransform: "uppercase", borderRadius: 24 }}>
+              <button className="vir-btn" onClick={() => goTo("registerClub")} style={{ ...ghostBtn, border: "1px solid #565656", color: "#E8E8E8", flex: 1, padding: "12px 0", fontSize: 11.5, letterSpacing: 0.3, textTransform: "uppercase", borderRadius: 24 }}>
                 Registro de club
               </button>
-              <button className="vir-btn" onClick={() => goTo("registerUser")} style={{ ...ghostBtn, flex: 1, padding: "12px 0", fontSize: 11.5, letterSpacing: 0.3, textTransform: "uppercase", borderRadius: 24 }}>
+              <button className="vir-btn" onClick={() => goTo("registerUser")} style={{ ...ghostBtn, border: "1px solid #565656", color: "#E8E8E8", flex: 1, padding: "12px 0", fontSize: 11.5, letterSpacing: 0.3, textTransform: "uppercase", borderRadius: 24 }}>
                 Registro de usuario
               </button>
             </div>
@@ -2475,7 +2478,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
         <>
           <BackRow onBack={() => goTo("menu")} />
           <div style={{ display: "flex", justifyContent: "center", margin: "28px 0 36px" }}><Logo size={58} /></div>
-          <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "10px 0 18px" }}>Acceso club</h2>
+          <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 18px" }}>Acceso club</h2>
           {usernamePasswordFields}
           {recoveryBlock}
           <button className="vir-btn" onClick={() => onLoginClub(usernameInput, passwordInput)} style={{ ...primaryBtn, marginTop: 22 }}>Entrar</button>
@@ -2486,8 +2489,8 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
         <>
           <BackRow onBack={() => goTo("menu")} />
           <div style={{ display: "flex", justifyContent: "center", margin: "28px 0 36px" }}><Logo size={58} /></div>
-          <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "10px 0 4px" }}>Acceso usuario</h2>
-          <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>Entras con el rol que el club te haya asignado (entrenador o remero).</p>
+          <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 4px" }}>Acceso usuario</h2>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>Entras con el rol que el club te haya asignado (entrenador o remero).</p>
           {usernamePasswordFields}
           {recoveryBlock}
           <button className="vir-btn" onClick={() => onLoginUser(usernameInput, passwordInput)} style={{ ...primaryBtn, marginTop: 22 }}>Entrar</button>
@@ -2498,13 +2501,13 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
         <>
           <BackRow onBack={() => goTo("menu")} />
           <div style={{ display: "flex", justifyContent: "center", margin: "28px 0 36px" }}><Logo size={58} /></div>
-          <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "0 0 4px" }}>Registro del club</h2>
-          <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+          <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "var(--vir-text-primary, #F5F5F5)", margin: "0 0 4px" }}>Registro del club</h2>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "0 0 18px", lineHeight: 1.4 }}>
             Al crear la cuenta, VIRADA generará automáticamente el código de acceso de tu club. Compártelo con tus entrenadores y remeros para que puedan registrarse dentro de tu club y no de otro.
           </p>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 18 }}>
             <AvatarPicker photo={regPhoto} initials="?" onChange={setRegPhoto} size={72} />
-            <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "8px 0 0" }}>Logo del club — toca para {regPhoto ? "cambiarlo" : "añadirlo"} (podrás cambiarlo luego desde el perfil)</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "8px 0 0" }}>Logo del club — toca para {regPhoto ? "cambiarlo" : "añadirlo"} (podrás cambiarlo luego desde el perfil)</p>
           </div>
 
           <FieldLabel text="Nombre del club" required filled={!!clubNameRegInput.trim()} />
@@ -2526,23 +2529,23 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
             placeholder="Ej. ADMINCRL"
             style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 4 }}
           />
-          <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "0 0 14px", lineHeight: 1.4 }}>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "0 0 14px", lineHeight: 1.4 }}>
             Te sugerimos "ADMIN" + las iniciales del nombre del club, pero puedes usar el que prefieras para entrar.
           </p>
 
           <FieldLabel text="Contraseña" required filled={passwordInput.length >= 4} hint="mínimo 4 caracteres" />
           <div style={{ position: "relative", marginBottom: 14 }}>
-            <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+            <Lock size={15} color="var(--vir-text-muted, #8A8A8A)" style={{ position: "absolute", left: 12, top: 12 }} />
             <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", paddingLeft: 34 }} />
           </div>
 
           <FieldLabel text="Repetir contraseña" required filled={passwordRepeatInput.length >= 4 && passwordRepeatInput === passwordInput} />
           <div style={{ position: "relative" }}>
-            <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+            <Lock size={15} color="var(--vir-text-muted, #8A8A8A)" style={{ position: "absolute", left: 12, top: 12 }} />
             <input type="password" value={passwordRepeatInput} onChange={e => setPasswordRepeatInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", paddingLeft: 34 }} />
           </div>
 
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>Datos del club</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid var(--vir-border, #565656)", paddingTop: 18 }}>Datos del club</p>
 
           <FieldLabel text="Nombre fiscal del club" required={false} />
           <input value={legalNameInput} onChange={e => setLegalNameInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
@@ -2562,7 +2565,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
           <FieldLabel text="Código postal" required={false} />
           <input value={postalCodeInput} onChange={e => setPostalCodeInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 4 }} />
 
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>Persona de contacto</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid var(--vir-border, #565656)", paddingTop: 18 }}>Persona de contacto</p>
 
           <FieldLabel text="Nombre" required filled={!!contactFirstNameInput.trim()} />
           <input value={contactFirstNameInput} onChange={e => setContactFirstNameInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
@@ -2576,7 +2579,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
           <FieldLabel text="Nº Teléfono" required={false} />
           <input type="tel" value={contactPhoneInput} onChange={e => setContactPhoneInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 4 }} />
 
-          {loginError && <p style={{ color: "#FF8890", fontSize: 11.5, margin: "14px 2px 0" }}>{loginError}</p>}
+          {loginError && <p style={{ color: "var(--vir-error, #FF8890)", fontSize: 11.5, margin: "14px 2px 0" }}>{loginError}</p>}
           <button className="vir-btn" onClick={submitRegisterClub} style={{ ...primaryBtn, marginTop: 22 }}>Registrar club</button>
         </>
       )}
@@ -2585,18 +2588,18 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
         <>
           <BackRow onBack={() => goTo("menu")} />
           <div style={{ display: "flex", justifyContent: "center", margin: "28px 0 36px" }}><Logo size={58} /></div>
-          <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "#F5F5F5", margin: "10px 0 4px" }}>Registro de usuario</h2>
-          <p style={{ color: "#8A8A8A", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
+          <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 4px" }}>Registro de usuario</h2>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12, margin: "0 0 18px", lineHeight: 1.4 }}>
             Con el código de tu club accedes a su paraguas de gestión. Una vez dentro, será el club quien te asigne el rol — entrenador o remero — y, si corresponde, la tripulación.
           </p>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 18 }}>
             <AvatarPicker photo={regPhoto} initials="?" onChange={setRegPhoto} size={72} />
-            <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "8px 0 0" }}>Toca la foto para {regPhoto ? "cambiarla" : "añadirla"}</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "8px 0 0" }}>Toca la foto para {regPhoto ? "cambiarla" : "añadirla"}</p>
           </div>
 
           <FieldLabel text="Número de club" required filled={clubCodeInput.trim().length === 3} />
           <div style={{ position: "relative", marginBottom: 14 }}>
-            <KeyRound size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+            <KeyRound size={15} color="var(--vir-text-muted, #8A8A8A)" style={{ position: "absolute", left: 12, top: 12 }} />
             <input
               value={clubCodeInput}
               onChange={e => setClubCodeInput(e.target.value.replace(/\D/g, "").slice(0, 3))}
@@ -2612,17 +2615,17 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
 
           <FieldLabel text="Contraseña" required filled={passwordInput.length >= 4} hint="mínimo 4 caracteres" />
           <div style={{ position: "relative", marginBottom: 14 }}>
-            <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+            <Lock size={15} color="var(--vir-text-muted, #8A8A8A)" style={{ position: "absolute", left: 12, top: 12 }} />
             <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", paddingLeft: 34 }} />
           </div>
 
           <FieldLabel text="Repetir contraseña" required filled={passwordRepeatInput.length >= 4 && passwordRepeatInput === passwordInput} />
           <div style={{ position: "relative" }}>
-            <Lock size={15} color="#8A8A8A" style={{ position: "absolute", left: 12, top: 12 }} />
+            <Lock size={15} color="var(--vir-text-muted, #8A8A8A)" style={{ position: "absolute", left: 12, top: 12 }} />
             <input type="password" value={passwordRepeatInput} onChange={e => setPasswordRepeatInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", paddingLeft: 34 }} />
           </div>
 
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>Datos personales</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "22px 0 12px", borderTop: "1px solid var(--vir-border, #565656)", paddingTop: 18 }}>Datos personales</p>
 
           <FieldLabel text="Nombre" required filled={!!firstNameInput.trim()} />
           <input value={firstNameInput} onChange={e => setFirstNameInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 14 }} />
@@ -2642,9 +2645,9 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
           <FieldLabel text="Nº Teléfono" required={false} />
           <input type="tel" value={phoneInput} onChange={e => setPhoneInput(e.target.value)} style={{ ...inputStyle, fontSize: 16, padding: "12px 12px", marginBottom: 4 }} />
 
-          <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "22px 0 12px", borderTop: "1px solid #565656", paddingTop: 18 }}>
-            <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: 0 }}>Función en el equipo</p>
-            {regSide ? <Check size={13} color="#3EA55A" /> : <span style={{ color: "#E61E29", fontWeight: 800, fontSize: 14 }}>*</span>}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "22px 0 12px", borderTop: "1px solid var(--vir-border, #565656)", paddingTop: 18 }}>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: 0 }}>Función en el equipo</p>
+            {regSide ? <Check size={13} color="var(--vir-green, #3EA55A)" /> : <span style={{ color: "var(--vir-red, #E61E29)", fontWeight: 800, fontSize: 14 }}>*</span>}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {REGISTER_SIDE_OPTIONS.map(({ key, label, color, letter }) => {
@@ -2652,22 +2655,22 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
               return (
                 <button key={key} className="vir-btn" onClick={() => setRegSide(key)} style={{
                   display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 10,
-                  background: active ? color : "#404040",
-                  border: `1px solid ${active ? color : "#565656"}`,
+                  background: active ? color : "var(--vir-bg-surface, #404040)",
+                  border: `1px solid ${active ? color : "var(--vir-border, #565656)"}`,
                 }}>
                   <span style={{
                     width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                    background: active ? "rgba(0,0,0,0.2)" : "#565656", color: active ? "#FFFFFF" : "#ADADAD",
+                    background: active ? "rgba(0,0,0,0.2)" : "var(--vir-border, #565656)", color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
                     fontSize: 10, fontWeight: 800,
                   }}>{letter}</span>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: active ? "#FFFFFF" : "#E8E8E8", textAlign: "left", lineHeight: 1.2 }}>{label}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: active ? "#FFFFFF" : "var(--vir-text-primary, #E8E8E8)", textAlign: "left", lineHeight: 1.2 }}>{label}</span>
                 </button>
               );
             })}
           </div>
 
           {loginError && (
-            <p style={{ color: "#FF8890", fontSize: 11.5, margin: "14px 2px 0" }}>{loginError}</p>
+            <p style={{ color: "var(--vir-error, #FF8890)", fontSize: 11.5, margin: "14px 2px 0" }}>{loginError}</p>
           )}
           <button className="vir-btn" onClick={submitRegisterUser} style={{ ...primaryBtn, marginTop: 22 }}>Crear cuenta</button>
         </>
@@ -6809,15 +6812,15 @@ function TabBar({ screen, setScreen, notifCount, role }) {
 }
 
 const inputStyle = {
-  width: "100%", background: "#404040", border: "1px solid #565656", borderRadius: 10,
-  padding: "11px 12px", color: "#F5F5F5", fontSize: 13.5, outline: "none",
+  width: "100%", background: "var(--vir-bg-input, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10,
+  padding: "11px 12px", color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, outline: "none",
 };
 const primaryBtn = {
-  width: "100%", background: "#E61E29", color: "#F5F5F5", fontWeight: 700, fontSize: 14,
+  width: "100%", background: "var(--vir-red, #E61E29)", color: "#F5F5F5", fontWeight: 700, fontSize: 14,
   padding: "13px 0", borderRadius: 12,
 };
 const ghostBtn = {
-  background: "transparent", border: "1px solid #565656", color: "#E8E8E8", fontSize: 13,
+  background: "transparent", border: "1px solid var(--vir-border, #565656)", color: "var(--vir-text-primary, #E8E8E8)", fontSize: 13,
   padding: "10px 0", borderRadius: 10,
 };
 
