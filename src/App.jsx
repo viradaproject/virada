@@ -212,6 +212,14 @@ const crewStatsFor = (sessions, id, now) => {
   return { convocado, entrenado };
 };
 const weekOfDate = (date) => Math.ceil(date.getDate() / 7);
+// El lunes (en formato ISO, ej. "2026-09-07") de la semana real a la que pertenece una fecha —
+// se usa como identificador de semana ligado a fechas reales, en vez de un número suelto
+const mondayOf = (date) => {
+  const d = new Date(date);
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  return d.toISOString().slice(0, 10);
+};
 // Convierte una fila cruda de la tabla water_sessions al formato que usa la app
 const mapWaterSessionRow = (s) => ({
   id: s.id, teamId: s.team_id, date: new Date(s.date + "T00:00:00"), iso: s.iso, dow: s.dow,
@@ -360,15 +368,17 @@ export default function ViradaPrototype() {
     if (gymWeeksData || gymDaysData) {
       const plans = {};
       (gymWeeksData || []).forEach(w => {
+        if (!w.week_start) return; // ignora las filas del sistema antiguo (numeradas 1-5 por mes)
         plans[w.team_id] = plans[w.team_id] || {};
-        plans[w.team_id][w.week_number] = plans[w.team_id][w.week_number] || { activeDays: [], weekAttachment: null, days: {} };
-        plans[w.team_id][w.week_number].activeDays = w.active_days || [];
-        plans[w.team_id][w.week_number].weekAttachment = w.attachment_url ? { name: w.attachment_name, fileType: w.attachment_type, dataUrl: w.attachment_url } : null;
+        plans[w.team_id][w.week_start] = plans[w.team_id][w.week_start] || { activeDays: [], weekAttachment: null, days: {} };
+        plans[w.team_id][w.week_start].activeDays = w.active_days || [];
+        plans[w.team_id][w.week_start].weekAttachment = w.attachment_url ? { name: w.attachment_name, fileType: w.attachment_type, dataUrl: w.attachment_url } : null;
       });
       (gymDaysData || []).forEach(d => {
+        if (!d.week_start) return;
         plans[d.team_id] = plans[d.team_id] || {};
-        plans[d.team_id][d.week_number] = plans[d.team_id][d.week_number] || { activeDays: [], weekAttachment: null, days: {} };
-        plans[d.team_id][d.week_number].days[d.day_key] = { content: d.content || "" };
+        plans[d.team_id][d.week_start] = plans[d.team_id][d.week_start] || { activeDays: [], weekAttachment: null, days: {} };
+        plans[d.team_id][d.week_start].days[d.day_key] = { content: d.content || "" };
       });
       setGymPlans(plans);
     }
@@ -378,8 +388,9 @@ export default function ViradaPrototype() {
     if (gymCompletionsData) {
       const completion = {};
       gymCompletionsData.forEach(c => {
+        if (!c.week_start) return;
         completion[c.rower_id] = completion[c.rower_id] || {};
-        completion[c.rower_id][`${c.team_id}-${c.week_number}-${c.day_key}`] = { done: c.done, photos: c.photos || [] };
+        completion[c.rower_id][`${c.team_id}-${c.week_start}-${c.day_key}`] = { done: c.done, photos: c.photos || [] };
       });
       setGymCompletion(completion);
     }
@@ -1471,9 +1482,10 @@ export default function ViradaPrototype() {
     if (error) flash("No se pudo guardar la medida. Inténtalo de nuevo.");
   };
 
-  const [gymPlans, setGymPlans] = useState({}); // { [teamId]: { [week]: { activeDays: [...], weekAttachment, days: { lun: {content}, ... } } } }
-  const [gymCompletion, setGymCompletion] = useState({}); // { [rowerId]: { "teamId-week-day": { done, photos: [{dataUrl,kind}] } } }
+  const [gymPlans, setGymPlans] = useState({}); // { [teamId]: { [weekStartIso]: { activeDays: [...], weekAttachment, days: { lun: {content}, ... } } } }
+  const [gymCompletion, setGymCompletion] = useState({}); // { [rowerId]: { "teamId-weekStartIso-day": { done, photos: [{dataUrl,kind}] } } }
   const currentWeek = Math.ceil(today.getDate() / 7);
+  const currentGymWeek = mondayOf(today); // semana real (lunes ISO), ligada a fechas de verdad
   const gymWeekMeta = (teamId, week) => (gymPlans[teamId] && gymPlans[teamId][week]) || { activeDays: [], weekAttachment: null, days: {} };
   // vista "plana" por día, para las pantallas que solo necesitan el contenido de texto de cada día
   const gymWeekPlan = (teamId, week) => gymWeekMeta(teamId, week).days || {};
@@ -1483,8 +1495,8 @@ export default function ViradaPrototype() {
       return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, activeDays } } };
     });
     const { error } = await supabase.from("gym_weeks").upsert(
-      { team_id: teamId, week_number: week, active_days: activeDays },
-      { onConflict: "team_id,week_number" }
+      { team_id: teamId, week_start: week, active_days: activeDays },
+      { onConflict: "team_id,week_start" }
     );
     if (error) flash("No se pudo guardar. Inténtalo de nuevo.");
   };
@@ -1495,12 +1507,12 @@ export default function ViradaPrototype() {
     });
     const { error } = await supabase.from("gym_weeks").upsert(
       {
-        team_id: teamId, week_number: week,
+        team_id: teamId, week_start: week,
         attachment_name: attachment ? attachment.name : null,
         attachment_type: attachment ? attachment.fileType : null,
         attachment_url: attachment ? attachment.dataUrl : null,
       },
-      { onConflict: "team_id,week_number" }
+      { onConflict: "team_id,week_start" }
     );
     if (error) { flash("No se pudo guardar el archivo. Inténtalo de nuevo."); return; }
     flash(attachment ? "Archivo de la semana adjuntado" : "Archivo de la semana eliminado");
@@ -1511,8 +1523,8 @@ export default function ViradaPrototype() {
       return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, days: { ...meta.days, [day]: { ...(meta.days[day] || {}), content } } } } };
     });
     const { error } = await supabase.from("gym_days").upsert(
-      { team_id: teamId, week_number: week, day_key: day, content },
-      { onConflict: "team_id,week_number,day_key" }
+      { team_id: teamId, week_start: week, day_key: day, content },
+      { onConflict: "team_id,week_start,day_key" }
     );
     if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
     flash("Entreno de gimnasio guardado");
@@ -1524,8 +1536,8 @@ export default function ViradaPrototype() {
     const photos = [...((existing && existing.photos) || []), { dataUrl: photo, kind: photoKind || "image" }];
     setGymCompletion(prev => ({ ...prev, [rowerId]: { ...(prev[rowerId] || {}), [key]: { done: true, photos } } }));
     const { error } = await supabase.from("gym_completions").upsert(
-      { rower_id: rowerId, team_id: teamId, week_number: week, day_key: day, done: true, photos },
-      { onConflict: "rower_id,team_id,week_number,day_key" }
+      { rower_id: rowerId, team_id: teamId, week_start: week, day_key: day, done: true, photos },
+      { onConflict: "rower_id,team_id,week_start,day_key" }
     );
     if (error) { flash("No se pudo guardar la foto. Inténtalo de nuevo."); return; }
     flash("Foto añadida — entreno marcado como hecho");
@@ -1543,11 +1555,11 @@ export default function ViradaPrototype() {
     });
     if (photos.length === 0) {
       await supabase.from("gym_completions").delete()
-        .eq("rower_id", rowerId).eq("team_id", teamId).eq("week_number", week).eq("day_key", day);
+        .eq("rower_id", rowerId).eq("team_id", teamId).eq("week_start", week).eq("day_key", day);
     } else {
       await supabase.from("gym_completions").upsert(
-        { rower_id: rowerId, team_id: teamId, week_number: week, day_key: day, done: true, photos },
-        { onConflict: "rower_id,team_id,week_number,day_key" }
+        { rower_id: rowerId, team_id: teamId, week_start: week, day_key: day, done: true, photos },
+        { onConflict: "rower_id,team_id,week_start,day_key" }
       );
     }
   };
@@ -1559,7 +1571,7 @@ export default function ViradaPrototype() {
       return { ...prev, [rowerId]: mine };
     });
     await supabase.from("gym_completions").delete()
-      .eq("rower_id", rowerId).eq("team_id", teamId).eq("week_number", week).eq("day_key", day);
+      .eq("rower_id", rowerId).eq("team_id", teamId).eq("week_start", week).eq("day_key", day);
   };
 
   const waterStatsFor = (rowerId, teamId) => {
@@ -1575,18 +1587,28 @@ export default function ViradaPrototype() {
   };
   const gymStatsFor = (rowerId, teamId) => {
     let weekDone = 0, weekTotal = 0, monthDone = 0, monthTotal = 0;
-    for (let w = 1; w <= currentWeek; w++) {
-      const meta = gymWeekMeta(teamId, w);
-      (meta.activeDays || []).forEach(day => {
-        monthTotal++;
-        const rec = gymRecordOf(rowerId, teamId, w, day);
-        const done = !!(rec && rec.done);
-        if (done) monthDone++;
-        if (w === currentWeek) {
-          weekTotal++;
-          if (done) weekDone++;
-        }
-      });
+    // Recorre las semanas reales (por su lunes) que caen dentro del mes actual
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const seen = new Set();
+    const d = new Date(monthStart);
+    while (d <= monthEnd) {
+      const wk = mondayOf(d);
+      if (!seen.has(wk)) {
+        seen.add(wk);
+        const meta = gymWeekMeta(teamId, wk);
+        (meta.activeDays || []).forEach(day => {
+          monthTotal++;
+          const rec = gymRecordOf(rowerId, teamId, wk, day);
+          const done = !!(rec && rec.done);
+          if (done) monthDone++;
+          if (wk === currentGymWeek) {
+            weekTotal++;
+            if (done) weekDone++;
+          }
+        });
+      }
+      d.setDate(d.getDate() + 1);
     }
     return { weekDone, weekTotal, monthDone, monthTotal };
   };
@@ -2026,20 +2048,21 @@ export default function ViradaPrototype() {
                   teamId={coachScope}
                   teams={clubTeams}
                   setScope={setCoachScope}
-                  currentWeek={currentWeek}
+                  currentGymWeek={currentGymWeek}
                   weekMetaFor={gymWeekMeta}
                   onSaveContent={setGymContent}
                   onSaveActiveDays={setGymActiveDays}
                   onSaveWeekAttachment={setGymWeekAttachment}
                   onBack={() => setScreen("home")}
                   editable={role === "admin" ? true : canManage(coachScope)}
+                  onOpenSeason={() => setScreen("coachPlan")}
                 />
               )}
               {screen === "rowerGymPlan" && role === "rower" && (
                 <RowerGymPlanScreen
                   teamId={teamOf(currentUserId)}
                   teamName={teamName}
-                  currentWeek={currentWeek}
+                  currentGymWeek={currentGymWeek}
                   weekMetaFor={gymWeekMeta}
                   recordFor={(teamId, week, day) => gymRecordOf(currentUserId, teamId, week, day)}
                   onAddPhoto={(teamId, week, day, photo, photoKind) => addGymPhoto(currentUserId, teamId, week, day, photo, photoKind)}
@@ -4824,8 +4847,9 @@ function SeasonExportScreen({ team, sessions, gymPlanForTeam, currentWeek, membe
   );
 }
 
-function CoachGymPlanScreen({ teamId, teams, setScope, currentWeek, weekMetaFor, onSaveContent, onSaveActiveDays, onSaveWeekAttachment, onBack, editable }) {
-  const [week, setWeek] = useState(currentWeek);
+function CoachGymPlanScreen({ teamId, teams, setScope, currentGymWeek, weekMetaFor, onSaveContent, onSaveActiveDays, onSaveWeekAttachment, onBack, editable, onOpenSeason }) {
+  const [week, setWeek] = useState(currentGymWeek);
+  const [selectedMonthKey, setSelectedMonthKey] = useState(null);
   const dirtyRef = useRef(new Set());
   const markDirty = (slot, isDirty) => {
     if (isDirty) dirtyRef.current.add(slot); else dirtyRef.current.delete(slot);
@@ -4852,7 +4876,60 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentWeek, weekMetaFor,
     );
   }
 
-  const teamLabel = teams.find(t => t.id === teamId)?.name || "";
+  const team = teams.find(t => t.id === teamId);
+  const teamLabel = team?.name || "";
+
+  if (!team?.seasonStart || !team?.seasonEnd) {
+    return (
+      <div style={{ padding: "16px 20px 28px" }}>
+        <BackRow onBack={onBack} />
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "#F5F5F5", margin: "10px 0 2px" }}>Plan de gimnasio semanal</h2>
+        <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 4px", lineHeight: 1.4 }}>
+          Tripulación: <span style={{ color: "#E61E29", fontWeight: 600 }}>{teamLabel}</span>
+        </p>
+        <p style={{ color: "#8A8A8A", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+          El gimnasio usa la misma temporada que los entrenos de agua, y esta tripulación todavía no la tiene configurada.
+        </p>
+        {editable && (
+          <button className="vir-btn" onClick={onOpenSeason} style={{ ...primaryBtn, width: "auto", padding: "10px 18px", fontSize: 12.5 }}>Configurar temporada</button>
+        )}
+      </div>
+    );
+  }
+
+  // Meses de la temporada, igual que en Entrenos de agua
+  const seasonMonths = [];
+  {
+    const d = new Date(team.seasonStart + "T00:00:00");
+    d.setDate(1);
+    const end = new Date(team.seasonEnd + "T00:00:00");
+    while (d.getFullYear() < end.getFullYear() || (d.getFullYear() === end.getFullYear() && d.getMonth() <= end.getMonth())) {
+      seasonMonths.push({ year: d.getFullYear(), month: d.getMonth(), key: `${d.getFullYear()}-${d.getMonth()}`, label: MONTHS_ES[d.getMonth()] });
+      d.setMonth(d.getMonth() + 1);
+    }
+  }
+  const weekDate = new Date(week + "T00:00:00");
+  const weekMonthKey = `${weekDate.getFullYear()}-${weekDate.getMonth()}`;
+  const currentMonthKey = (() => { const d = new Date(currentGymWeek + "T00:00:00"); return `${d.getFullYear()}-${d.getMonth()}`; })();
+  const activeMonthKey = selectedMonthKey && seasonMonths.some(m => m.key === selectedMonthKey)
+    ? selectedMonthKey
+    : (seasonMonths.some(m => m.key === weekMonthKey) ? weekMonthKey : (seasonMonths.some(m => m.key === currentMonthKey) ? currentMonthKey : seasonMonths[0]?.key));
+
+  // Semanas (por su lunes) que tocan ese mes
+  const [ay, am] = activeMonthKey.split("-").map(Number);
+  const monthStart = new Date(ay, am, 1);
+  const monthEnd = new Date(ay, am + 1, 0);
+  const weeksOfMonth = [];
+  {
+    const seen = new Set();
+    const d = new Date(monthStart);
+    while (d <= monthEnd) {
+      const wk = mondayOf(d);
+      if (!seen.has(wk)) { seen.add(wk); weeksOfMonth.push(wk); }
+      d.setDate(d.getDate() + 1);
+    }
+  }
+
   const meta = weekMetaFor(teamId, week);
   const activeDays = meta.activeDays || [];
   const toggleDay = (day) => {
@@ -4871,6 +4948,12 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentWeek, weekMetaFor,
     };
     reader.readAsDataURL(file);
   };
+  const weekLabel = (mondayIso) => {
+    const mon = new Date(mondayIso + "T00:00:00");
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    const sameMonth = mon.getMonth() === sun.getMonth();
+    return sameMonth ? `${mon.getDate()}-${sun.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)}` : `${mon.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)} - ${sun.getDate()} ${MONTHS_ES[sun.getMonth()].slice(0, 3)}`;
+  };
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
@@ -4885,10 +4968,50 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentWeek, weekMetaFor,
         </p>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, marginTop: 8 }}>
-        <button className="vir-btn" onClick={() => guardNavigation(() => setWeek(w => Math.max(1, w - 1)))} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronLeft size={16} /></button>
-        <p style={{ color: "#F5F5F5", fontSize: 15, fontWeight: 700, margin: 0 }}>Semana {week}{week === currentWeek ? " · actual" : ""}</p>
-        <button className="vir-btn" onClick={() => guardNavigation(() => setWeek(w => w + 1))} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronRight size={16} /></button>
+      <p style={{ color: "#F5F5F5", fontSize: 13, fontWeight: 800, letterSpacing: 0.5, margin: "10px 0 8px", textTransform: "uppercase" }}>
+        Temporada {seasonMonths[0]?.year}-{seasonMonths[seasonMonths.length - 1]?.year}
+      </p>
+
+      {(() => {
+        const byYear = {};
+        seasonMonths.forEach(m => { (byYear[m.year] = byYear[m.year] || []).push(m); });
+        return Object.entries(byYear).map(([year, months]) => (
+          <div key={year} style={{ marginBottom: 10 }}>
+            <p style={{ color: "#8A8A8A", fontSize: 10.5, fontWeight: 700, margin: "0 0 6px" }}>{year}</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+              {months.map(m => {
+                const active = m.key === activeMonthKey;
+                return (
+                  <button key={m.key} className="vir-btn" onClick={() => guardNavigation(() => setSelectedMonthKey(m.key))} style={{
+                    padding: "8px 4px", borderRadius: 10, fontSize: 11, fontWeight: active ? 700 : 500, whiteSpace: "nowrap", textAlign: "center",
+                    background: active ? "#E61E29" : "#404040",
+                    border: `1px solid ${active ? "#E61E29" : "#565656"}`,
+                    color: active ? "#FFFFFF" : "#ADADAD",
+                  }}>
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ));
+      })()}
+
+      <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "14px 0 8px" }}>Semana</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 }}>
+        {weeksOfMonth.map(wk => {
+          const active = wk === week;
+          return (
+            <button key={wk} className="vir-btn" onClick={() => guardNavigation(() => setWeek(wk))} style={{
+              padding: "9px 12px", borderRadius: 10, fontSize: 11.5, fontWeight: active ? 700 : 500,
+              background: active ? "#E61E29" : "#404040",
+              border: `1px solid ${active ? "#E61E29" : "#565656"}`,
+              color: active ? "#FFFFFF" : "#ADADAD",
+            }}>
+              {weekLabel(wk)}{wk === currentGymWeek ? " · actual" : ""}
+            </button>
+          );
+        })}
       </div>
 
       <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Días de entreno esta semana ({activeDays.length}/7)</p>
@@ -5005,11 +5128,23 @@ function GymSlotEditor({ slot, value, onSave, editable, onDirtyChange }) {
   );
 }
 
-function RowerGymPlanScreen({ teamId, teamName, currentWeek, weekMetaFor, recordFor, onAddPhoto, onRemovePhoto, onViewPhoto, onBack }) {
-  const [week, setWeek] = useState(currentWeek);
+function RowerGymPlanScreen({ teamId, teamName, currentGymWeek, weekMetaFor, recordFor, onAddPhoto, onRemovePhoto, onViewPhoto, onBack }) {
+  const [week, setWeek] = useState(currentGymWeek);
   const meta = weekMetaFor(teamId, week);
   const activeDays = meta.activeDays || [];
-  const overdue = week < currentWeek;
+  const overdue = week < currentGymWeek;
+  const weekLabel = (mondayIso) => {
+    const mon = new Date(mondayIso + "T00:00:00");
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    const sameMonth = mon.getMonth() === sun.getMonth();
+    return sameMonth ? `${mon.getDate()}-${sun.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)}` : `${mon.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)} - ${sun.getDate()} ${MONTHS_ES[sun.getMonth()].slice(0, 3)}`;
+  };
+  const prevWeek = () => { const d = new Date(week + "T00:00:00"); d.setDate(d.getDate() - 7); setWeek(d.toISOString().slice(0, 10)); };
+  const nextWeek = () => {
+    const d = new Date(week + "T00:00:00"); d.setDate(d.getDate() + 7);
+    const next = d.toISOString().slice(0, 10);
+    setWeek(next > currentGymWeek ? currentGymWeek : next);
+  };
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
@@ -5020,9 +5155,9 @@ function RowerGymPlanScreen({ teamId, teamName, currentWeek, weekMetaFor, record
       </p>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <button className="vir-btn" onClick={() => setWeek(w => Math.max(1, w - 1))} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronLeft size={16} /></button>
-        <p style={{ color: "#F5F5F5", fontSize: 15, fontWeight: 700, margin: 0 }}>Semana {week}{week === currentWeek ? " · actual" : ""}</p>
-        <button className="vir-btn" onClick={() => setWeek(w => Math.min(currentWeek, w + 1))} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronRight size={16} /></button>
+        <button className="vir-btn" onClick={prevWeek} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronLeft size={16} /></button>
+        <p style={{ color: "#F5F5F5", fontSize: 15, fontWeight: 700, margin: 0 }}>{weekLabel(week)}{week === currentGymWeek ? " · actual" : ""}</p>
+        <button className="vir-btn" onClick={nextWeek} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronRight size={16} /></button>
       </div>
 
       {meta.weekAttachment && (
@@ -5250,12 +5385,6 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
     .sort((a, b) => a.iso.localeCompare(b.iso));
 
   // Agrupa los días del mes por semana (lunes a domingo)
-  const mondayOf = (date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
-    return d.toISOString().slice(0, 10);
-  };
   const weeksInMonth = {};
   daysInMonth.forEach(s => {
     const key = mondayOf(s.date);
