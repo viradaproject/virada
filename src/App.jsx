@@ -219,6 +219,14 @@ const mondayOf = (date) => {
   d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
   return d.toISOString().slice(0, 10);
 };
+// Número de semana de temporada (1, 2, 3...), contando desde la semana del inicio de temporada —
+// el mismo número sirve tanto para agua como para gimnasio, ya que comparten temporada
+const seasonWeekNumber = (seasonStartStr, mondayIso) => {
+  if (!seasonStartStr || !mondayIso) return null;
+  const seasonMonday = new Date(mondayOf(new Date(seasonStartStr + "T00:00:00")) + "T00:00:00");
+  const wkMonday = new Date(mondayIso + "T00:00:00");
+  return Math.round((wkMonday - seasonMonday) / (7 * 24 * 60 * 60 * 1000)) + 1;
+};
 // Convierte una fila cruda de la tabla water_sessions al formato que usa la app
 const mapWaterSessionRow = (s) => ({
   id: s.id, teamId: s.team_id, date: new Date(s.date + "T00:00:00"), iso: s.iso, dow: s.dow,
@@ -2064,6 +2072,7 @@ export default function ViradaPrototype() {
                 <RowerGymPlanScreen
                   teamId={teamOf(currentUserId)}
                   teamName={teamName}
+                  seasonStart={clubTeams.find(t => t.id === teamOf(currentUserId))?.seasonStart}
                   currentGymWeek={currentGymWeek}
                   weekMetaFor={gymWeekMeta}
                   recordFor={(teamId, week, day) => gymRecordOf(currentUserId, teamId, week, day)}
@@ -2173,6 +2182,7 @@ export default function ViradaPrototype() {
                   onBack={() => setScreen("coachTeamStats")}
                   teamName={teamName}
                   teamOf={teamOf}
+                  teams={clubTeams}
                   statsFor={statsFor}
                   totalPastActive={totalPastActiveFor(teamOf(openPerson.id))}
                   pesosExercises={pesosExercisesOf(openPerson.id)}
@@ -3214,7 +3224,7 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
   );
 }
 
-function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, totalPastActive, pesosExercises, ergoTest, currentWeek, currentGymWeek, weekPlanFor, recordFor, waterWeekMonth, gymWeekMonth, onViewPhoto, onOpenPesos }) {
+function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, teams, statsFor, totalPastActive, pesosExercises, ergoTest, currentWeek, currentGymWeek, weekPlanFor, recordFor, waterWeekMonth, gymWeekMonth, onViewPhoto, onOpenPesos }) {
   const s = statsFor(person.id);
   const freq = totalPastActive > 0 ? Math.round((s.entrenado / totalPastActive) * 100) : 0;
   const registeredExercises = pesosExercises.filter(ex => ex.baseKg).length;
@@ -3267,8 +3277,10 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
         const plan = weekPlanFor(teamId, week);
         const items = FISICO_SLOTS.filter(slot => plan[slot] && plan[slot].content);
         if (items.length === 0) return null;
+        const wn = seasonWeekNumber(teams.find(t => t.id === teamId)?.seasonStart, week);
         return (
           <div key={week} style={{ marginBottom: 14 }}>
+            {wn && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, margin: "0 0 2px" }}>Semana {wn}</p>}
             <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11, margin: "0 0 6px" }}>{weekLabel(week)}{week === currentGymWeek ? " · actual" : ""}</p>
             {items.map(slot => {
               const record = recordFor(teamId, week, slot);
@@ -4675,7 +4687,12 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
         <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
             <button className="vir-btn" onClick={() => shiftWeek(-1)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronLeft size={16} /></button>
-            <p style={{ color: "#F5F5F5", fontSize: 14, fontWeight: 700, margin: 0 }}>{weekLabel(week)}{week === currentGymWeek ? " · actual" : ""}</p>
+            <div style={{ textAlign: "center" }}>
+              {seasonWeekNumber(team?.seasonStart, week) && (
+                <p style={{ color: "#8A8A8A", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, margin: "0 0 2px" }}>Semana {seasonWeekNumber(team?.seasonStart, week)}</p>
+              )}
+              <p style={{ color: "#F5F5F5", fontSize: 14, fontWeight: 700, margin: 0 }}>{weekLabel(week)}{week === currentGymWeek ? " · actual" : ""}</p>
+            </div>
             <button className="vir-btn" onClick={() => shiftWeek(1)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronRight size={16} /></button>
           </div>
 
@@ -4869,8 +4886,10 @@ function SeasonExportScreen({ team, sessions, gymPlanForTeam, currentGymWeek, me
         {seasonWeeks.map(week => {
           const plan = gymPlanForTeam(week);
           const items = FISICO_SLOTS.filter(slot => plan[slot] && plan[slot].content);
+          const wn = seasonWeekNumber(team.seasonStart, week);
           return (
             <div key={week} style={{ marginBottom: 10 }}>
+              {wn && <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, margin: "0 0 2px", color: "#666" }}>Semana {wn}</p>}
               <p style={{ fontSize: 12, fontWeight: 700, margin: "0 0 4px" }}>{weekLabel(week)}</p>
               {items.length === 0 && <p style={{ fontSize: 11, margin: "0 0 4px" }}>Sin plan subido.</p>}
               {items.map(slot => (
@@ -5042,14 +5061,17 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentGymWeek, weekMetaF
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 }}>
         {weeksOfMonth.map(wk => {
           const active = wk === week;
+          const wn = seasonWeekNumber(team.seasonStart, wk);
           return (
             <button key={wk} className="vir-btn" onClick={() => guardNavigation(() => setWeek(wk))} style={{
-              padding: "9px 12px", borderRadius: 10, fontSize: 11.5, fontWeight: active ? 700 : 500,
+              padding: "8px 12px", borderRadius: 10, fontWeight: active ? 700 : 500,
               background: active ? "#E61E29" : "#404040",
               border: `1px solid ${active ? "#E61E29" : "#565656"}`,
               color: active ? "#FFFFFF" : "#ADADAD",
+              display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2,
             }}>
-              {weekLabel(wk)}{wk === currentGymWeek ? " · actual" : ""}
+              {wn && <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3 }}>Semana {wn}</span>}
+              <span style={{ fontSize: 11.5 }}>{weekLabel(wk)}{wk === currentGymWeek ? " · actual" : ""}</span>
             </button>
           );
         })}
@@ -5169,7 +5191,7 @@ function GymSlotEditor({ slot, value, onSave, editable, onDirtyChange }) {
   );
 }
 
-function RowerGymPlanScreen({ teamId, teamName, currentGymWeek, weekMetaFor, recordFor, onAddPhoto, onRemovePhoto, onViewPhoto, onBack }) {
+function RowerGymPlanScreen({ teamId, teamName, seasonStart, currentGymWeek, weekMetaFor, recordFor, onAddPhoto, onRemovePhoto, onViewPhoto, onBack }) {
   const [week, setWeek] = useState(currentGymWeek);
   const meta = weekMetaFor(teamId, week);
   const activeDays = meta.activeDays || [];
@@ -5197,7 +5219,12 @@ function RowerGymPlanScreen({ teamId, teamName, currentGymWeek, weekMetaFor, rec
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <button className="vir-btn" onClick={prevWeek} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronLeft size={16} /></button>
-        <p style={{ color: "#F5F5F5", fontSize: 15, fontWeight: 700, margin: 0 }}>{weekLabel(week)}{week === currentGymWeek ? " · actual" : ""}</p>
+        <div style={{ textAlign: "center" }}>
+          {seasonWeekNumber(seasonStart, week) && (
+            <p style={{ color: "#8A8A8A", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, margin: "0 0 2px" }}>Semana {seasonWeekNumber(seasonStart, week)}</p>
+          )}
+          <p style={{ color: "#F5F5F5", fontSize: 15, fontWeight: 700, margin: 0 }}>{weekLabel(week)}{week === currentGymWeek ? " · actual" : ""}</p>
+        </div>
         <button className="vir-btn" onClick={nextWeek} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronRight size={16} /></button>
       </div>
 
