@@ -4917,17 +4917,21 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentGymWeek, weekMetaF
     ? selectedMonthKey
     : (seasonMonths.some(m => m.key === weekMonthKey) ? weekMonthKey : (seasonMonths.some(m => m.key === currentMonthKey) ? currentMonthKey : seasonMonths[0]?.key));
 
-  // Semanas (por su lunes) que tocan ese mes
+  // Semanas (por su lunes) que tocan ese mes, recortadas a lo que dura la temporada de verdad
   const [ay, am] = activeMonthKey.split("-").map(Number);
   const monthStart = new Date(ay, am, 1);
   const monthEnd = new Date(ay, am + 1, 0);
+  const seasonStartDate = new Date(team.seasonStart + "T00:00:00");
+  const seasonEndDate = new Date(team.seasonEnd + "T00:00:00");
   const weeksOfMonth = [];
   {
     const seen = new Set();
     const d = new Date(monthStart);
     while (d <= monthEnd) {
-      const wk = mondayOf(d);
-      if (!seen.has(wk)) { seen.add(wk); weeksOfMonth.push(wk); }
+      if (d >= seasonStartDate && d <= seasonEndDate) {
+        const wk = mondayOf(d);
+        if (!seen.has(wk)) { seen.add(wk); weeksOfMonth.push(wk); }
+      }
       d.setDate(d.getDate() + 1);
     }
   }
