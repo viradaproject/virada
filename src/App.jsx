@@ -32,7 +32,6 @@ const REGISTER_SIDE_OPTIONS = [
 const TEAMS_SEED = [];
 const ME_ROWER = "r1";
 const ME_TEAM = ROWER_TEAM[ME_ROWER];
-const ATTENDANCE_BASE = { label: "2026", attendedBeforeAgosto: 0, totalBeforeAgosto: 0 };
 const COACH_NAME = "Entrenador";
 const COACH_ID = "coach1";
 const CLUB_NAME = "Tu club";
@@ -1054,18 +1053,21 @@ export default function ViradaPrototype() {
   const totalPastActive = totalPastActiveFor(myTeamId);
 
   const attendanceStats = useMemo(() => {
-    const past = sessions.filter(s => s.teamId === myTeamId && s.active && hasPassed(s, today));
-    const monthAttended = past.filter(s => inCrew(s, currentUserId)).length;
-    const monthTotal = past.length;
+    const teamPast = sessions.filter(s => s.teamId === myTeamId && s.active && hasPassed(s, today));
+    const monthPast = teamPast.filter(s => s.date.getMonth() === today.getMonth() && s.date.getFullYear() === today.getFullYear());
+    const monthAttended = monthPast.filter(s => inCrew(s, currentUserId)).length;
+    const monthTotal = monthPast.length;
+    const seasonAttended = teamPast.filter(s => inCrew(s, currentUserId)).length;
+    const seasonTotal = teamPast.length;
+    const myTeam = teams.find(t => t.id === myTeamId);
+    const seasonLabel = (myTeam?.seasonStart && myTeam?.seasonEnd)
+      ? `${new Date(myTeam.seasonStart).getFullYear()}-${new Date(myTeam.seasonEnd).getFullYear()}`
+      : String(today.getFullYear());
     return {
       month: { label: MONTHS_ES[today.getMonth()], attended: monthAttended, total: monthTotal },
-      year: {
-        label: ATTENDANCE_BASE.label,
-        attended: ATTENDANCE_BASE.attendedBeforeAgosto + monthAttended,
-        total: ATTENDANCE_BASE.totalBeforeAgosto + monthTotal,
-      },
+      year: { label: seasonLabel, attended: seasonAttended, total: seasonTotal },
     };
-  }, [sessions, currentUserId, myTeamId]);
+  }, [sessions, currentUserId, myTeamId, teams]);
 
   const statsFor = (id) => crewStatsFor(sessions, id, today);
 
@@ -2082,7 +2084,7 @@ export default function ViradaPrototype() {
                   members={[...ROWERS, ...clubAssignedUsers]
                     .filter(p => roleOf(p.id) === "rower" && teamOf(p.id) === coachScope)
                     .map(p => ({ id: p.id, name: p.name || p.username, nickname: nicknameOf(p.id) }))}
-                  currentWeek={currentWeek}
+                  currentGymWeek={currentGymWeek}
                   waterStatsFor={waterStatsFor}
                   gymStatsFor={gymStatsFor}
                   today={today}
@@ -2176,6 +2178,7 @@ export default function ViradaPrototype() {
                   pesosExercises={pesosExercisesOf(openPerson.id)}
                   ergoTest={ergoTestTimes[openPerson.id] ? Math.round(wattsFromTestTime(ergoTestTimes[openPerson.id])) : null}
                   currentWeek={currentWeek}
+                  currentGymWeek={currentGymWeek}
                   weekPlanFor={gymWeekPlan}
                   recordFor={(teamId, week, day) => gymRecordOf(openPerson.id, teamId, week, day)}
                   waterWeekMonth={waterStatsFor(openPerson.id, teamOf(openPerson.id))}
@@ -2271,7 +2274,7 @@ export default function ViradaPrototype() {
                   team={openTeam}
                   sessions={sessions.filter(s => s.teamId === openTeam.id).sort((a, b) => a.date - b.date)}
                   gymPlanForTeam={(week) => gymWeekPlan(openTeam.id, week)}
-                  currentWeek={currentWeek}
+                  currentGymWeek={currentGymWeek}
                   members={[
                     ...ROWERS.map(r => ({ id: r.id, name: r.name, nickname: nicknameOf(r.id), side: sideOf(r.id) })),
                     ...clubAssignedUsers.map(u => ({ id: u.id, name: u.username, nickname: nicknameOf(u.id), side: sideOf(u.id) })),
@@ -2426,6 +2429,7 @@ export default function ViradaPrototype() {
                   waterWeekMonth={waterStatsFor(currentUserId, myTeamId)}
                   gymWeekMonth={gymStatsFor(currentUserId, myTeamId)}
                   currentWeek={currentWeek}
+                  currentGymWeek={currentGymWeek}
                 />
               )}
             </div>
@@ -3210,14 +3214,21 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
   );
 }
 
-function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, totalPastActive, pesosExercises, ergoTest, currentWeek, weekPlanFor, recordFor, waterWeekMonth, gymWeekMonth, onViewPhoto, onOpenPesos }) {
+function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, totalPastActive, pesosExercises, ergoTest, currentWeek, currentGymWeek, weekPlanFor, recordFor, waterWeekMonth, gymWeekMonth, onViewPhoto, onOpenPesos }) {
   const s = statsFor(person.id);
   const freq = totalPastActive > 0 ? Math.round((s.entrenado / totalPastActive) * 100) : 0;
   const registeredExercises = pesosExercises.filter(ex => ex.baseKg).length;
   const hasGymLogs = registeredExercises > 0 || !!ergoTest;
   const teamId = teamOf(person.id);
+  const weekLabel = (mondayIso) => {
+    const mon = new Date(mondayIso + "T00:00:00");
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    const sameMonth = mon.getMonth() === sun.getMonth();
+    return sameMonth ? `${mon.getDate()}-${sun.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)}` : `${mon.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)} - ${sun.getDate()} ${MONTHS_ES[sun.getMonth()].slice(0, 3)}`;
+  };
+  // Últimas 10 semanas reales, de la más reciente a la más antigua
   const weeks = [];
-  for (let w = currentWeek; w >= 1; w--) weeks.push(w);
+  { const d = new Date(currentGymWeek + "T00:00:00"); for (let i = 0; i < 10; i++) { weeks.push(d.toISOString().slice(0, 10)); d.setDate(d.getDate() - 7); } }
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
@@ -3249,7 +3260,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
 
       <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Entrenos de gim · check semanal</p>
       <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-        <AttendanceCard label={`Gim · semana ${currentWeek}`} attended={gymWeekMonth.weekDone} total={gymWeekMonth.weekTotal} unitLabel="hecho" />
+        <AttendanceCard label={`Gim · ${weekLabel(currentGymWeek)}`} attended={gymWeekMonth.weekDone} total={gymWeekMonth.weekTotal} unitLabel="hecho" />
         <AttendanceCard label="Gim · este mes" attended={gymWeekMonth.monthDone} total={gymWeekMonth.monthTotal} unitLabel="hecho" />
       </div>
       {weeks.map(week => {
@@ -3258,7 +3269,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
         if (items.length === 0) return null;
         return (
           <div key={week} style={{ marginBottom: 14 }}>
-            <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11, margin: "0 0 6px" }}>Semana {week}{week === currentWeek ? " · actual" : ""}</p>
+            <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11, margin: "0 0 6px" }}>{weekLabel(week)}{week === currentGymWeek ? " · actual" : ""}</p>
             {items.map(slot => {
               const record = recordFor(teamId, week, slot);
               const done = !!(record && record.done);
@@ -3283,7 +3294,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, statsFor, to
                             key={i}
                             src={p.dataUrl}
                             alt="Toca para ampliar"
-                            onClick={() => onViewPhoto(p.dataUrl, `${FISICO_LABELS[slot]} · Semana ${week} · ${person.name}`)}
+                            onClick={() => onViewPhoto(p.dataUrl, `${FISICO_LABELS[slot]} · ${weekLabel(week)} · ${person.name}`)}
                             style={{ width: 30, height: 30, borderRadius: 6, objectFit: "cover", cursor: "pointer", flexShrink: 0 }}
                           />
                         )
@@ -4504,10 +4515,17 @@ function CoachMeasurementsScreen({ teamId, teams, setScope, boats, members, meas
   );
 }
 
-function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gymRecordFor, members, currentWeek, waterStatsFor, gymStatsFor, today, onBack, onViewPhoto }) {
+function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gymRecordFor, members, currentGymWeek, waterStatsFor, gymStatsFor, today, onBack, onViewPhoto }) {
   const [tab, setTab] = useState("diario");
   const [day, setDay] = useState(today);
-  const [week, setWeek] = useState(currentWeek);
+  const [week, setWeek] = useState(currentGymWeek);
+  const weekLabel = (mondayIso) => {
+    const mon = new Date(mondayIso + "T00:00:00");
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    const sameMonth = mon.getMonth() === sun.getMonth();
+    return sameMonth ? `${mon.getDate()}-${sun.getDate()} ${MONTHS_ES[mon.getMonth()]}` : `${mon.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)} - ${sun.getDate()} ${MONTHS_ES[sun.getMonth()].slice(0, 3)}`;
+  };
+  const shiftWeek = (delta) => { const d = new Date(week + "T00:00:00"); d.setDate(d.getDate() + delta * 7); setWeek(d.toISOString().slice(0, 10)); };
 
   if (teamId === "club") {
     return (
@@ -4532,7 +4550,7 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
   const dayRow = (rower, date) => {
     const s = sessionForDay(date);
     const swam = !!(s && s.active && inCrew(s, rower.id));
-    const wk = weekOfDate(date);
+    const wk = mondayOf(date);
     const dayKey = JS_DOW_TO_WEEK_KEY[date.getDay()];
     const meta = gymWeekMetaFor(teamId, wk);
     const isGymDay = (meta.activeDays || []).includes(dayKey);
@@ -4542,12 +4560,12 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
     return { swam, isGymDay, gymDone, photos, dayLabel: WEEK_DAY_LABELS[dayKey] };
   };
 
-  // --- datos de una semana completa ---
+  // --- datos de una semana completa (7 días reales a partir del lunes seleccionado) ---
   const weekDates = Array.from({ length: 7 }, (_, i) => {
-    // aproximación: días 1-7 de la semana del mes = (week-1)*7+1 .. +7, acotado al mes
-    const d = new Date(2026, 7, Math.min(31, (week - 1) * 7 + 1 + i));
+    const d = new Date(week + "T00:00:00");
+    d.setDate(d.getDate() + i);
     return d;
-  }).filter(d => d.getMonth() === 7 && weekOfDate(d) === week);
+  });
   const weekMeta = gymWeekMetaFor(teamId, week);
   const weekActiveDays = weekMeta.activeDays || [];
 
@@ -4656,14 +4674,14 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
       {tab === "semanal" && (
         <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-            <button className="vir-btn" onClick={() => setWeek(w => Math.max(1, w - 1))} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronLeft size={16} /></button>
-            <p style={{ color: "#F5F5F5", fontSize: 14, fontWeight: 700, margin: 0 }}>Semana {week}{week === currentWeek ? " · actual" : ""}</p>
-            <button className="vir-btn" onClick={() => setWeek(w => w + 1)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronRight size={16} /></button>
+            <button className="vir-btn" onClick={() => shiftWeek(-1)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronLeft size={16} /></button>
+            <p style={{ color: "#F5F5F5", fontSize: 14, fontWeight: 700, margin: 0 }}>{weekLabel(week)}{week === currentGymWeek ? " · actual" : ""}</p>
+            <button className="vir-btn" onClick={() => shiftWeek(1)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 10, padding: "8px 12px", color: "#ADADAD" }}><ChevronRight size={16} /></button>
           </div>
 
           <div className="vir-print-area">
             <h1 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 18, margin: "0 0 2px" }}>Informe semanal · {team?.name}</h1>
-            <p style={{ fontSize: 12, margin: "0 0 16px" }}>Semana {week}</p>
+            <p style={{ fontSize: 12, margin: "0 0 16px" }}>Semana del {weekLabel(week)}</p>
 
             <h3 style={{ fontSize: 13, margin: "0 0 8px" }}>Entrenos de agua</h3>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, marginBottom: 16 }}>
@@ -4752,7 +4770,7 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
       {tab === "mensual" && (
         <div className="vir-print-area">
           <h1 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 18, margin: "0 0 2px" }}>Informe mensual · {team?.name}</h1>
-          <p style={{ fontSize: 12, margin: "0 0 16px" }}>{MONTHS_ES[7]} de 2026 · semanas 1 a {currentWeek}</p>
+          <p style={{ fontSize: 12, margin: "0 0 16px" }}>{MONTHS_ES[today.getMonth()]} de {today.getFullYear()}</p>
 
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
             <thead>
@@ -4784,7 +4802,21 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
   );
 }
 
-function SeasonExportScreen({ team, sessions, gymPlanForTeam, currentWeek, members, onBack }) {
+function SeasonExportScreen({ team, sessions, gymPlanForTeam, currentGymWeek, members, onBack }) {
+  const weekLabel = (mondayIso) => {
+    const mon = new Date(mondayIso + "T00:00:00");
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    const sameMonth = mon.getMonth() === sun.getMonth();
+    return sameMonth ? `${mon.getDate()}-${sun.getDate()} ${MONTHS_ES[mon.getMonth()]}` : `${mon.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)} - ${sun.getDate()} ${MONTHS_ES[sun.getMonth()].slice(0, 3)}`;
+  };
+  // Todas las semanas reales de la temporada, desde su inicio hasta la semana actual
+  const seasonWeeks = [];
+  if (team.seasonStart) {
+    const d = new Date(mondayOf(new Date(team.seasonStart + "T00:00:00")) + "T00:00:00");
+    const endD = new Date(currentGymWeek + "T00:00:00");
+    while (d <= endD) { seasonWeeks.push(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 7); }
+    seasonWeeks.reverse();
+  }
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
@@ -4799,7 +4831,9 @@ function SeasonExportScreen({ team, sessions, gymPlanForTeam, currentWeek, membe
 
       <div className="vir-print-area">
         <h1 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 20, margin: "0 0 2px" }}>{CLUB_NAME} · {team.name}</h1>
-        <p style={{ fontSize: 12, margin: "0 0 16px" }}>Código de tripulación: {team.code} · Temporada {ATTENDANCE_BASE.label}</p>
+        <p style={{ fontSize: 12, margin: "0 0 16px" }}>
+          Código de tripulación: {team.code} · Temporada {team.seasonStart && team.seasonEnd ? `${new Date(team.seasonStart).getFullYear()}-${new Date(team.seasonEnd).getFullYear()}` : "sin definir"}
+        </p>
 
         <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>Remeros ({members.length})</h3>
         <p style={{ fontSize: 12, margin: "0 0 16px", lineHeight: 1.6 }}>
@@ -4831,12 +4865,13 @@ function SeasonExportScreen({ team, sessions, gymPlanForTeam, currentWeek, membe
         </table>
 
         <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>Plan de gimnasio por semana</h3>
-        {Array.from({ length: currentWeek }, (_, i) => currentWeek - i).map(week => {
+        {seasonWeeks.length === 0 && <p style={{ fontSize: 11 }}>Esta tripulación todavía no tiene temporada configurada.</p>}
+        {seasonWeeks.map(week => {
           const plan = gymPlanForTeam(week);
           const items = FISICO_SLOTS.filter(slot => plan[slot] && plan[slot].content);
           return (
             <div key={week} style={{ marginBottom: 10 }}>
-              <p style={{ fontSize: 12, fontWeight: 700, margin: "0 0 4px" }}>Semana {week}</p>
+              <p style={{ fontSize: 12, fontWeight: 700, margin: "0 0 4px" }}>{weekLabel(week)}</p>
               {items.length === 0 && <p style={{ fontSize: 11, margin: "0 0 4px" }}>Sin plan subido.</p>}
               {items.map(slot => (
                 <p key={slot} style={{ fontSize: 11, margin: "0 0 2px" }}>{FISICO_LABELS[slot]}: {plan[slot].content}{plan[slot].attachment ? " (+ archivo adjunto)" : ""}</p>
@@ -5386,15 +5421,20 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
     ? selectedMonthKey
     : (seasonMonths.some(m => m.key === currentMonthKey) ? currentMonthKey : seasonMonths[0]?.key);
 
-  const daysInMonth = sessions
-    .filter(s => `${s.date.getFullYear()}-${s.date.getMonth()}` === activeMonthKey)
-    .sort((a, b) => a.iso.localeCompare(b.iso));
-
-  // Agrupa los días del mes por semana (lunes a domingo)
-  const weeksInMonth = {};
-  daysInMonth.forEach(s => {
+  // Agrupa TODOS los días de la temporada por semana (lunes a domingo), completa, aunque una
+  // semana quede repartida entre dos meses — así la línea de separación cae siempre tras el domingo
+  const allWeeks = {};
+  [...sessions].sort((a, b) => a.iso.localeCompare(b.iso)).forEach(s => {
     const key = mondayOf(s.date);
-    (weeksInMonth[key] = weeksInMonth[key] || []).push(s);
+    (allWeeks[key] = allWeeks[key] || []).push(s);
+  });
+  // Solo mostramos, en el mes activo, las semanas cuyo lunes cae dentro de ese mes
+  const weeksInMonth = {};
+  Object.entries(allWeeks).forEach(([mondayIso, items]) => {
+    const mondayDate = new Date(mondayIso + "T00:00:00");
+    if (`${mondayDate.getFullYear()}-${mondayDate.getMonth()}` === activeMonthKey) {
+      weeksInMonth[mondayIso] = items;
+    }
   });
 
   return (
@@ -7036,7 +7076,13 @@ function TrainingLogScreen({ title, sub, fields, entries, onAdd, onBack, renderS
   );
 }
 
-function RowerStatsScreen({ onBack, attendance, crewStats, pesosCount, ergoTestSet, waterWeekMonth, gymWeekMonth, currentWeek }) {
+function RowerStatsScreen({ onBack, attendance, crewStats, pesosCount, ergoTestSet, waterWeekMonth, gymWeekMonth, currentWeek, currentGymWeek }) {
+  const gymWeekLabel = (mondayIso) => {
+    const mon = new Date(mondayIso + "T00:00:00");
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    const sameMonth = mon.getMonth() === sun.getMonth();
+    return sameMonth ? `${mon.getDate()}-${sun.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)}` : `${mon.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)} - ${sun.getDate()} ${MONTHS_ES[sun.getMonth()].slice(0, 3)}`;
+  };
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
@@ -7057,7 +7103,7 @@ function RowerStatsScreen({ onBack, attendance, crewStats, pesosCount, ergoTestS
 
       <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Entrenos de gim hechos (5 sesiones semanales)</p>
       <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
-        <AttendanceCard label={`Semana ${currentWeek}`} attended={gymWeekMonth.weekDone} total={gymWeekMonth.weekTotal} unitLabel="hecho" />
+        <AttendanceCard label={gymWeekLabel(currentGymWeek)} attended={gymWeekMonth.weekDone} total={gymWeekMonth.weekTotal} unitLabel="hecho" />
         <AttendanceCard label="Este mes" attended={gymWeekMonth.monthDone} total={gymWeekMonth.monthTotal} unitLabel="hecho" />
       </div>
 
