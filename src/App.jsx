@@ -2311,6 +2311,8 @@ export default function ViradaPrototype() {
                   overlapFor={overlapFor}
                   teamName={teamName}
                   teamOf={teamOf}
+                  roleOf={roleOf}
+                  managedTeamsOf={managedTeamsOf}
                   nameOf={nameOf}
                   nicknameOf={nicknameOf}
                   sideOf={sideOf}
@@ -5697,7 +5699,7 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
   );
 }
 
-function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, waterStatsFor, gymStatsFor, editable, myId, selected, setSelected, onAssign, onClear, onClose, onReopen, onRemoveCrew, onSetBoat, onSetOars, overlapFor, fleetBoats, boatMeasurements }) {
+function CrewCard({ session, crew, teamOf, roleOf, managedTeamsOf, nameOf, nicknameOf, sideOf, photoOf, waterStatsFor, gymStatsFor, editable, myId, selected, setSelected, onAssign, onClear, onClose, onReopen, onRemoveCrew, onSetBoat, onSetOars, overlapFor, fleetBoats, boatMeasurements }) {
   const [preEditRoster, setPreEditRoster] = useState(null);
   const handleReopen = () => {
     setPreEditRoster({ seats: [...crew.seats], patron: crew.patron, reserves: [...crew.reserves], zodiac: [...crew.zodiac] });
@@ -5707,7 +5709,7 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
     onClose(session, crew, preEditRoster);
     setPreEditRoster(null);
   };
-  const inScope = (id) => teamOf(id) === session.teamId;
+  const inScope = (id) => teamOf(id) === session.teamId || (roleOf(id) === "coach" && managedTeamsOf(id).includes(session.teamId));
   const available = [...session.signups].filter(id => !allCrewedIds(session).includes(id) && (inScope(id) || id === myId));
   const filled = seatFill(crew);
   const canEdit = editable && crew.status === "abierto";
@@ -5803,7 +5805,7 @@ function CrewCard({ session, crew, teamOf, nameOf, nicknameOf, sideOf, photoOf, 
   );
 }
 
-function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, onAddCrew, onRemoveCrew, onSetCrewBoat, onSetCrewOars, teamName, teamOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert, myId, onToggleSignup, photoOf, overlapFor, fleetBoats, boatMeasurements }) {
+function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, onAddCrew, onRemoveCrew, onSetCrewBoat, onSetCrewOars, teamName, teamOf, roleOf, managedTeamsOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert, myId, onToggleSignup, photoOf, overlapFor, fleetBoats, boatMeasurements }) {
   const [newBoatName, setNewBoatName] = useState("");
   const availableBoats = fleetBoats.filter(b => !session.crews.some(c => c.boat === b.name));
 
@@ -5872,7 +5874,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
           <CrewCard
             key={crew.id}
             session={session} crew={crew}
-            teamOf={teamOf} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} photoOf={photoOf}
+            teamOf={teamOf} roleOf={roleOf} managedTeamsOf={managedTeamsOf} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} photoOf={photoOf}
             waterStatsFor={waterStatsFor} gymStatsFor={gymStatsFor} editable={editable} myId={myId}
             selected={selected} setSelected={setSelected}
             onAssign={onAssign} onClear={onClear} onClose={onClose} onReopen={onReopen} onRemoveCrew={onRemoveCrew}
