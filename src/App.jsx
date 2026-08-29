@@ -2169,6 +2169,10 @@ export default function ViradaPrototype() {
                   teamName={teamName}
                   statsFor={statsFor}
                   totalPastActiveFor={totalPastActiveFor}
+                  sessions={coachScope === "club" ? sessions : sessions.filter(s => s.teamId === coachScope)}
+                  gymWeekMetaFor={gymWeekMeta}
+                  gymRecordFor={gymRecordOf}
+                  currentGymWeek={currentGymWeek}
                   allPeople={[
                     ...ROWERS.map(r => ({ id: r.id, name: r.name, nickname: r.nickname })),
                     ...clubAssignedUsers.map(u => ({ id: u.id, name: u.username, nickname: u.apodo })),
@@ -3151,7 +3155,8 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
   );
 }
 
-function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeople, statsFor, totalPastActiveFor, onOpenPerson }) {
+function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeople, statsFor, totalPastActiveFor, onOpenPerson, sessions, gymWeekMetaFor, gymRecordFor, currentGymWeek }) {
+  const [block, setBlock] = useState("individual"); // "individual" | "colectivo"
   const people = allPeople.filter(p => scope === "club" || teamOf(p.id) === scope);
 
   const aggregate = people.reduce((acc, p) => {
@@ -3171,8 +3176,43 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
   const avgFreq = freqs.length > 0 ? Math.round(freqs.reduce((a, b) => a + b, 0) / freqs.length) : 0;
 
   const groups = scope === "club"
-    ? teams.map(t => ({ id: t.id, label: t.name, members: people.filter(p => teamOf(p.id) === t.id), total: totalPastActiveFor(t.id) })).filter(g => g.members.length > 0)
-    : [{ id: scope, label: teamName(scope), members: people, total: totalPastActiveFor(scope) }];
+    ? teams.map(t => ({ id: t.id, label: t.name, members: people.filter(p => teamOf(p.id) === t.id), total: totalPastActiveFor(t.id), team: t })).filter(g => g.members.length > 0)
+    : [{ id: scope, label: teamName(scope), members: people, total: totalPastActiveFor(scope), team: teams.find(t => t.id === scope) }];
+
+  // Estadísticas colectivas de una tripulación concreta: agua por bote, suspendidos, y gimnasio de temporada
+  const collectiveStatsFor = (g) => {
+    const teamSessions = sessions.filter(s => s.teamId === g.id);
+    const boatCounts = {};
+    teamSessions.forEach(s => {
+      (s.crews || []).filter(c => c.status === "cerrado").forEach(c => {
+        boatCounts[c.boat] = (boatCounts[c.boat] || 0) + 1;
+      });
+    });
+    const suspended = teamSessions.filter(s => !s.active && s.suspendedReason).length;
+
+    let gymSessions = 0, gymPossible = 0, gymDone = 0;
+    if (g.team?.seasonStart) {
+      let wk = mondayOf(new Date(g.team.seasonStart + "T00:00:00"));
+      const end = currentGymWeek;
+      let guard = 0;
+      while (wk <= end && guard < 104) { // tope de seguridad: 2 años de semanas
+        const meta = gymWeekMetaFor(g.id, wk);
+        const activeDays = meta.activeDays || [];
+        gymSessions += activeDays.length;
+        activeDays.forEach(day => {
+          g.members.forEach(m => {
+            gymPossible++;
+            const rec = gymRecordFor(m.id, g.id, wk, day);
+            if (rec && rec.done) gymDone++;
+          });
+        });
+        const d = new Date(wk + "T00:00:00"); d.setDate(d.getDate() + 7); wk = d.toISOString().slice(0, 10);
+        guard++;
+      }
+    }
+    const gymAttendancePct = gymPossible > 0 ? Math.round((gymDone / gymPossible) * 100) : 0;
+    return { boatCounts, suspended, gymSessions, gymAttendancePct, totalWater: g.total };
+  };
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
@@ -3180,46 +3220,98 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Estadísticas de tripulación</h2>
       <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "0 0 16px" }}>Alcance: {scope === "club" ? "todo el club" : teamName(scope)}{scope !== "club" ? ` · ${scopeTotalPastActive} entrenos de agua realizados` : ""}</p>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
-        <StatCard label="Convocatorias totales" value={aggregate.convocado} />
-        <StatCard label="Entrenados en total" value={aggregate.entrenado} />
-        <StatCard label="Asistencia media" value={`${avgFreq}%`} />
+      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+        <ScopeChip active={block === "individual"} onClick={() => setBlock("individual")} label="Individual" />
+        <ScopeChip active={block === "colectivo"} onClick={() => setBlock("colectivo")} label="Colectivo" />
       </div>
 
-      {people.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>No hay remeros en este alcance.</p>}
+      {block === "individual" && (
+        <>
+          <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
+            <StatCard label="Convocatorias totales" value={aggregate.convocado} />
+            <StatCard label="Entrenados en total" value={aggregate.entrenado} />
+            <StatCard label="Asistencia media" value={`${avgFreq}%`} />
+          </div>
 
-      {groups.map(g => (
-        <div key={g.id} style={{ marginBottom: 18 }}>
-          {scope === "club" && (
-            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>{g.label} · {g.total} entrenos de agua realizados</p>
-          )}
-          {g.members.map(p => {
-            const s = statsFor(p.id);
-            const freq = g.total > 0 ? Math.round((s.entrenado / g.total) * 100) : 0;
+          {people.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>No hay remeros en este alcance.</p>}
+
+          {groups.map(g => (
+            <div key={g.id} style={{ marginBottom: 18 }}>
+              {scope === "club" && (
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>{g.label} · {g.total} entrenos de agua realizados</p>
+              )}
+              {g.members.map(p => {
+                const s = statsFor(p.id);
+                const freq = g.total > 0 ? Math.round((s.entrenado / g.total) * 100) : 0;
+                return (
+                  <div key={p.id} className="vir-btn" onClick={() => onOpenPerson(p)} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <div>
+                        <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{p.name}</p>
+                        {p.nickname && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "2px 0 0" }}>"{p.nickname}"</p>}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 16, fontWeight: 700 }}>{freq}%</span>
+                        <ChevronRight size={16} color="var(--vir-text-muted, #8A8A8A)" />
+                      </div>
+                    </div>
+                    <div style={{ height: 5, background: "var(--vir-border, #565656)", borderRadius: 3, marginBottom: 10, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${freq}%`, background: "var(--vir-red, #E61E29)", borderRadius: 3 }} />
+                    </div>
+                    <div style={{ display: "flex", gap: 16 }}>
+                      <span style={{ fontSize: 11.5, color: "var(--vir-text-secondary, #ADADAD)" }}>Convocado al entreno de agua: <span className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)" }}>{s.convocado}</span></span>
+                      <span style={{ fontSize: 11.5, color: "var(--vir-text-secondary, #ADADAD)" }}>Entrenado agua: <span className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)" }}>{s.entrenado}</span></span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </>
+      )}
+
+      {block === "colectivo" && (
+        <>
+          {groups.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>No hay tripulaciones en este alcance.</p>}
+          {groups.map(g => {
+            const cs = collectiveStatsFor(g);
+            const boatEntries = Object.entries(cs.boatCounts).sort((a, b) => b[1] - a[1]);
             return (
-              <div key={p.id} className="vir-btn" onClick={() => onOpenPerson(p)} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <div>
-                    <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{p.name}</p>
-                    {p.nickname && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "2px 0 0" }}>"{p.nickname}"</p>}
+              <div key={g.id} style={{ marginBottom: 26 }}>
+                {scope === "club" && (
+                  <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>{g.label}</p>
+                )}
+
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Entrenos de agua</p>
+                <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                  <StatCard label="Entrenos totales" value={cs.totalWater} />
+                  <StatCard label="Suspendidos" value={cs.suspended} />
+                </div>
+                {boatEntries.length > 0 && (
+                  <div style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "12px 14px", marginBottom: 18 }}>
+                    <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Entrenos por bote</p>
+                    {boatEntries.map(([boat, count]) => (
+                      <div key={boat} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12.5 }}>{boat}</span>
+                        <span className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, fontWeight: 700 }}>{count}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 16, fontWeight: 700 }}>{freq}%</span>
-                    <ChevronRight size={16} color="var(--vir-text-muted, #8A8A8A)" />
-                  </div>
+                )}
+
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Entrenos de gimnasio</p>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <StatCard label="% asistencia del equipo" value={`${cs.gymAttendancePct}%`} />
+                  <StatCard label="Entrenos programados" value={cs.gymSessions} />
                 </div>
-                <div style={{ height: 5, background: "var(--vir-border, #565656)", borderRadius: 3, marginBottom: 10, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${freq}%`, background: "var(--vir-red, #E61E29)", borderRadius: 3 }} />
-                </div>
-                <div style={{ display: "flex", gap: 16 }}>
-                  <span style={{ fontSize: 11.5, color: "var(--vir-text-secondary, #ADADAD)" }}>Convocado al entreno de agua: <span className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)" }}>{s.convocado}</span></span>
-                  <span style={{ fontSize: 11.5, color: "var(--vir-text-secondary, #ADADAD)" }}>Entrenado agua: <span className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)" }}>{s.entrenado}</span></span>
-                </div>
+                {!g.team?.seasonStart && (
+                  <p style={{ color: "var(--vir-orange, #E67E22)", fontSize: 11, margin: "8px 0 0" }}>Esta tripulación todavía no tiene temporada configurada.</p>
+                )}
               </div>
             );
           })}
-        </div>
-      ))}
+        </>
+      )}
     </div>
   );
 }
