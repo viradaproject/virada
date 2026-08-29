@@ -5672,10 +5672,11 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
   );
 }
 
-// Selector de hora: MAÑANA y TARDE se ven a la vez, cada uno con su desplegable al lado.
+// Selector de hora: pestañas MAÑANA / TARDE arriba, y debajo de la pestaña activa, el horario para elegir.
 // Una vez elegida una hora, se muestra fija con opción de cambiarla.
 function DayTimeField({ time, onSetTime, editable }) {
   const [editing, setEditing] = useState(!time);
+  const [tab, setTab] = useState(AFTERNOON_TIMES.includes(time) ? "tarde" : "manana");
 
   if (!editing) {
     return (
@@ -5690,25 +5691,47 @@ function DayTimeField({ time, onSetTime, editable }) {
     );
   }
 
-  const row = (label, times) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-      <span style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11, fontWeight: 700, width: 52, flexShrink: 0 }}>{label}</span>
-      <select
-        value={times.includes(time) ? time : ""}
-        onChange={e => { if (e.target.value) { onSetTime(e.target.value); setEditing(false); } }}
-        disabled={!editable}
-        style={{ ...inputStyle, fontSize: 12.5, padding: "8px 10px", flex: 1, opacity: editable ? 1 : 0.6 }}
-      >
-        <option value="">Elegir hora</option>
-        {times.map(t => <option key={t} value={t}>{t}</option>)}
-      </select>
-    </div>
-  );
+  const tabBtn = (id, label) => {
+    const active = tab === id;
+    return (
+      <button
+        key={id}
+        className="vir-btn"
+        onClick={() => setTab(id)}
+        style={{
+          flex: 1, padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: active ? 700 : 500,
+          background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface-alt, #3A3A3A)",
+          border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+          color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+        }}
+      >{label}</button>
+    );
+  };
+
+  const times = tab === "manana" ? MORNING_TIMES : AFTERNOON_TIMES;
 
   return (
     <div>
-      {row("MAÑANA", MORNING_TIMES)}
-      {row("TARDE", AFTERNOON_TIMES)}
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        {tabBtn("manana", "MAÑANA")}
+        {tabBtn("tarde", "TARDE")}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {times.map(t => (
+          <button
+            key={t}
+            className="vir-btn"
+            disabled={!editable}
+            onClick={() => { onSetTime(t); setEditing(false); }}
+            style={{
+              padding: "8px 11px", borderRadius: 8, fontSize: 12,
+              background: time === t ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+              border: `1px solid ${time === t ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+              color: "var(--vir-text-primary, #F5F5F5)", opacity: editable ? 1 : 0.6,
+            }}
+          >{t}</button>
+        ))}
+      </div>
     </div>
   );
 }
