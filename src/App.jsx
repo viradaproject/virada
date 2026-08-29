@@ -215,6 +215,25 @@ const weekOfDate = (date) => Math.ceil(date.getDate() / 7);
 // Convierte una fecha a "AAAA-MM-DD" usando el día/mes/año LOCAL del dispositivo — nunca usar
 // date.toISOString() para esto, porque pasa a hora UTC y puede desplazar la fecha un día
 // (España va por delante de UTC, así que a medianoche local podría devolver el día anterior)
+// Abre un archivo guardado como "data:" (base64) de la forma más fiable posible en móvil.
+// Los navegadores, sobre todo Safari en iPhone, a veces fallan al abrir un PDF pasado
+// directamente como data: URL — convertirlo primero a un Blob real lo soluciona.
+const openFileReliably = (dataUrl) => {
+  try {
+    const [header, base64] = dataUrl.split(",");
+    const mimeMatch = header.match(/data:(.*?);base64/);
+    const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime });
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, "_blank");
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+  } catch (e) {
+    window.open(dataUrl, "_blank"); // si algo falla, al menos lo intentamos como antes
+  }
+};
 const toLocalISODate = (date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -3406,7 +3425,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, teams, stats
                     <div style={{ display: "flex", gap: 3 }}>
                       {record.photos.slice(0, 3).map((p, i) => (
                         p.kind === "pdf" ? (
-                          <div key={i} onClick={() => window.open(p.dataUrl, "_blank")} style={{ width: 30, height: 30, borderRadius: 6, background: "var(--vir-bg-surface-alt, #333333)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                          <div key={i} onClick={() => openFileReliably(p.dataUrl)} style={{ width: 30, height: 30, borderRadius: 6, background: "var(--vir-bg-surface-alt, #333333)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
                             <KeyRound size={13} color="var(--vir-text-secondary, var(--vir-text-secondary, #ADADAD))" />
                           </div>
                         ) : (
@@ -3828,7 +3847,7 @@ function RaceDetailScreen({ race: r, editable, onBack, onUpdateTitle, onUpdateNo
 
   const openDoc = (doc) => {
     if (doc.fileType === "jpg") onViewPhoto(doc.dataUrl, `${doc.label} · ${doc.name}`);
-    else window.open(doc.dataUrl, "_blank");
+    else openFileReliably(doc.dataUrl);
   };
 
   return (
@@ -4776,7 +4795,7 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
                     <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12, margin: "0 0 6px" }}>{m.nickname || m.name}</p>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {row.photos.map((p, i) => p.kind === "pdf" ? (
-                        <div key={i} onClick={() => window.open(p.dataUrl, "_blank")} style={{ width: 48, height: 48, borderRadius: 8, background: "#333333", border: "1px solid var(--vir-border, #565656)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                        <div key={i} onClick={() => openFileReliably(p.dataUrl)} style={{ width: 48, height: 48, borderRadius: 8, background: "#333333", border: "1px solid var(--vir-border, #565656)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                           <KeyRound size={16} color="var(--vir-text-secondary, #ADADAD)" />
                         </div>
                       ) : (
@@ -4873,7 +4892,7 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
                               {e.photos.length === 0 ? "—" : (
                                 <div style={{ display: "flex", gap: 4 }}>
                                   {e.photos.map((p, pi) => p.kind === "pdf" ? (
-                                    <span key={pi} onClick={() => window.open(p.dataUrl, "_blank")} style={{ textDecoration: "underline", cursor: "pointer" }}>PDF</span>
+                                    <span key={pi} onClick={() => openFileReliably(p.dataUrl)} style={{ textDecoration: "underline", cursor: "pointer" }}>PDF</span>
                                   ) : (
                                     <img key={pi} src={p.dataUrl} onClick={() => onViewPhoto(p.dataUrl, `${e.member.nickname || e.member.name} · ${WEEK_DAY_LABELS[e.day]}`)} alt="" style={{ width: 26, height: 26, borderRadius: 5, objectFit: "cover", cursor: "pointer" }} />
                                   ))}
@@ -5219,7 +5238,7 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentGymWeek, weekMetaF
       <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Archivo de la semana (PDF o JPG, opcional)</p>
       {meta.weekAttachment ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "10px 12px", marginBottom: 18 }}>
-          <span className="vir-btn" onClick={() => window.open(meta.weekAttachment.dataUrl, "_blank")} style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12.5, cursor: "pointer" }}>
+          <span className="vir-btn" onClick={() => openFileReliably(meta.weekAttachment.dataUrl)} style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12.5, cursor: "pointer" }}>
             📎 {meta.weekAttachment.name}
           </span>
           {editable && (
@@ -5349,7 +5368,7 @@ function RowerGymPlanScreen({ teamId, teamName, seasonStart, currentGymWeek, wee
       {meta.weekAttachment && (
         <div
           className="vir-btn"
-          onClick={() => window.open(meta.weekAttachment.dataUrl, "_blank")}
+          onClick={() => openFileReliably(meta.weekAttachment.dataUrl)}
           style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "11px 12px", marginBottom: 16, cursor: "pointer" }}
         >
           <KeyRound size={15} color="var(--vir-text-secondary, #ADADAD)" />
@@ -5426,7 +5445,7 @@ function FisicoRecordRow({ slot, content, record, overdue, onAddPhoto, onRemoveP
           {photos.map((p, i) => (
             <div key={i} style={{ position: "relative" }}>
               {p.kind === "pdf" ? (
-                <div onClick={() => window.open(p.dataUrl, "_blank")} style={{ width: 44, height: 44, borderRadius: 8, background: "var(--vir-bg-surface-alt, #333333)", border: "1px solid var(--vir-border, #565656)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                <div onClick={() => openFileReliably(p.dataUrl)} style={{ width: 44, height: 44, borderRadius: 8, background: "var(--vir-bg-surface-alt, #333333)", border: "1px solid var(--vir-border, #565656)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                   <KeyRound size={16} color="var(--vir-text-secondary, #ADADAD)" />
                 </div>
               ) : (
