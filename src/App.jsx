@@ -426,7 +426,7 @@ export default function ViradaPrototype() {
       gymCompletionsData.forEach(c => {
         if (!c.week_start) return;
         completion[c.rower_id] = completion[c.rower_id] || {};
-        completion[c.rower_id][`${c.team_id}-${c.week_start}-${c.day_key}`] = { done: c.done, photos: c.photos || [] };
+        completion[c.rower_id][`${c.team_id}-${c.week_start}-${c.day_key}`] = { done: c.done, validated: !!c.validated, photos: c.photos || [] };
       });
       setGymCompletion(completion);
     }
@@ -1624,6 +1624,41 @@ export default function ViradaPrototype() {
       .eq("rower_id", rowerId).eq("team_id", teamId).eq("week_start", week).eq("day_key", day);
   };
 
+  // El remero marca (o desmarca) que ha hecho su entreno de gimnasio — se queda en naranja,
+  // pendiente de que el entrenador lo corrobore
+  const toggleGymSelfReport = async (rowerId, teamId, week, day) => {
+    const key = `${teamId}-${week}-${day}`;
+    const existing = (gymCompletion[rowerId] || {})[key];
+    if (existing && existing.done) {
+      // desmarca su propio check (por si se ha equivocado); si ya estaba validado por el
+      // entrenador, se avisa antes de quitarlo
+      if (existing.validated && !window.confirm("El entrenador ya había validado este entreno. ¿Seguro que quieres desmarcarlo?")) return;
+      await clearGymRecord(rowerId, teamId, week, day);
+      return;
+    }
+    setGymCompletion(prev => ({ ...prev, [rowerId]: { ...(prev[rowerId] || {}), [key]: { done: true, validated: false, photos: [] } } }));
+    const { error } = await supabase.from("gym_completions").upsert(
+      { rower_id: rowerId, team_id: teamId, week_start: week, day_key: day, done: true, validated: false },
+      { onConflict: "rower_id,team_id,week_start,day_key" }
+    );
+    if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
+    flash("Entreno marcado como hecho — pendiente de que el entrenador lo corrobore");
+  };
+
+  // El entrenador corrobora (o quita la corroboración de) un entreno que el remero ya marcó
+  const toggleGymValidation = async (rowerId, teamId, week, day) => {
+    const key = `${teamId}-${week}-${day}`;
+    const existing = (gymCompletion[rowerId] || {})[key];
+    if (!existing || !existing.done) return; // no se puede validar lo que el remero no ha marcado
+    const nextValidated = !existing.validated;
+    setGymCompletion(prev => ({ ...prev, [rowerId]: { ...(prev[rowerId] || {}), [key]: { ...existing, validated: nextValidated } } }));
+    const { error } = await supabase.from("gym_completions").upsert(
+      { rower_id: rowerId, team_id: teamId, week_start: week, day_key: day, done: true, validated: nextValidated },
+      { onConflict: "rower_id,team_id,week_start,day_key" }
+    );
+    if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
+  };
+
   const waterStatsFor = (rowerId, teamId) => {
     const teamPast = sessions.filter(s => s.teamId === teamId && s.active && hasPassed(s, today));
     const weekPast = teamPast.filter(s => weekOfDate(s.date) === currentWeek);
@@ -2123,9 +2158,7 @@ export default function ViradaPrototype() {
                   currentGymWeek={currentGymWeek}
                   weekMetaFor={gymWeekMeta}
                   recordFor={(teamId, week, day) => gymRecordOf(currentUserId, teamId, week, day)}
-                  onAddPhoto={(teamId, week, day, photo, photoKind) => addGymPhoto(currentUserId, teamId, week, day, photo, photoKind)}
-                  onRemovePhoto={(teamId, week, day, idx) => removeGymPhoto(currentUserId, teamId, week, day, idx)}
-                  onViewPhoto={(photo, caption) => setViewPhoto({ photo, caption })}
+                  onToggleReport={(teamId, week, day) => toggleGymSelfReport(currentUserId, teamId, week, day)}
                   onBack={() => setScreen("home")}
                 />
               )}
@@ -2220,6 +2253,7 @@ export default function ViradaPrototype() {
                   gymWeekMetaFor={gymWeekMeta}
                   gymRecordFor={gymRecordOf}
                   currentGymWeek={currentGymWeek}
+                  onToggleValidation={toggleGymValidation}
                   allPeople={[
                     ...ROWERS.map(r => ({ id: r.id, name: r.name, nickname: r.nickname })),
                     ...clubAssignedUsers.map(u => ({ id: u.id, name: u.username, nickname: u.apodo })),
@@ -3202,7 +3236,163 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
   );
 }
 
-function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeople, statsFor, totalPastActiveFor, onOpenPerson, sessions, gymWeekMetaFor, gymRecordFor, currentGymWeek }) {
+// Control de gimnasio de una tripulación: el entrenador ve, semana a semana, quién ha marcado
+// su entreno (naranja) y puede corroborarlo tocándolo (pasa a verde)
+function TeamGymControlBlock({ team, members, gymWeekMetaFor, gymRecordFor, onToggleValidation, currentGymWeek }) {
+  const [week, setWeek] = useState(currentGymWeek);
+  const [selectedMonthKey, setSelectedMonthKey] = useState(null);
+
+  if (!team?.seasonStart || !team?.seasonEnd) {
+    return <p style={{ color: "var(--vir-orange, #E67E22)", fontSize: 12, marginBottom: 20 }}>Esta tripulación todavía no tiene temporada configurada.</p>;
+  }
+
+  const seasonMonths = [];
+  {
+    const d = new Date(team.seasonStart + "T00:00:00");
+    d.setDate(1);
+    const end = new Date(team.seasonEnd + "T00:00:00");
+    while (d.getFullYear() < end.getFullYear() || (d.getFullYear() === end.getFullYear() && d.getMonth() <= end.getMonth())) {
+      seasonMonths.push({ year: d.getFullYear(), month: d.getMonth(), key: `${d.getFullYear()}-${d.getMonth()}`, label: MONTHS_ES[d.getMonth()] });
+      d.setMonth(d.getMonth() + 1);
+    }
+  }
+  const weekDate = new Date(week + "T00:00:00");
+  const weekMonthKey = `${weekDate.getFullYear()}-${weekDate.getMonth()}`;
+  const currentMonthKey = (() => { const d = new Date(currentGymWeek + "T00:00:00"); return `${d.getFullYear()}-${d.getMonth()}`; })();
+  const activeMonthKey = selectedMonthKey && seasonMonths.some(m => m.key === selectedMonthKey)
+    ? selectedMonthKey
+    : (seasonMonths.some(m => m.key === weekMonthKey) ? weekMonthKey : (seasonMonths.some(m => m.key === currentMonthKey) ? currentMonthKey : seasonMonths[0]?.key));
+
+  const [ay, am] = activeMonthKey.split("-").map(Number);
+  const monthStart = new Date(ay, am, 1);
+  const monthEnd = new Date(ay, am + 1, 0);
+  const seasonStartDate = new Date(team.seasonStart + "T00:00:00");
+  const seasonEndDate = new Date(team.seasonEnd + "T00:00:00");
+  const weeksOfMonth = [];
+  {
+    const seen = new Set();
+    const d = new Date(monthStart);
+    while (d <= monthEnd) {
+      if (d >= seasonStartDate && d <= seasonEndDate) {
+        const wk = mondayOf(d);
+        if (!seen.has(wk)) { seen.add(wk); weeksOfMonth.push(wk); }
+      }
+      d.setDate(d.getDate() + 1);
+    }
+  }
+
+  const weekLabel = (mondayIso) => {
+    const mon = new Date(mondayIso + "T00:00:00");
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    const sameMonth = mon.getMonth() === sun.getMonth();
+    return sameMonth ? `${mon.getDate()}-${sun.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)}` : `${mon.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)} - ${sun.getDate()} ${MONTHS_ES[sun.getMonth()].slice(0, 3)}`;
+  };
+
+  const meta = gymWeekMetaFor(team.id, week);
+  const activeDays = WEEK_DAY_KEYS.filter(d => (meta.activeDays || []).includes(d));
+
+  return (
+    <div style={{ marginBottom: 28 }}>
+      {(() => {
+        const byYear = {};
+        seasonMonths.forEach(m => { (byYear[m.year] = byYear[m.year] || []).push(m); });
+        return Object.entries(byYear).map(([year, months]) => (
+          <div key={year} style={{ marginBottom: 10 }}>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, fontWeight: 700, margin: "0 0 6px" }}>{year}</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+              {months.map(m => {
+                const active = m.key === activeMonthKey;
+                return (
+                  <button key={m.key} className="vir-btn" onClick={() => setSelectedMonthKey(m.key)} style={{
+                    padding: "8px 4px", borderRadius: 10, fontSize: 11, fontWeight: active ? 700 : 500, whiteSpace: "nowrap", textAlign: "center",
+                    background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+                    border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                    color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                  }}>
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ));
+      })()}
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "10px 0 16px" }}>
+        {weeksOfMonth.map(wk => {
+          const active = wk === week;
+          const wn = seasonWeekNumber(team.seasonStart, wk);
+          return (
+            <button key={wk} className="vir-btn" onClick={() => setWeek(wk)} style={{
+              padding: "8px 12px", borderRadius: 10, fontWeight: active ? 700 : 500,
+              background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+              border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+              color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+              display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2,
+            }}>
+              {wn && <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3 }}>Semana {wn}</span>}
+              <span style={{ fontSize: 11.5 }}>{weekLabel(wk)}{wk === currentGymWeek ? " · actual" : ""}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {activeDays.length === 0 ? (
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5 }}>Sin días de gimnasio marcados esta semana.</p>
+      ) : (
+        <div>
+          <div style={{ display: "flex", marginBottom: 8, paddingLeft: 4 }}>
+            <div style={{ flex: 1 }} />
+            {activeDays.map(day => (
+              <div key={day} style={{ width: 40, textAlign: "center", fontSize: 9.5, color: "var(--vir-text-muted, #8A8A8A)", fontWeight: 700, textTransform: "uppercase" }}>{WEEK_DAY_LABELS[day].slice(0, 3)}</div>
+            ))}
+          </div>
+          {members.map(m => (
+            <div key={m.id} style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ flex: 1, minWidth: 0, color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 6 }}>
+                {m.nickname || m.name}
+              </div>
+              {activeDays.map(day => {
+                const rec = gymRecordFor(m.id, team.id, week, day);
+                const done = !!(rec && rec.done);
+                const validated = !!(rec && rec.validated);
+                return (
+                  <div key={day} style={{ width: 40, display: "flex", justifyContent: "center" }}>
+                    <button
+                      className="vir-btn"
+                      disabled={!done}
+                      onClick={() => onToggleValidation(m.id, team.id, week, day)}
+                      title={validated ? "Corroborado — toca para quitar la validación" : done ? "Marcado por el remero — toca para corroborar" : "Todavía no marcado"}
+                      style={{
+                        width: 30, height: 30, borderRadius: 15,
+                        background: validated ? "var(--vir-green, #3EA55A)" : done ? "var(--vir-orange, #E67E22)" : "var(--vir-bg-surface-alt, #3A3A3A)",
+                        border: `1px solid ${validated ? "var(--vir-green, #3EA55A)" : done ? "var(--vir-orange, #E67E22)" : "var(--vir-border, #565656)"}`,
+                        display: "flex", alignItems: "center", justifyContent: "center", cursor: done ? "pointer" : "default",
+                      }}
+                    >
+                      {done && <Check size={14} color="#FFFFFF" />}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 14, marginTop: 12 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--vir-text-muted, #8A8A8A)" }}>
+              <span style={{ width: 10, height: 10, borderRadius: 5, background: "var(--vir-orange, #E67E22)" }} /> Marcado por el remero
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--vir-text-muted, #8A8A8A)" }}>
+              <span style={{ width: 10, height: 10, borderRadius: 5, background: "var(--vir-green, #3EA55A)" }} /> Corroborado
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeople, statsFor, totalPastActiveFor, onOpenPerson, sessions, gymWeekMetaFor, gymRecordFor, currentGymWeek, onToggleValidation }) {
+  const [section, setSection] = useState("stats"); // "stats" | "gymControl"
   const [block, setBlock] = useState("colectivo"); // "individual" | "colectivo"
   const people = allPeople.filter(p => scope === "club" || teamOf(p.id) === scope);
 
@@ -3264,9 +3454,37 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
-      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", margin: "10px 0 2px" }}>Estadísticas de tripulación</h2>
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", margin: "10px 0 2px" }}>Equipo</h2>
       <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "0 0 16px" }}>Alcance: {scope === "club" ? "todo el club" : teamName(scope)}{scope !== "club" ? ` · ${scopeTotalPastActive} entrenos de agua realizados` : ""}</p>
 
+      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+        <ScopeChip active={section === "stats"} onClick={() => setSection("stats")} label="Estadísticas de tripulación" />
+        <ScopeChip active={section === "gymControl"} onClick={() => setSection("gymControl")} label="Control de gim" />
+      </div>
+
+      {section === "gymControl" && (
+        <>
+          {groups.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>No hay tripulaciones en este alcance.</p>}
+          {groups.map(g => (
+            <div key={g.id}>
+              {scope === "club" && (
+                <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>{g.label}</p>
+              )}
+              <TeamGymControlBlock
+                team={g.team}
+                members={g.members}
+                gymWeekMetaFor={gymWeekMetaFor}
+                gymRecordFor={gymRecordFor}
+                onToggleValidation={onToggleValidation}
+                currentGymWeek={currentGymWeek}
+              />
+            </div>
+          ))}
+        </>
+      )}
+
+      {section === "stats" && (
+        <>
       <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
         <ScopeChip active={block === "colectivo"} onClick={() => setBlock("colectivo")} label="Colectivo" />
         <ScopeChip active={block === "individual"} onClick={() => setBlock("individual")} label="Individual" />
@@ -3357,6 +3575,8 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
               </div>
             );
           })}
+        </>
+      )}
         </>
       )}
     </div>
@@ -5342,7 +5562,7 @@ function GymSlotEditor({ slot, value, onSave, editable, onDirtyChange }) {
   );
 }
 
-function RowerGymPlanScreen({ teamId, teamName, seasonStart, currentGymWeek, weekMetaFor, recordFor, onAddPhoto, onRemovePhoto, onViewPhoto, onBack }) {
+function RowerGymPlanScreen({ teamId, teamName, seasonStart, currentGymWeek, weekMetaFor, recordFor, onToggleReport, onBack }) {
   const [week, setWeek] = useState(currentGymWeek);
   const meta = weekMetaFor(teamId, week);
   const activeDays = meta.activeDays || [];
@@ -5365,7 +5585,7 @@ function RowerGymPlanScreen({ teamId, teamName, seasonStart, currentGymWeek, wee
       <BackRow onBack={onBack} />
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Entrenos de gim</h2>
       <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
-        Tripulación: <span style={{ color: "var(--vir-red, #E61E29)", fontWeight: 600 }}>{teamName(teamId)}</span> · sube la foto (JPG/HEIC) o el PDF del entreno para marcar cada sesión como hecha
+        Tripulación: <span style={{ color: "var(--vir-red, #E61E29)", fontWeight: 600 }}>{teamName(teamId)}</span> · marca cada entreno hecho; el entrenador lo corrobora luego
       </p>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
@@ -5405,9 +5625,7 @@ function RowerGymPlanScreen({ teamId, teamName, seasonStart, currentGymWeek, wee
             content={meta.days[day].content}
             record={recordFor(teamId, week, day)}
             overdue={overdue}
-            onAddPhoto={(photo, kind) => onAddPhoto(teamId, week, day, photo, kind)}
-            onRemovePhoto={(idx) => onRemovePhoto(teamId, week, day, idx)}
-            onViewPhoto={(photo) => onViewPhoto(photo, `${FISICO_LABELS[day]} · Semana ${week}`)}
+            onToggleReport={() => onToggleReport(teamId, week, day)}
           />
         ) : (
           <div key={day} style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
@@ -5420,89 +5638,37 @@ function RowerGymPlanScreen({ teamId, teamName, seasonStart, currentGymWeek, wee
   );
 }
 
-function FisicoRecordRow({ slot, content, record, overdue, onAddPhoto, onRemovePhoto, onViewPhoto }) {
-  const [uploading, setUploading] = useState(false);
-  const [pendingPhoto, setPendingPhoto] = useState(null);
-  const [pendingKind, setPendingKind] = useState(null);
-  const photos = (record && record.photos) || [];
-  const done = !!(record && record.done && photos.length > 0);
-  const missed = !done && overdue; // ha pasado el día y no se subió ningún justificante
+function FisicoRecordRow({ slot, content, record, overdue, onToggleReport }) {
+  const done = !!(record && record.done);
+  const validated = !!(record && record.validated);
+  const missed = !done && overdue; // ha pasado el día y no se marcó como hecho
 
   const badgeStyle = {
-    width: 56, height: 56, borderRadius: 12, flexShrink: 0, display: "flex",
-    alignItems: "center", justifyContent: "center", cursor: "pointer", overflow: "hidden",
-    background: done ? "var(--vir-green, #3EA55A)" : missed ? "var(--vir-danger-bg, #7A1F1F)" : "var(--vir-border, #565656)",
-    border: `1px solid ${done ? "var(--vir-green, #3EA55A)" : missed ? "var(--vir-danger, #E24B4A)" : "var(--vir-border, #565656)"}`,
+    width: 44, height: 44, borderRadius: 22, flexShrink: 0, display: "flex",
+    alignItems: "center", justifyContent: "center", cursor: validated ? "default" : "pointer",
+    background: validated ? "var(--vir-green, #3EA55A)" : done ? "var(--vir-orange, #E67E22)" : missed ? "var(--vir-danger-bg, #7A1F1F)" : "var(--vir-bg-surface-alt, #3A3A3A)",
+    border: `1px solid ${validated ? "var(--vir-green, #3EA55A)" : done ? "var(--vir-orange, #E67E22)" : missed ? "var(--vir-danger, #E24B4A)" : "var(--vir-border, #565656)"}`,
   };
-  const firstImg = photos.find(p => p.kind !== "pdf");
 
   return (
-    <div style={{ background: "var(--vir-bg-surface, #404040)", border: `1px solid ${done ? "var(--vir-green, #3EA55A)" : missed ? "var(--vir-danger, #E24B4A)" : "var(--vir-border, #565656)"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+    <div style={{ background: "var(--vir-bg-surface, #404040)", border: `1px solid ${validated ? "var(--vir-green, #3EA55A)" : done ? "var(--vir-orange, #E67E22)" : missed ? "var(--vir-danger, #E24B4A)" : "var(--vir-border, #565656)"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13, fontWeight: 700, margin: 0 }}>{FISICO_LABELS[slot]}</p>
           <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12, margin: "4px 0 0", lineHeight: 1.4 }}>{content}</p>
           {missed && <p style={{ color: "var(--vir-error, #F09595)", fontSize: 11, margin: "6px 0 0", fontWeight: 600 }}>✕ Entreno no realizado</p>}
-          {done && <p style={{ color: "var(--vir-success-text, #9FE1CB)", fontSize: 11, margin: "6px 0 0", fontWeight: 600 }}>✓ Entreno hecho · {photos.length} foto{photos.length > 1 ? "s" : ""}</p>}
+          {done && !validated && <p style={{ color: "var(--vir-orange, #E67E22)", fontSize: 11, margin: "6px 0 0", fontWeight: 600 }}>● Marcado como hecho — pendiente de que el entrenador lo corrobore</p>}
+          {validated && <p style={{ color: "var(--vir-success-text, #9FE1CB)", fontSize: 11, margin: "6px 0 0", fontWeight: 600 }}>✓ Validado por el entrenador</p>}
         </div>
-        <div style={badgeStyle} onClick={() => setUploading(u => !u)}>
-          {done ? (
-            firstImg ? <img src={firstImg.dataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Check size={22} color="#FFFFFF" />
-          ) : missed ? (
-            <X size={22} color="#FFFFFF" />
-          ) : (
-            <Camera size={18} color="var(--vir-text-secondary, #ADADAD)" />
-          )}
-        </div>
+        <button
+          className="vir-btn"
+          disabled={validated}
+          onClick={onToggleReport}
+          style={badgeStyle}
+        >
+          {(done || validated) ? <Check size={20} color="#FFFFFF" /> : missed ? <X size={18} color="#FFFFFF" /> : null}
+        </button>
       </div>
-
-      {photos.length > 0 && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-          {photos.map((p, i) => (
-            <div key={i} style={{ position: "relative" }}>
-              {p.kind === "pdf" ? (
-                <div onClick={() => openFileReliably(p.dataUrl)} style={{ width: 44, height: 44, borderRadius: 8, background: "var(--vir-bg-surface-alt, #333333)", border: "1px solid var(--vir-border, #565656)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                  <KeyRound size={16} color="var(--vir-text-secondary, #ADADAD)" />
-                </div>
-              ) : (
-                <img
-                  src={p.dataUrl}
-                  onClick={() => onViewPhoto(p.dataUrl)}
-                  alt=""
-                  style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover", border: "1px solid var(--vir-border, #565656)", cursor: "pointer" }}
-                />
-              )}
-              <button
-                className="vir-btn"
-                onClick={() => { if (window.confirm("¿Eliminar esta foto de justificante?")) onRemovePhoto(i); }}
-                style={{ position: "absolute", top: -6, right: -6, width: 17, height: 17, borderRadius: "50%", background: "var(--vir-bg-surface-alt, #333333)", border: "1px solid var(--vir-border, #565656)", color: "var(--vir-text-secondary, #ADADAD)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
-              >
-                <X size={10} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {uploading && (
-        <div style={{ marginTop: 10 }}>
-          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, margin: "0 0 6px" }}>Foto del ergómetro/GPS, o PDF del entreno — puedes subir varias</p>
-          <PhotoField
-            photo={pendingPhoto}
-            onChange={(dataUrl, kind) => { setPendingPhoto(dataUrl); setPendingKind(kind); }}
-            jpgOnly
-            allowPdf
-          />
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button className="vir-btn" disabled={!pendingPhoto} onClick={() => { onAddPhoto(pendingPhoto, pendingKind); setPendingPhoto(null); setPendingKind(null); }} style={{ ...primaryBtn, flex: 1, padding: "9px 0", fontSize: 12.5, opacity: pendingPhoto ? 1 : 0.4 }}>
-              Añadir foto
-            </button>
-            <button className="vir-btn" onClick={() => { setUploading(false); setPendingPhoto(null); setPendingKind(null); }} style={{ ...ghostBtn, flex: 1, padding: "9px 0", fontSize: 12.5 }}>
-              Cerrar
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
