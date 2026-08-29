@@ -2155,6 +2155,7 @@ export default function ViradaPrototype() {
                   teamId={teamOf(currentUserId)}
                   teamName={teamName}
                   seasonStart={clubTeams.find(t => t.id === teamOf(currentUserId))?.seasonStart}
+                  seasonEnd={clubTeams.find(t => t.id === teamOf(currentUserId))?.seasonEnd}
                   currentGymWeek={currentGymWeek}
                   weekMetaFor={gymWeekMeta}
                   recordFor={(teamId, week, day) => gymRecordOf(currentUserId, teamId, week, day)}
@@ -5564,6 +5565,12 @@ function GymSlotEditor({ slot, value, onSave, editable, onDirtyChange }) {
 
 function RowerGymPlanScreen({ teamId, teamName, seasonStart, seasonEnd, currentGymWeek, weekMetaFor, recordFor, onToggleReport, onBack }) {
   const [week, setWeek] = useState(null); // null = vista general de todas las semanas
+  const currentWeekRef = useRef(null);
+  useEffect(() => {
+    if (week === null && currentWeekRef.current) {
+      currentWeekRef.current.scrollIntoView({ block: "center" });
+    }
+  }, [week]);
 
   const weekLabel = (mondayIso) => {
     const mon = new Date(mondayIso + "T00:00:00");
@@ -5592,16 +5599,16 @@ function RowerGymPlanScreen({ teamId, teamName, seasonStart, seasonEnd, currentG
   // ---------- VISTA GENERAL: todas las semanas de la temporada hasta la actual ----------
   if (week === null) {
     const weeks = [];
-    if (seasonStart) {
+    if (seasonStart && seasonEnd) {
       let wk = mondayOf(new Date(seasonStart + "T00:00:00"));
-      const upperBoundWeek = wk > currentGymWeek ? wk : currentGymWeek; // muestra al menos la 1ª semana, aunque hoy sea antes de que empiece la temporada
+      const seasonEndIso = toLocalISODate(new Date(seasonEnd + "T00:00:00"));
       let guard = 0;
-      while (wk <= upperBoundWeek && guard < 104) {
+      while (wk <= seasonEndIso && guard < 104) {
         weeks.push(wk);
         const d = new Date(wk + "T00:00:00"); d.setDate(d.getDate() + 7); wk = toLocalISODate(d);
         guard++;
       }
-      weeks.reverse(); // la más reciente arriba
+      // orden natural (semana 1 primero); la semana actual se resalta y la pantalla se desplaza sola hasta ella
     }
     return (
       <div style={{ padding: "16px 20px 28px" }}>
@@ -5616,6 +5623,7 @@ function RowerGymPlanScreen({ teamId, teamName, seasonStart, seasonEnd, currentG
 
         {weeks.map(wk => {
           const isCurrent = wk === currentGymWeek;
+          const isPast = wk < currentGymWeek;
           const overall = weekOverallStatus(wk);
           const wn = seasonWeekNumber(seasonStart, wk);
           const meta = weekMetaFor(teamId, wk);
@@ -5623,14 +5631,15 @@ function RowerGymPlanScreen({ teamId, teamName, seasonStart, seasonEnd, currentG
           return (
             <div
               key={wk}
+              ref={isCurrent ? currentWeekRef : null}
               className="vir-btn"
               onClick={() => setWeek(wk)}
               style={{
                 background: "var(--vir-bg-surface, #404040)",
                 border: `1px solid ${isCurrent ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
                 borderRadius: 12, padding: "12px 14px", marginBottom: 10,
-                opacity: isCurrent ? 1 : (overall ? 0.75 : 0.55),
-                boxShadow: !isCurrent && overall ? `inset 3px 0 0 ${statusColor[overall]}` : "none",
+                opacity: isPast && !isCurrent ? (overall ? 0.75 : 0.55) : 1,
+                boxShadow: isPast && !isCurrent && overall ? `inset 3px 0 0 ${statusColor[overall]}` : "none",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: activeDays.length > 0 ? 8 : 0 }}>
