@@ -44,7 +44,8 @@ const randomTeamCode = () => `EQ-${Math.floor(1000 + Math.random() * 9000)}`;
 const randomClubCode = () => String(Math.floor(Math.random() * 900) + 100); // código de 3 dígitos, único por club registrado
 
 const DEFAULT_SESSION_TITLE = "ENTRENO DE AGUA";
-const TIME_OPTIONS = ["7:00 – 8:30", "8:00 – 9:30", "9:00 – 10:30", "17:00 – 18:30", "18:00 – 19:30", "19:00 – 20:30", "20:00 – 21:30"];
+const MORNING_TIMES = ["06:00h", "07:00h", "08:00h", "09:00h", "10:00h", "11:00h", "12:00h"];
+const AFTERNOON_TIMES = ["16:00h", "17:00h", "18:00h", "19:00h", "20:00h", "21:00h", "22:00h"];
 
 const LAYOUTS = [
   { id: "llagut8", label: "Llagut · 8 puestos", oars: ["Amilibia", "Braka 1.0", "Braka 2.0"] },
@@ -75,7 +76,7 @@ function buildSessions(teamId) {
     const iso = date.toISOString().slice(0, 10);
     const isPast = date < today;
     sessions.push({
-      id: `${teamId}-${iso}`, teamId, date, iso, dow, time: TIME_OPTIONS[5],
+      id: `${teamId}-${iso}`, teamId, date, iso, dow, time: "",
       title: DEFAULT_SESSION_TITLE,
       active: false, // por defecto todos los días están desactivados; el entrenador activa los que correspondan
       suspendedReason: null,
@@ -96,7 +97,7 @@ function buildSeasonSessions(teamId, startDateStr, endDateStr) {
     const dow = d.getDay();
     const iso = d.toISOString().slice(0, 10);
     sessions.push({
-      id: `${teamId}-${iso}`, teamId, date: new Date(d), iso, dow, time: TIME_OPTIONS[5],
+      id: `${teamId}-${iso}`, teamId, date: new Date(d), iso, dow, time: "",
       title: DEFAULT_SESSION_TITLE,
       active: false,
       suspendedReason: null,
@@ -5630,7 +5631,11 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
                       <div className="vir-mono" style={{ color: s.active ? "var(--vir-red, #E61E29)" : "var(--vir-text-muted, #8A8A8A)", fontSize: 17, lineHeight: 1 }}>{s.date.getDate()}</div>
                       <div style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 9.5, textTransform: "uppercase" }}>{DAYS_ES[s.dow]}</div>
                     </div>
-                    <div className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5 }}>{s.time}</div>
+                    {s.active ? (
+                      s.time && <div className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5 }}>{s.time}</div>
+                    ) : (
+                      <div style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5, fontWeight: 600, letterSpacing: 0.3 }}>ENTRENO AGUA</div>
+                    )}
                   </div>
                   <ToggleSwitch checked={s.active} onChange={() => editable && onToggleActive(s)} disabled={!editable} />
                 </div>
@@ -5644,15 +5649,13 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
                         disabled={!editable}
                         style={{ ...inputStyle, fontSize: 12.5, padding: "9px 11px", flex: 2, opacity: editable ? 1 : 0.6 }}
                       />
-                      <select
-                        value={s.time}
-                        onChange={e => onUpdateSession(s.id, { time: e.target.value })}
-                        disabled={!editable}
-                        style={{ ...inputStyle, fontSize: 12.5, padding: "9px 11px", flex: 1, opacity: editable ? 1 : 0.6 }}
-                      >
-                        {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
+                      {!editable && <div style={{ ...inputStyle, flex: 1, padding: "9px 11px", fontSize: 12.5, opacity: 0.6 }}>{s.time || "Sin hora"}</div>}
                     </div>
+                    {editable && (
+                      <div style={{ marginTop: 8 }}>
+                        <DayTimeField time={s.time} onSetTime={(t) => onUpdateSession(s.id, { time: t })} editable={editable} />
+                      </div>
+                    )}
                     {clashes.map((clash, i) => (
                       <p key={i} style={{ color: "var(--vir-orange, #E67E22)", fontSize: 11, margin: "8px 0 0", lineHeight: 1.4 }}>
                         ⚠ Mismo bote ({clash.boat}) que {clash.team}, que lo usa a las {clash.time}
@@ -5672,6 +5675,68 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
           })}
         </div>
       ))}
+    </div>
+  );
+}
+
+// Selector de hora en dos pasos: primero Mañana/Tarde, luego la hora exacta de esa franja
+function DayTimeField({ time, onSetTime, editable }) {
+  const [open, setOpen] = useState(!time);
+  const [period, setPeriod] = useState(null);
+
+  if (!open) {
+    return (
+      <button
+        className="vir-btn"
+        onClick={() => editable && setOpen(true)}
+        disabled={!editable}
+        style={{ ...inputStyle, padding: "9px 11px", fontSize: 12.5, textAlign: "left", flex: 1, opacity: editable ? 1 : 0.6 }}
+      >
+        {time || "Elegir hora"}
+      </button>
+    );
+  }
+
+  const periodBtn = (id, label) => {
+    const active = period === id;
+    return (
+      <button
+        key={id}
+        className="vir-btn"
+        onClick={() => setPeriod(active ? null : id)}
+        style={{
+          flex: 1, padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 700,
+          background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface-alt, #3A3A3A)",
+          border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+          color: "var(--vir-text-primary, #F5F5F5)",
+        }}
+      >{label}</button>
+    );
+  };
+
+  return (
+    <div style={{ flex: 1 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: period ? 8 : 0 }}>
+        {periodBtn("manana", "MAÑANA")}
+        {periodBtn("tarde", "TARDE")}
+      </div>
+      {period && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {(period === "manana" ? MORNING_TIMES : AFTERNOON_TIMES).map(t => (
+            <button
+              key={t}
+              className="vir-btn"
+              onClick={() => { onSetTime(t); setOpen(false); setPeriod(null); }}
+              style={{
+                padding: "7px 10px", borderRadius: 8, fontSize: 11.5,
+                background: time === t ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+                border: `1px solid ${time === t ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                color: "var(--vir-text-primary, #F5F5F5)",
+              }}
+            >{t}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
