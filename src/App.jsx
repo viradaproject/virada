@@ -5562,41 +5562,125 @@ function GymSlotEditor({ slot, value, onSave, editable, onDirtyChange }) {
   );
 }
 
-function RowerGymPlanScreen({ teamId, teamName, seasonStart, currentGymWeek, weekMetaFor, recordFor, onToggleReport, onBack }) {
-  const [week, setWeek] = useState(currentGymWeek);
-  const meta = weekMetaFor(teamId, week);
-  const activeDays = meta.activeDays || [];
-  const overdue = week < currentGymWeek;
+function RowerGymPlanScreen({ teamId, teamName, seasonStart, seasonEnd, currentGymWeek, weekMetaFor, recordFor, onToggleReport, onBack }) {
+  const [week, setWeek] = useState(null); // null = vista general de todas las semanas
+
   const weekLabel = (mondayIso) => {
     const mon = new Date(mondayIso + "T00:00:00");
     const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
     const sameMonth = mon.getMonth() === sun.getMonth();
     return sameMonth ? `${mon.getDate()}-${sun.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)}` : `${mon.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)} - ${sun.getDate()} ${MONTHS_ES[sun.getMonth()].slice(0, 3)}`;
   };
-  const prevWeek = () => { const d = new Date(week + "T00:00:00"); d.setDate(d.getDate() - 7); setWeek(toLocalISODate(d)); };
-  const nextWeek = () => {
-    const d = new Date(week + "T00:00:00"); d.setDate(d.getDate() + 7);
-    const next = toLocalISODate(d);
-    setWeek(next > currentGymWeek ? currentGymWeek : next);
+
+  // Estado de una semana entera, para el punto de color junto a cada día y para atenuar la semana pasada
+  const dayStatus = (wk, day) => {
+    const rec = recordFor(teamId, wk, day);
+    if (rec && rec.validated) return "green";
+    if (rec && rec.done) return "orange";
+    return "red";
   };
+  const weekOverallStatus = (wk) => {
+    const activeDays = (weekMetaFor(teamId, wk).activeDays || []);
+    if (activeDays.length === 0) return null;
+    const statuses = activeDays.map(day => dayStatus(wk, day));
+    if (statuses.some(s => s === "red")) return "red";
+    if (statuses.some(s => s === "orange")) return "orange";
+    return "green";
+  };
+  const statusColor = { red: "var(--vir-danger, #E24B4A)", orange: "var(--vir-orange, #E67E22)", green: "var(--vir-green, #3EA55A)" };
+
+  // ---------- VISTA GENERAL: todas las semanas de la temporada hasta la actual ----------
+  if (week === null) {
+    const weeks = [];
+    if (seasonStart) {
+      let wk = mondayOf(new Date(seasonStart + "T00:00:00"));
+      let guard = 0;
+      while (wk <= currentGymWeek && guard < 104) {
+        weeks.push(wk);
+        const d = new Date(wk + "T00:00:00"); d.setDate(d.getDate() + 7); wk = toLocalISODate(d);
+        guard++;
+      }
+      weeks.reverse(); // la más reciente arriba
+    }
+    return (
+      <div style={{ padding: "16px 20px 28px" }}>
+        <BackRow onBack={onBack} />
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Entrenos de gim</h2>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+          Tripulación: <span style={{ color: "var(--vir-red, #E61E29)", fontWeight: 600 }}>{teamName(teamId)}</span> · toca una semana para ver y marcar sus entrenos
+        </p>
+
+        {!seasonStart && <p style={{ color: "var(--vir-orange, #E67E22)", fontSize: 12.5 }}>Tu equipo todavía no tiene temporada configurada.</p>}
+        {weeks.length === 0 && seasonStart && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5 }}>Todavía no ha empezado ninguna semana de esta temporada.</p>}
+
+        {weeks.map(wk => {
+          const isCurrent = wk === currentGymWeek;
+          const overall = weekOverallStatus(wk);
+          const wn = seasonWeekNumber(seasonStart, wk);
+          const meta = weekMetaFor(teamId, wk);
+          const activeDays = WEEK_DAY_KEYS.filter(d => (meta.activeDays || []).includes(d));
+          return (
+            <div
+              key={wk}
+              className="vir-btn"
+              onClick={() => setWeek(wk)}
+              style={{
+                background: "var(--vir-bg-surface, #404040)",
+                border: `1px solid ${isCurrent ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                borderRadius: 12, padding: "12px 14px", marginBottom: 10,
+                opacity: isCurrent ? 1 : (overall ? 0.75 : 0.55),
+                boxShadow: !isCurrent && overall ? `inset 3px 0 0 ${statusColor[overall]}` : "none",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: activeDays.length > 0 ? 8 : 0 }}>
+                <div>
+                  <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 700, margin: 0 }}>
+                    {wn ? `Semana ${wn}` : weekLabel(wk)}
+                    {isCurrent && <span style={{ color: "var(--vir-red, #E61E29)", fontSize: 10.5, fontWeight: 800, marginLeft: 8, letterSpacing: 0.4 }}>ACTUAL</span>}
+                  </p>
+                  <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, margin: "2px 0 0" }}>{weekLabel(wk)}</p>
+                </div>
+                <ChevronRight size={16} color="var(--vir-text-muted, #8A8A8A)" />
+              </div>
+              {activeDays.length === 0 ? (
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: 0 }}>Sin días de gimnasio marcados.</p>
+              ) : (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {activeDays.map(day => (
+                    <span key={day} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--vir-text-secondary, #ADADAD)" }}>
+                      <span style={{ width: 9, height: 9, borderRadius: 5, background: statusColor[dayStatus(wk, day)], flexShrink: 0 }} />
+                      {WEEK_DAY_LABELS[day]}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ---------- DETALLE DE UNA SEMANA ----------
+  const meta = weekMetaFor(teamId, week);
+  const activeDays = meta.activeDays || [];
+  const overdue = week < currentGymWeek;
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
-      <BackRow onBack={onBack} />
+      <BackRow onBack={() => setWeek(null)} />
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Entrenos de gim</h2>
       <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
         Tripulación: <span style={{ color: "var(--vir-red, #E61E29)", fontWeight: 600 }}>{teamName(teamId)}</span> · marca cada entreno hecho; el entrenador lo corrobora luego
       </p>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <button className="vir-btn" onClick={prevWeek} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "8px 12px", color: "var(--vir-text-secondary, #ADADAD)" }}><ChevronLeft size={16} /></button>
-        <div style={{ textAlign: "center" }}>
-          {seasonWeekNumber(seasonStart, week) && (
-            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, margin: "0 0 2px" }}>Semana {seasonWeekNumber(seasonStart, week)}</p>
-          )}
-          <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 15, fontWeight: 700, margin: 0 }}>{weekLabel(week)}{week === currentGymWeek ? " · actual" : ""}</p>
-        </div>
-        <button className="vir-btn" onClick={nextWeek} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "8px 12px", color: "var(--vir-text-secondary, #ADADAD)" }}><ChevronRight size={16} /></button>
+      <div style={{ marginBottom: 16 }}>
+        {seasonWeekNumber(seasonStart, week) && (
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, margin: "0 0 2px" }}>
+            Semana {seasonWeekNumber(seasonStart, week)}{week === currentGymWeek && <span style={{ color: "var(--vir-red, #E61E29)", marginLeft: 8 }}>· ACTUAL</span>}
+          </p>
+        )}
+        <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 15, fontWeight: 700, margin: 0 }}>{weekLabel(week)}</p>
       </div>
 
       {(meta.weekAttachments || []).map((att, i) => (
