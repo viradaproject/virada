@@ -5170,14 +5170,24 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentGymWeek, weekMetaF
         {weeksOfMonth.map(wk => {
           const active = wk === week;
           const wn = seasonWeekNumber(team.seasonStart, wk);
+          const hasAttachment = !!weekMetaFor(teamId, wk).weekAttachment;
           return (
             <button key={wk} className="vir-btn" onClick={() => guardNavigation(() => setWeek(wk))} style={{
+              position: "relative",
               padding: "8px 12px", borderRadius: 10, fontWeight: active ? 700 : 500,
               background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
               border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
               color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
               display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2,
             }}>
+              {hasAttachment && (
+                <span title="Entreno semanal colgado" style={{
+                  position: "absolute", top: -5, right: -5, width: 16, height: 16, borderRadius: 8,
+                  background: "var(--vir-green, #3EA55A)", display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <Check size={10} color="#FFFFFF" strokeWidth={3} />
+                </span>
+              )}
               {wn && <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3 }}>Semana {wn}</span>}
               <span style={{ fontSize: 11.5 }}>{weekLabel(wk)}{wk === currentGymWeek ? " · actual" : ""}</span>
             </button>
