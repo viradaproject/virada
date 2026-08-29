@@ -3788,7 +3788,7 @@ function RegattasScreen({ categories, editable, onBack, onOpenRace, onAddCategor
                     padding: "8px 13px", borderRadius: 20, fontSize: 12,
                     background: newSubcat === sc ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
                     border: `1px solid ${newSubcat === sc ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
-                    color: "var(--vir-text-primary, #F5F5F5)", fontWeight: newSubcat === sc ? 600 : 400,
+                    color: newSubcat === sc ? "#FFFFFF" : "var(--vir-text-primary, #F5F5F5)", fontWeight: newSubcat === sc ? 600 : 400,
                   }}>{sc || "Ninguna"}</button>
                 ))}
               </div>
@@ -4311,7 +4311,7 @@ function BroadcastComposer({ onSend, audienceOptions }) {
             return (
               <button key={a.id} className="vir-btn" onClick={() => setAudience(a.id)} style={{
                 flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 11.5, fontWeight: active ? 700 : 400,
-                background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)", border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`, color: "var(--vir-text-primary, #F5F5F5)",
+                background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)", border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`, color: active ? "#FFFFFF" : "var(--vir-text-primary, #F5F5F5)",
               }}>{a.label}</button>
             );
           })}
@@ -4568,7 +4568,7 @@ function CoachFleetScreen({ teamId, teams, setScope, boats, sessions, editable, 
                   textAlign: "left", padding: "10px 12px", borderRadius: 10, fontSize: 12.5, fontWeight: active ? 700 : 400,
                   background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
                   border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
-                  color: "var(--vir-text-primary, #F5F5F5)",
+                  color: active ? "#FFFFFF" : "var(--vir-text-primary, #F5F5F5)",
                 }}>{l.label}</button>
               );
             })}
@@ -5186,7 +5186,7 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentGymWeek, weekMetaF
                 padding: "9px 12px", borderRadius: 10, fontSize: 12, fontWeight: active ? 700 : 400,
                 background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
                 border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
-                color: "var(--vir-text-primary, #F5F5F5)",
+                color: active ? "#FFFFFF" : "var(--vir-text-primary, #F5F5F5)",
               }}>{WEEK_DAY_LABELS[day].slice(0, 3)}</button>
             );
           })}
@@ -5729,7 +5729,7 @@ function DayTimeField({ time, onSetTime, editable }) {
               padding: "8px 11px", borderRadius: 8, fontSize: 12,
               background: time === t ? "var(--vir-red, var(--vir-red, #E61E29))" : "var(--vir-bg-surface, var(--vir-bg-surface, #404040))",
               border: `1px solid ${time === t ? "var(--vir-red, var(--vir-red, #E61E29))" : "var(--vir-border, var(--vir-border, #565656))"}`,
-              color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", opacity: editable ? 1 : 0.6,
+              color: time === t ? "#FFFFFF" : "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", opacity: editable ? 1 : 0.6,
             }}
           >{t}</button>
         ))}
@@ -5991,7 +5991,7 @@ function CrewCard({ session, crew, teamOf, roleOf, managedTeamsOf, nameOf, nickn
                   display: "flex", alignItems: "center", gap: 5, padding: "5px 10px 5px 5px", borderRadius: 20, fontSize: 11.5,
                   background: isSel ? "var(--vir-red, var(--vir-red, var(--vir-red, #E61E29)))" : "var(--vir-bg-surface, var(--vir-bg-surface, var(--vir-bg-surface, #404040)))",
                   border: `1px solid ${isSel ? "var(--vir-red, var(--vir-red, var(--vir-red, #E61E29)))" : "var(--vir-border, var(--vir-border, var(--vir-border, #565656)))"}`,
-                  color: "var(--vir-text-primary, var(--vir-text-primary, var(--vir-text-primary, #F5F5F5)))", fontWeight: isSel ? 600 : 400,
+                  color: isSel ? "#FFFFFF" : "var(--vir-text-primary, var(--vir-text-primary, var(--vir-text-primary, #F5F5F5)))", fontWeight: isSel ? 600 : 400,
                   opacity: editable ? 1 : 0.6, cursor: editable ? "pointer" : "not-allowed",
                 }}>
                   <span style={{
@@ -7320,7 +7320,7 @@ function ScopeChip({ active, onClick, label }) {
       padding: "7px 13px", borderRadius: 20, fontSize: 12,
       background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
       border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
-      color: "var(--vir-text-primary, #F5F5F5)", fontWeight: active ? 600 : 400,
+      color: active ? "#FFFFFF" : "var(--vir-text-primary, #F5F5F5)", fontWeight: active ? 600 : 400,
     }}>{label}</button>
   );
 }
@@ -7415,7 +7415,7 @@ const inputStyle = {
   padding: "11px 12px", color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, outline: "none",
 };
 const primaryBtn = {
-  width: "100%", background: "var(--vir-red, var(--vir-red, #E61E29))", color: "var(--vir-text-primary, #F5F5F5)", fontWeight: 700, fontSize: 14,
+  width: "100%", background: "var(--vir-red, #E61E29)", color: "#FFFFFF", fontWeight: 700, fontSize: 14,
   padding: "13px 0", borderRadius: 12,
 };
 const ghostBtn = {
