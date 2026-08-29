@@ -5556,21 +5556,17 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
     ? selectedMonthKey
     : (seasonMonths.some(m => m.key === currentMonthKey) ? currentMonthKey : seasonMonths[0]?.key);
 
-  // Agrupa TODOS los días de la temporada por semana (lunes a domingo), completa, aunque una
-  // semana quede repartida entre dos meses — así la línea de separación cae siempre tras el domingo
-  const allWeeks = {};
-  [...sessions].sort((a, b) => a.iso.localeCompare(b.iso)).forEach(s => {
-    const key = mondayOf(s.date);
-    (allWeeks[key] = allWeeks[key] || []).push(s);
-  });
-  // Solo mostramos, en el mes activo, las semanas cuyo lunes cae dentro de ese mes
+  // Cada día se muestra en su mes real, aunque eso deje alguna semana partida entre dos meses.
+  // La línea de separación se coloca tras el último día visible de esa semana en este mes
+  // (que será domingo salvo en la última semana visible, si el mes termina antes).
   const weeksInMonth = {};
-  Object.entries(allWeeks).forEach(([mondayIso, items]) => {
-    const mondayDate = new Date(mondayIso + "T00:00:00");
-    if (`${mondayDate.getFullYear()}-${mondayDate.getMonth()}` === activeMonthKey) {
-      weeksInMonth[mondayIso] = items;
-    }
-  });
+  [...sessions]
+    .filter(s => `${s.date.getFullYear()}-${s.date.getMonth()}` === activeMonthKey)
+    .sort((a, b) => a.iso.localeCompare(b.iso))
+    .forEach(s => {
+      const key = mondayOf(s.date);
+      (weeksInMonth[key] = weeksInMonth[key] || []).push(s);
+    });
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
