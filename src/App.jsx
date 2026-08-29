@@ -3056,6 +3056,13 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
         { id: "testPesos", label: "Datos de gim", sub: "Registra tus marcas", icon: Anchor },
         { id: "zonasErgo", label: "Datos ergo", sub: "Registra tus ritmos", icon: RotateCw },
         { id: "medidas", label: "Medidas", sub: "A cargo del entrenador", icon: Ruler },
+        { id: "estadisticas", label: "Estadísticas", sub: "Asistencia, agua y gimnasio, todo junto", icon: BarChart3 },
+      ],
+    },
+    {
+      label: "Tú",
+      tiles: [
+        { id: "notas", label: "Notas", sub: "Tus apuntes personales, privados", icon: Pencil },
       ],
     },
     {
@@ -6958,29 +6965,6 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
             <InfoRow icon={<Check size={15} />} label="Días confirmados de asistencia" value={crewStats.convocado} />
           </div>
           <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 10.5, margin: "4px 2px 0" }}>Veces que el entrenador te ha convocado para el entreno de agua, hayan pasado ya o no.</p>
-        </div>
-      )}
-
-      {role === "rower" && (
-        <div style={{ marginBottom: 22 }}>
-          <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Entrenamiento</p>
-          {[
-            { id: "rowerGymPlan", label: "Entrenos de gim", sub: "5 sesiones de cada semana, con foto/PDF" },
-            { id: "testPesos", label: "Datos de gim", sub: "Registra tus marcas de fuerza" },
-            { id: "zonasErgo", label: "Datos ergo", sub: "Registra tus tiempos y ritmos de ergómetro" },
-            { id: "medidas", label: "Medidas", sub: "Tus medidas de bote, a cargo del entrenador" },
-            { id: "notas", label: "Notas", sub: "Tus apuntes personales, privados" },
-            { id: "recordatorios", label: "Recordatorios", sub: "Notas del club y de tu equipo" },
-            { id: "estadisticas", label: "Estadísticas", sub: "Asistencia, agua y gimnasio, todo junto" },
-          ].map(item => (
-            <div key={item.id} className="vir-btn" onClick={() => onOpenTraining(item.id)} style={{ background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: "1px solid var(--vir-border, var(--vir-border, #565656))", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <div>
-                <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{item.label}</p>
-                <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>{item.sub}</p>
-              </div>
-              <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
-            </div>
-          ))}
         </div>
       )}
 
