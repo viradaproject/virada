@@ -5594,8 +5594,9 @@ function RowerGymPlanScreen({ teamId, teamName, seasonStart, seasonEnd, currentG
     const weeks = [];
     if (seasonStart) {
       let wk = mondayOf(new Date(seasonStart + "T00:00:00"));
+      const upperBoundWeek = wk > currentGymWeek ? wk : currentGymWeek; // muestra al menos la 1ª semana, aunque hoy sea antes de que empiece la temporada
       let guard = 0;
-      while (wk <= currentGymWeek && guard < 104) {
+      while (wk <= upperBoundWeek && guard < 104) {
         weeks.push(wk);
         const d = new Date(wk + "T00:00:00"); d.setDate(d.getDate() + 7); wk = toLocalISODate(d);
         guard++;
