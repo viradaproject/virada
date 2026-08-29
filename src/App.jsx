@@ -5654,10 +5654,6 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
                         ⚠ Mismo bote ({clash.boat}) que {clash.team}, que lo usa a las {clash.time}
                       </p>
                     ))}
-                    <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, margin: "10px 0 0", lineHeight: 1.4 }}>
-                      {s.crews.length === 0 ? "Sin botes añadidos todavía." : s.crews.map(c => c.boat).join(", ")}
-                      {" — "}gestiona los botes de este día desde su ficha completa.
-                    </p>
                   </>
                 )}
                 {!s.active && s.suspendedReason && (
