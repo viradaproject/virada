@@ -73,7 +73,7 @@ function buildSessions(teamId) {
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month, d);
     const dow = date.getDay();
-    const iso = date.toISOString().slice(0, 10);
+    const iso = toLocalISODate(date);
     const isPast = date < today;
     sessions.push({
       id: `${teamId}-${iso}`, teamId, date, iso, dow, time: "",
@@ -95,7 +95,7 @@ function buildSeasonSessions(teamId, startDateStr, endDateStr) {
   const d = new Date(start);
   while (d <= end) {
     const dow = d.getDay();
-    const iso = d.toISOString().slice(0, 10);
+    const iso = toLocalISODate(d);
     sessions.push({
       id: `${teamId}-${iso}`, teamId, date: new Date(d), iso, dow, time: "",
       title: DEFAULT_SESSION_TITLE,
@@ -212,13 +212,22 @@ const crewStatsFor = (sessions, id, now) => {
   return { convocado, entrenado };
 };
 const weekOfDate = (date) => Math.ceil(date.getDate() / 7);
+// Convierte una fecha a "AAAA-MM-DD" usando el día/mes/año LOCAL del dispositivo — nunca usar
+// date.toISOString() para esto, porque pasa a hora UTC y puede desplazar la fecha un día
+// (España va por delante de UTC, así que a medianoche local podría devolver el día anterior)
+const toLocalISODate = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
 // El lunes (en formato ISO, ej. "2026-09-07") de la semana real a la que pertenece una fecha —
 // se usa como identificador de semana ligado a fechas reales, en vez de un número suelto
 const mondayOf = (date) => {
   const d = new Date(date);
   const day = d.getDay();
   d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
-  return d.toISOString().slice(0, 10);
+  return toLocalISODate(d);
 };
 // Número de semana de temporada (1, 2, 3...), contando desde la semana del inicio de temporada —
 // el mismo número sirve tanto para agua como para gimnasio, ya que comparten temporada
@@ -3213,7 +3222,7 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
             if (rec && rec.done) gymDone++;
           });
         });
-        const d = new Date(wk + "T00:00:00"); d.setDate(d.getDate() + 7); wk = d.toISOString().slice(0, 10);
+        const d = new Date(wk + "T00:00:00"); d.setDate(d.getDate() + 7); wk = toLocalISODate(d);
         guard++;
       }
     }
@@ -3337,7 +3346,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, teams, stats
   };
   // Últimas 10 semanas reales, de la más reciente a la más antigua
   const weeks = [];
-  { const d = new Date(currentGymWeek + "T00:00:00"); for (let i = 0; i < 10; i++) { weeks.push(d.toISOString().slice(0, 10)); d.setDate(d.getDate() - 7); } }
+  { const d = new Date(currentGymWeek + "T00:00:00"); for (let i = 0; i < 10; i++) { weeks.push(toLocalISODate(d)); d.setDate(d.getDate() - 7); } }
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
@@ -4636,7 +4645,7 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
     const sameMonth = mon.getMonth() === sun.getMonth();
     return sameMonth ? `${mon.getDate()}-${sun.getDate()} ${MONTHS_ES[mon.getMonth()]}` : `${mon.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)} - ${sun.getDate()} ${MONTHS_ES[sun.getMonth()].slice(0, 3)}`;
   };
-  const shiftWeek = (delta) => { const d = new Date(week + "T00:00:00"); d.setDate(d.getDate() + delta * 7); setWeek(d.toISOString().slice(0, 10)); };
+  const shiftWeek = (delta) => { const d = new Date(week + "T00:00:00"); d.setDate(d.getDate() + delta * 7); setWeek(toLocalISODate(d)); };
 
   if (teamId === "club") {
     return (
@@ -4657,7 +4666,7 @@ function InformesScreen({ teamId, teams, setScope, sessions, gymWeekMetaFor, gym
   const team = teams.find(t => t.id === teamId);
 
   // --- datos de un día concreto ---
-  const sessionForDay = (date) => sessions.find(s => s.iso === date.toISOString().slice(0, 10));
+  const sessionForDay = (date) => sessions.find(s => s.iso === toLocalISODate(date));
   const dayRow = (rower, date) => {
     const s = sessionForDay(date);
     const swam = !!(s && s.active && inCrew(s, rower.id));
@@ -4930,7 +4939,7 @@ function SeasonExportScreen({ team, sessions, gymPlanForTeam, currentGymWeek, me
   if (team.seasonStart) {
     const d = new Date(mondayOf(new Date(team.seasonStart + "T00:00:00")) + "T00:00:00");
     const endD = new Date(currentGymWeek + "T00:00:00");
-    while (d <= endD) { seasonWeeks.push(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 7); }
+    while (d <= endD) { seasonWeeks.push(toLocalISODate(d)); d.setDate(d.getDate() + 7); }
     seasonWeeks.reverse();
   }
   return (
@@ -5301,10 +5310,10 @@ function RowerGymPlanScreen({ teamId, teamName, seasonStart, currentGymWeek, wee
     const sameMonth = mon.getMonth() === sun.getMonth();
     return sameMonth ? `${mon.getDate()}-${sun.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)}` : `${mon.getDate()} ${MONTHS_ES[mon.getMonth()].slice(0, 3)} - ${sun.getDate()} ${MONTHS_ES[sun.getMonth()].slice(0, 3)}`;
   };
-  const prevWeek = () => { const d = new Date(week + "T00:00:00"); d.setDate(d.getDate() - 7); setWeek(d.toISOString().slice(0, 10)); };
+  const prevWeek = () => { const d = new Date(week + "T00:00:00"); d.setDate(d.getDate() - 7); setWeek(toLocalISODate(d)); };
   const nextWeek = () => {
     const d = new Date(week + "T00:00:00"); d.setDate(d.getDate() + 7);
-    const next = d.toISOString().slice(0, 10);
+    const next = toLocalISODate(d);
     setWeek(next > currentGymWeek ? currentGymWeek : next);
   };
 
@@ -5625,7 +5634,7 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
         <div key={weekKey} style={{ borderBottom: "1px solid var(--vir-week-divider, var(--vir-border, var(--vir-border, #565656)))", paddingBottom: 10, marginBottom: 14 }}>
           {items.map(s => {
             const clashes = (s.crews || []).map(c => overlapFor(s, c)).filter(Boolean);
-            const isPast = s.date < today && s.iso !== today.toISOString().slice(0, 10);
+            const isPast = s.date < today && s.iso !== toLocalISODate(today);
             return (
               <div key={s.id} style={{
                 background: "var(--vir-bg-surface, var(--vir-bg-surface, var(--vir-bg-surface, #404040)))", border: `1px solid ${clashes.length > 0 ? "var(--vir-orange, var(--vir-orange, var(--vir-orange, #E67E22)))" : "var(--vir-border, var(--vir-border, var(--vir-border, #565656)))"}`,
