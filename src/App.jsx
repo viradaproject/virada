@@ -3109,23 +3109,22 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
       {tileGroups.map(group => (
         <div key={group.label} style={{ padding: "10px 16px 4px" }}>
           <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>{group.label}</p>
-          <div style={{ display: "grid", gridTemplateColumns: group.tiles.length === 1 ? "1fr" : "1fr 1fr", gap: 10 }}>
-            {group.tiles.map(t => {
-              const Icon = t.icon;
-              return (
-                <div key={t.id} className="vir-btn" onClick={() => onNavigate(t.id)} style={{
-                  aspectRatio: group.tiles.length === 1 ? "3.2" : "1", background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: "1px solid var(--vir-border, var(--vir-border, #565656))", borderRadius: 14,
-                  padding: 14, display: "flex", flexDirection: group.tiles.length === 1 ? "row" : "column", alignItems: group.tiles.length === 1 ? "center" : "stretch", gap: group.tiles.length === 1 ? 12 : 0, justifyContent: "space-between",
-                }}>
-                  <Icon size={20} color="var(--vir-red, var(--vir-red, #E61E29))" />
-                  <div style={{ flex: 1 }}>
-                    <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13, fontWeight: 700, margin: 0, lineHeight: 1.2 }}>{t.label}</p>
-                    <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 10.5, margin: "3px 0 0" }}>{t.sub}</p>
-                  </div>
+          {group.tiles.map(t => {
+            const Icon = t.icon;
+            return (
+              <div key={t.id} className="vir-btn" onClick={() => onNavigate(t.id)} style={{
+                background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: "1px solid var(--vir-border, var(--vir-border, #565656))", borderRadius: 12,
+                padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10,
+              }}>
+                <Icon size={20} color="var(--vir-red, var(--vir-red, #E61E29))" style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.label}</p>
+                  <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>{t.sub}</p>
                 </div>
-              );
-            })}
-          </div>
+                <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
+              </div>
+            );
+          })}
         </div>
       ))}
 
