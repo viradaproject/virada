@@ -627,7 +627,7 @@ export default function ViradaPrototype() {
           return;
         }
         const t = payload.new;
-        const mapped = { id: t.id, clubId: t.club_id, name: t.name, code: t.code };
+        const mapped = { id: t.id, clubId: t.club_id, name: t.name, code: t.code, seasonStart: t.season_start, seasonEnd: t.season_end };
         setTeams(prev => {
           const exists = prev.some(x => x.id === mapped.id);
           return exists ? prev.map(x => x.id === mapped.id ? mapped : x) : [...prev, mapped];
