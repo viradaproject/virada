@@ -5631,11 +5631,7 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
                       <div className="vir-mono" style={{ color: s.active ? "var(--vir-red, #E61E29)" : "var(--vir-text-muted, #8A8A8A)", fontSize: 17, lineHeight: 1 }}>{s.date.getDate()}</div>
                       <div style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 9.5, textTransform: "uppercase" }}>{DAYS_ES[s.dow]}</div>
                     </div>
-                    {s.active ? (
-                      s.time && <div className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5 }}>{s.time}</div>
-                    ) : (
-                      <div style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5, fontWeight: 600, letterSpacing: 0.3 }}>ENTRENO AGUA</div>
-                    )}
+                    <div style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5, fontWeight: 600, letterSpacing: 0.3 }}>ENTRENO AGUA</div>
                   </div>
                   <ToggleSwitch checked={s.active} onChange={() => editable && onToggleActive(s)} disabled={!editable} />
                 </div>
@@ -5647,15 +5643,12 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
                         onChange={e => onRename(s, e.target.value)}
                         placeholder={DEFAULT_SESSION_TITLE}
                         disabled={!editable}
-                        style={{ ...inputStyle, fontSize: 12.5, padding: "9px 11px", flex: 2, opacity: editable ? 1 : 0.6 }}
+                        style={{ ...inputStyle, fontSize: 12.5, padding: "9px 11px", width: "100%", opacity: editable ? 1 : 0.6 }}
                       />
-                      {!editable && <div style={{ ...inputStyle, flex: 1, padding: "9px 11px", fontSize: 12.5, opacity: 0.6 }}>{s.time || "Sin hora"}</div>}
                     </div>
-                    {editable && (
-                      <div style={{ marginTop: 8 }}>
-                        <DayTimeField time={s.time} onSetTime={(t) => onUpdateSession(s.id, { time: t })} editable={editable} />
-                      </div>
-                    )}
+                    <div style={{ marginTop: 8 }}>
+                      <DayTimeField time={s.time} onSetTime={(t) => onUpdateSession(s.id, { time: t })} editable={editable} />
+                    </div>
                     {clashes.map((clash, i) => (
                       <p key={i} style={{ color: "var(--vir-orange, #E67E22)", fontSize: 11, margin: "8px 0 0", lineHeight: 1.4 }}>
                         ⚠ Mismo bote ({clash.boat}) que {clash.team}, que lo usa a las {clash.time}
@@ -5679,64 +5672,43 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
   );
 }
 
-// Selector de hora en dos pasos: primero Mañana/Tarde, luego la hora exacta de esa franja
+// Selector de hora: MAÑANA y TARDE se ven a la vez, cada uno con su desplegable al lado.
+// Una vez elegida una hora, se muestra fija con opción de cambiarla.
 function DayTimeField({ time, onSetTime, editable }) {
-  const [open, setOpen] = useState(!time);
-  const [period, setPeriod] = useState(null);
+  const [editing, setEditing] = useState(!time);
 
-  if (!open) {
+  if (!editing) {
     return (
-      <button
-        className="vir-btn"
-        onClick={() => editable && setOpen(true)}
-        disabled={!editable}
-        style={{ ...inputStyle, padding: "9px 11px", fontSize: 12.5, textAlign: "left", flex: 1, opacity: editable ? 1 : 0.6 }}
-      >
-        {time || "Elegir hora"}
-      </button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12, margin: 0 }}>
+          Horario seleccionado: <span className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontWeight: 700 }}>{time}</span>
+        </p>
+        {editable && (
+          <button className="vir-btn" onClick={() => setEditing(true)} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textDecoration: "underline" }}>Cambiar</button>
+        )}
+      </div>
     );
   }
 
-  const periodBtn = (id, label) => {
-    const active = period === id;
-    return (
-      <button
-        key={id}
-        className="vir-btn"
-        onClick={() => setPeriod(active ? null : id)}
-        style={{
-          flex: 1, padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 700,
-          background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface-alt, #3A3A3A)",
-          border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
-          color: "var(--vir-text-primary, #F5F5F5)",
-        }}
-      >{label}</button>
-    );
-  };
+  const row = (label, times) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+      <span style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11, fontWeight: 700, width: 52, flexShrink: 0 }}>{label}</span>
+      <select
+        value={times.includes(time) ? time : ""}
+        onChange={e => { if (e.target.value) { onSetTime(e.target.value); setEditing(false); } }}
+        disabled={!editable}
+        style={{ ...inputStyle, fontSize: 12.5, padding: "8px 10px", flex: 1, opacity: editable ? 1 : 0.6 }}
+      >
+        <option value="">Elegir hora</option>
+        {times.map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
+    </div>
+  );
 
   return (
-    <div style={{ flex: 1 }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: period ? 8 : 0 }}>
-        {periodBtn("manana", "MAÑANA")}
-        {periodBtn("tarde", "TARDE")}
-      </div>
-      {period && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {(period === "manana" ? MORNING_TIMES : AFTERNOON_TIMES).map(t => (
-            <button
-              key={t}
-              className="vir-btn"
-              onClick={() => { onSetTime(t); setOpen(false); setPeriod(null); }}
-              style={{
-                padding: "7px 10px", borderRadius: 8, fontSize: 11.5,
-                background: time === t ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
-                border: `1px solid ${time === t ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
-                color: "var(--vir-text-primary, #F5F5F5)",
-              }}
-            >{t}</button>
-          ))}
-        </div>
-      )}
+    <div>
+      {row("MAÑANA", MORNING_TIMES)}
+      {row("TARDE", AFTERNOON_TIMES)}
     </div>
   );
 }
