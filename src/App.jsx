@@ -406,14 +406,14 @@ export default function ViradaPrototype() {
       (gymWeeksData || []).forEach(w => {
         if (!w.week_start) return; // ignora las filas del sistema antiguo (numeradas 1-5 por mes)
         plans[w.team_id] = plans[w.team_id] || {};
-        plans[w.team_id][w.week_start] = plans[w.team_id][w.week_start] || { activeDays: [], weekAttachment: null, days: {} };
+        plans[w.team_id][w.week_start] = plans[w.team_id][w.week_start] || { activeDays: [], weekAttachments: [], days: {} };
         plans[w.team_id][w.week_start].activeDays = w.active_days || [];
-        plans[w.team_id][w.week_start].weekAttachment = w.attachment_url ? { name: w.attachment_name, fileType: w.attachment_type, dataUrl: w.attachment_url } : null;
+        plans[w.team_id][w.week_start].weekAttachments = (w.attachments || []).map(a => ({ name: a.name, fileType: a.type, dataUrl: a.url }));
       });
       (gymDaysData || []).forEach(d => {
         if (!d.week_start) return;
         plans[d.team_id] = plans[d.team_id] || {};
-        plans[d.team_id][d.week_start] = plans[d.team_id][d.week_start] || { activeDays: [], weekAttachment: null, days: {} };
+        plans[d.team_id][d.week_start] = plans[d.team_id][d.week_start] || { activeDays: [], weekAttachments: [], days: {} };
         plans[d.team_id][d.week_start].days[d.day_key] = { content: d.content || "" };
       });
       setGymPlans(plans);
@@ -1521,16 +1521,16 @@ export default function ViradaPrototype() {
     if (error) flash("No se pudo guardar la medida. Inténtalo de nuevo.");
   };
 
-  const [gymPlans, setGymPlans] = useState({}); // { [teamId]: { [weekStartIso]: { activeDays: [...], weekAttachment, days: { lun: {content}, ... } } } }
+  const [gymPlans, setGymPlans] = useState({}); // { [teamId]: { [weekStartIso]: { activeDays: [...], weekAttachments: [...], days: { lun: {content}, ... } } } }
   const [gymCompletion, setGymCompletion] = useState({}); // { [rowerId]: { "teamId-weekStartIso-day": { done, photos: [{dataUrl,kind}] } } }
   const currentWeek = Math.ceil(today.getDate() / 7);
   const currentGymWeek = mondayOf(today); // semana real (lunes ISO), ligada a fechas de verdad
-  const gymWeekMeta = (teamId, week) => (gymPlans[teamId] && gymPlans[teamId][week]) || { activeDays: [], weekAttachment: null, days: {} };
+  const gymWeekMeta = (teamId, week) => (gymPlans[teamId] && gymPlans[teamId][week]) || { activeDays: [], weekAttachments: [], days: {} };
   // vista "plana" por día, para las pantallas que solo necesitan el contenido de texto de cada día
   const gymWeekPlan = (teamId, week) => gymWeekMeta(teamId, week).days || {};
   const setGymActiveDays = async (teamId, week, activeDays) => {
     setGymPlans(prev => {
-      const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachment: null, days: {} };
+      const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachments: [], days: {} };
       return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, activeDays } } };
     });
     const { error } = await supabase.from("gym_weeks").upsert(
@@ -1539,26 +1539,37 @@ export default function ViradaPrototype() {
     );
     if (error) flash("No se pudo guardar. Inténtalo de nuevo.");
   };
-  const setGymWeekAttachment = async (teamId, week, attachment) => {
+  const addGymWeekAttachment = async (teamId, week, attachment) => {
+    const current = ((gymPlans[teamId] || {})[week] || {}).weekAttachments || [];
+    const next = [...current, attachment];
     setGymPlans(prev => {
-      const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachment: null, days: {} };
-      return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, weekAttachment: attachment } } };
+      const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachments: [], days: {} };
+      return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, weekAttachments: next } } };
     });
     const { error } = await supabase.from("gym_weeks").upsert(
-      {
-        team_id: teamId, week_start: week,
-        attachment_name: attachment ? attachment.name : null,
-        attachment_type: attachment ? attachment.fileType : null,
-        attachment_url: attachment ? attachment.dataUrl : null,
-      },
+      { team_id: teamId, week_start: week, attachments: next.map(a => ({ name: a.name, type: a.fileType, url: a.dataUrl })) },
       { onConflict: "team_id,week_start" }
     );
     if (error) { flash("No se pudo guardar el archivo. Inténtalo de nuevo."); return; }
-    flash(attachment ? "Archivo de la semana adjuntado" : "Archivo de la semana eliminado");
+    flash("Archivo de la semana añadido");
+  };
+  const removeGymWeekAttachment = async (teamId, week, index) => {
+    const current = ((gymPlans[teamId] || {})[week] || {}).weekAttachments || [];
+    const next = current.filter((_, i) => i !== index);
+    setGymPlans(prev => {
+      const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachments: [], days: {} };
+      return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, weekAttachments: next } } };
+    });
+    const { error } = await supabase.from("gym_weeks").upsert(
+      { team_id: teamId, week_start: week, attachments: next.map(a => ({ name: a.name, type: a.fileType, url: a.dataUrl })) },
+      { onConflict: "team_id,week_start" }
+    );
+    if (error) { flash("No se pudo eliminar el archivo. Inténtalo de nuevo."); return; }
+    flash("Archivo de la semana eliminado");
   };
   const setGymContent = async (teamId, week, day, content) => {
     setGymPlans(prev => {
-      const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachment: null, days: {} };
+      const meta = (prev[teamId] || {})[week] || { activeDays: [], weekAttachments: [], days: {} };
       return { ...prev, [teamId]: { ...(prev[teamId] || {}), [week]: { ...meta, days: { ...meta.days, [day]: { ...(meta.days[day] || {}), content } } } } };
     });
     const { error } = await supabase.from("gym_days").upsert(
@@ -2097,7 +2108,8 @@ export default function ViradaPrototype() {
                   weekMetaFor={gymWeekMeta}
                   onSaveContent={setGymContent}
                   onSaveActiveDays={setGymActiveDays}
-                  onSaveWeekAttachment={setGymWeekAttachment}
+                  onAddWeekAttachment={addGymWeekAttachment}
+                  onRemoveWeekAttachment={removeGymWeekAttachment}
                   onBack={() => setScreen("home")}
                   editable={role === "admin" ? true : canManage(coachScope)}
                   onOpenSeason={() => setScreen("coachPlan")}
@@ -5030,7 +5042,7 @@ function SeasonExportScreen({ team, sessions, gymPlanForTeam, currentGymWeek, me
   );
 }
 
-function CoachGymPlanScreen({ teamId, teams, setScope, currentGymWeek, weekMetaFor, onSaveContent, onSaveActiveDays, onSaveWeekAttachment, onBack, editable, onOpenSeason }) {
+function CoachGymPlanScreen({ teamId, teams, setScope, currentGymWeek, weekMetaFor, onSaveContent, onSaveActiveDays, onAddWeekAttachment, onRemoveWeekAttachment, onBack, editable, onOpenSeason }) {
   const [week, setWeek] = useState(currentGymWeek);
   const [selectedMonthKey, setSelectedMonthKey] = useState(null);
   const dirtyRef = useRef(new Set());
@@ -5130,7 +5142,7 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentGymWeek, weekMetaF
     if (!okType) { e.target.value = ""; return; }
     const reader = new FileReader();
     reader.onload = () => {
-      onSaveWeekAttachment(teamId, week, { name: file.name, fileType: file.type.includes("pdf") ? "pdf" : "jpg", dataUrl: reader.result });
+      onAddWeekAttachment(teamId, week, { name: file.name, fileType: file.type.includes("pdf") ? "pdf" : "jpg", dataUrl: reader.result });
       e.target.value = "";
     };
     reader.readAsDataURL(file);
@@ -5189,7 +5201,7 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentGymWeek, weekMetaF
         {weeksOfMonth.map(wk => {
           const active = wk === week;
           const wn = seasonWeekNumber(team.seasonStart, wk);
-          const hasAttachment = !!weekMetaFor(teamId, wk).weekAttachment;
+          const hasAttachment = weekMetaFor(teamId, wk).weekAttachments?.length > 0;
           return (
             <button key={wk} className="vir-btn" onClick={() => guardNavigation(() => setWeek(wk))} style={{
               position: "relative",
@@ -5235,26 +5247,28 @@ function CoachGymPlanScreen({ teamId, teams, setScope, currentGymWeek, weekMetaF
         </p>
       )}
 
-      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Archivo de la semana (PDF o JPG, opcional)</p>
-      {meta.weekAttachment ? (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "10px 12px", marginBottom: 18 }}>
-          <span className="vir-btn" onClick={() => openFileReliably(meta.weekAttachment.dataUrl)} style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12.5, cursor: "pointer" }}>
-            📎 {meta.weekAttachment.name}
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Archivos de la semana (PDF o JPG, opcional)</p>
+      {(meta.weekAttachments || []).length === 0 && !editable && (
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, marginBottom: 18 }}>Sin archivos esta semana.</p>
+      )}
+      {(meta.weekAttachments || []).map((att, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>
+          <span className="vir-btn" onClick={() => openFileReliably(att.dataUrl)} style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12.5, cursor: "pointer" }}>
+            📎 {att.name}
           </span>
           {editable && (
-            <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar el archivo "${meta.weekAttachment.name}" de esta semana?`)) onSaveWeekAttachment(teamId, week, null); }} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", padding: 4 }}>
+            <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar el archivo "${att.name}" de esta semana?`)) onRemoveWeekAttachment(teamId, week, i); }} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", padding: 4 }}>
               <X size={15} />
             </button>
           )}
         </div>
-      ) : editable ? (
+      ))}
+      {editable && (
         <label className="vir-btn" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "var(--vir-bg-surface, #404040)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 10, padding: "11px 0", color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12.5, cursor: "pointer", marginBottom: 18 }}>
           <Camera size={15} />
-          Subir archivo de la semana
+          {(meta.weekAttachments || []).length === 0 ? "Subir archivo de la semana" : "Añadir otro archivo"}
           <input type="file" accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg" style={{ display: "none" }} onChange={handleWeekFile} />
         </label>
-      ) : (
-        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, marginBottom: 18 }}>Sin archivo esta semana.</p>
       )}
 
       {activeDays.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5 }}>Marca los días de entreno de esta semana para poder escribir el contenido de cada uno.</p>}
@@ -5365,17 +5379,19 @@ function RowerGymPlanScreen({ teamId, teamName, seasonStart, currentGymWeek, wee
         <button className="vir-btn" onClick={nextWeek} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "8px 12px", color: "var(--vir-text-secondary, #ADADAD)" }}><ChevronRight size={16} /></button>
       </div>
 
-      {meta.weekAttachment && (
+      {(meta.weekAttachments || []).map((att, i) => (
         <div
+          key={i}
           className="vir-btn"
-          onClick={() => openFileReliably(meta.weekAttachment.dataUrl)}
-          style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "11px 12px", marginBottom: 16, cursor: "pointer" }}
+          onClick={() => openFileReliably(att.dataUrl)}
+          style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "11px 12px", marginBottom: 8, cursor: "pointer" }}
         >
           <KeyRound size={15} color="var(--vir-text-secondary, #ADADAD)" />
-          <span style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12.5, flex: 1 }}>📎 {meta.weekAttachment.name}</span>
+          <span style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12.5, flex: 1 }}>📎 {att.name}</span>
           <span style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5 }}>Ver / descargar</span>
         </div>
-      )}
+      ))}
+      {(meta.weekAttachments || []).length > 0 && <div style={{ marginBottom: 8 }} />}
 
       {activeDays.length === 0 && (
         <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5 }}>El entrenador todavía no ha marcado días de entreno esta semana.</p>
