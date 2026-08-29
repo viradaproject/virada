@@ -3157,7 +3157,7 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
 }
 
 function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeople, statsFor, totalPastActiveFor, onOpenPerson, sessions, gymWeekMetaFor, gymRecordFor, currentGymWeek }) {
-  const [block, setBlock] = useState("individual"); // "individual" | "colectivo"
+  const [block, setBlock] = useState("colectivo"); // "individual" | "colectivo"
   const people = allPeople.filter(p => scope === "club" || teamOf(p.id) === scope);
 
   const aggregate = people.reduce((acc, p) => {
@@ -3222,8 +3222,8 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
       <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "0 0 16px" }}>Alcance: {scope === "club" ? "todo el club" : teamName(scope)}{scope !== "club" ? ` · ${scopeTotalPastActive} entrenos de agua realizados` : ""}</p>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
-        <ScopeChip active={block === "individual"} onClick={() => setBlock("individual")} label="Individual" />
         <ScopeChip active={block === "colectivo"} onClick={() => setBlock("colectivo")} label="Colectivo" />
+        <ScopeChip active={block === "individual"} onClick={() => setBlock("individual")} label="Individual" />
       </div>
 
       {block === "individual" && (
@@ -5452,16 +5452,16 @@ function SeasonSetupForm({ onSave, existing, onCancel }) {
   const [end, setEnd] = useState(existing?.seasonEnd || "");
   const canSave = start && end && start < end;
   return (
-    <div style={{ background: "var(--vir-bg-surface, #404040)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, marginBottom: 18 }}>
-      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>
+    <div style={{ background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: "1px dashed var(--vir-border, var(--vir-border, #565656))", borderRadius: 12, padding: 14, marginBottom: 18 }}>
+      <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>
         {existing?.seasonStart ? "Ampliar o acortar la temporada" : "Configura la temporada"}
       </p>
-      <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Inicio de temporada</label>
+      <label style={{ fontSize: 12, color: "var(--vir-text-secondary, var(--vir-text-secondary, #ADADAD))", marginBottom: 6, display: "block" }}>Inicio de temporada</label>
       <input type="date" value={start} onChange={e => setStart(e.target.value)} style={{ ...inputStyle, fontSize: 15, padding: "10px", width: "100%", marginBottom: 12 }} />
-      <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Final de temporada</label>
+      <label style={{ fontSize: 12, color: "var(--vir-text-secondary, var(--vir-text-secondary, #ADADAD))", marginBottom: 6, display: "block" }}>Final de temporada</label>
       <input type="date" value={end} onChange={e => setEnd(e.target.value)} style={{ ...inputStyle, fontSize: 15, padding: "10px", width: "100%", marginBottom: 12 }} />
       {existing?.seasonStart && (
-        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "0 0 12px", lineHeight: 1.4 }}>
+        <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 10.5, margin: "0 0 12px", lineHeight: 1.4 }}>
           Lo que ya tenías dentro del nuevo rango se queda tal cual. Si acortas la temporada y hay días con actividad de por medio, te avisamos antes de tocar nada.
         </p>
       )}
@@ -5488,14 +5488,14 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
     return (
       <div style={{ padding: "16px 20px 28px" }}>
         <BackRow onBack={onBack} />
-        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Entrenos de agua</h2>
-        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", margin: "10px 0 2px" }}>Entrenos de agua</h2>
+        <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
           Cada tripulación sale al agua en días y horas distintos. Elige una tripulación para planificar su calendario.
         </p>
         {teams.map(t => (
-          <div key={t.id} className="vir-btn" onClick={() => setScope(t.id)} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.name}</p>
-            <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
+          <div key={t.id} className="vir-btn" onClick={() => setScope(t.id)} style={{ background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: "1px solid var(--vir-border, var(--vir-border, #565656))", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.name}</p>
+            <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
           </div>
         ))}
       </div>
@@ -5511,15 +5511,15 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
     return (
       <div style={{ padding: "16px 20px 28px" }}>
         <BackRow onBack={onBack} />
-        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Entrenos de agua</h2>
-        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 4px", lineHeight: 1.4 }}>
-          Tripulación: <span style={{ color: "var(--vir-red, #E61E29)", fontWeight: 600 }}>{teamLabel}</span>
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", margin: "10px 0 2px" }}>Entrenos de agua</h2>
+        <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 12.5, margin: "0 0 4px", lineHeight: 1.4 }}>
+          Tripulación: <span style={{ color: "var(--vir-red, var(--vir-red, #E61E29))", fontWeight: 600 }}>{teamLabel}</span>
         </p>
-        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+        <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
           Todavía no has definido el inicio y el fin de temporada de esta tripulación. Hazlo primero para generar su calendario.
         </p>
         {editable ? <SeasonSetupForm onSave={(s, e) => onSetSeason(teamId, s, e)} /> : (
-          <p style={{ color: "var(--vir-orange, #E67E22)", fontSize: 12, lineHeight: 1.4 }}>🔒 El club no te ha dado permiso para configurar esta tripulación.</p>
+          <p style={{ color: "var(--vir-orange, var(--vir-orange, #E67E22))", fontSize: 12, lineHeight: 1.4 }}>🔒 El club no te ha dado permiso para configurar esta tripulación.</p>
         )}
       </div>
     );
@@ -5560,26 +5560,26 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
-      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Entrenos de agua</h2>
-      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 4px", lineHeight: 1.4 }}>
-        Tripulación: <span style={{ color: "var(--vir-red, #E61E29)", fontWeight: 600 }}>{teamLabel}</span>
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", margin: "10px 0 2px" }}>Entrenos de agua</h2>
+      <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 12.5, margin: "0 0 4px", lineHeight: 1.4 }}>
+        Tripulación: <span style={{ color: "var(--vir-red, var(--vir-red, #E61E29))", fontWeight: 600 }}>{teamLabel}</span>
       </p>
       {editable ? (
-        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 10px", lineHeight: 1.4 }}>
+        <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 12.5, margin: "0 0 10px", lineHeight: 1.4 }}>
           Activa o desactiva cada día, ajusta su hora, el título y el bote/rems. Por defecto: "{DEFAULT_SESSION_TITLE}".
         </p>
       ) : (
-        <p style={{ color: "var(--vir-orange, #E67E22)", fontSize: 12, margin: "0 0 10px", lineHeight: 1.4 }}>
+        <p style={{ color: "var(--vir-orange, var(--vir-orange, #E67E22))", fontSize: 12, margin: "0 0 10px", lineHeight: 1.4 }}>
           🔒 Solo lectura — el club no te ha dado permiso para gestionar esta tripulación.
         </p>
       )}
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13, fontWeight: 800, letterSpacing: 0.5, margin: 0, textTransform: "uppercase" }}>
+        <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13, fontWeight: 800, letterSpacing: 0.5, margin: 0, textTransform: "uppercase" }}>
           Temporada {seasonMonths[0]?.year}-{seasonMonths[seasonMonths.length - 1]?.year}
         </p>
         {editable && (
-          <button className="vir-btn" onClick={() => setShowSeasonForm(!showSeasonForm)} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textDecoration: "underline" }}>
+          <button className="vir-btn" onClick={() => setShowSeasonForm(!showSeasonForm)} style={{ background: "transparent", color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 10.5, textDecoration: "underline" }}>
             {showSeasonForm ? "Cerrar" : "Editar temporada"}
           </button>
         )}
@@ -5594,16 +5594,16 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
         seasonMonths.forEach(m => { (byYear[m.year] = byYear[m.year] || []).push(m); });
         return Object.entries(byYear).map(([year, months]) => (
           <div key={year} style={{ marginBottom: 10 }}>
-            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, fontWeight: 700, margin: "0 0 6px" }}>{year}</p>
+            <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 10.5, fontWeight: 700, margin: "0 0 6px" }}>{year}</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
               {months.map(m => {
                 const active = m.key === activeMonthKey;
                 return (
                   <button key={m.key} className="vir-btn" onClick={() => setSelectedMonthKey(m.key)} style={{
                     padding: "8px 4px", borderRadius: 10, fontSize: 11, fontWeight: active ? 700 : 500, whiteSpace: "nowrap", textAlign: "center",
-                    background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
-                    border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
-                    color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                    background: active ? "var(--vir-red, var(--vir-red, #E61E29))" : "var(--vir-bg-surface, var(--vir-bg-surface, #404040))",
+                    border: `1px solid ${active ? "var(--vir-red, var(--vir-red, #E61E29))" : "var(--vir-border, var(--vir-border, #565656))"}`,
+                    color: active ? "#FFFFFF" : "var(--vir-text-secondary, var(--vir-text-secondary, #ADADAD))",
                   }}>
                     {m.label}
                   </button>
@@ -5616,22 +5616,22 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
       <div style={{ marginBottom: 4 }} />
 
       {Object.entries(weeksInMonth).sort(([a], [b]) => a.localeCompare(b)).map(([weekKey, items], wi) => (
-        <div key={weekKey} style={{ borderBottom: "1px solid var(--vir-week-divider, #565656)", paddingBottom: 10, marginBottom: 14 }}>
+        <div key={weekKey} style={{ borderBottom: "1px solid var(--vir-week-divider, var(--vir-border, #565656))", paddingBottom: 10, marginBottom: 14 }}>
           {items.map(s => {
             const clashes = (s.crews || []).map(c => overlapFor(s, c)).filter(Boolean);
             const isPast = s.date < today && s.iso !== today.toISOString().slice(0, 10);
             return (
               <div key={s.id} style={{
-                background: "var(--vir-bg-surface, #404040)", border: `1px solid ${clashes.length > 0 ? "var(--vir-orange, #E67E22)" : "var(--vir-border, #565656)"}`,
+                background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: `1px solid ${clashes.length > 0 ? "var(--vir-orange, var(--vir-orange, #E67E22))" : "var(--vir-border, var(--vir-border, #565656))"}`,
                 borderRadius: 12, padding: "12px 14px", marginBottom: 10, opacity: !s.active ? 0.65 : (isPast ? 0.55 : 1),
               }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ width: 38, textAlign: "center" }}>
-                      <div className="vir-mono" style={{ color: s.active ? "var(--vir-red, #E61E29)" : "var(--vir-text-muted, #8A8A8A)", fontSize: 17, lineHeight: 1 }}>{s.date.getDate()}</div>
-                      <div style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 9.5, textTransform: "uppercase" }}>{DAYS_ES[s.dow]}</div>
+                      <div className="vir-mono" style={{ color: s.active ? "var(--vir-red, var(--vir-red, #E61E29))" : "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 17, lineHeight: 1 }}>{s.date.getDate()}</div>
+                      <div style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 9.5, textTransform: "uppercase" }}>{DAYS_ES[s.dow]}</div>
                     </div>
-                    <div style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5, fontWeight: 600, letterSpacing: 0.3 }}>ENTRENO AGUA</div>
+                    <div style={{ color: "var(--vir-text-secondary, var(--vir-text-secondary, #ADADAD))", fontSize: 11.5, fontWeight: 600, letterSpacing: 0.3 }}>ENTRENO AGUA</div>
                   </div>
                   <ToggleSwitch checked={s.active} onChange={() => editable && onToggleActive(s)} disabled={!editable} />
                 </div>
@@ -5650,14 +5650,14 @@ function CoachPlanScreen({ teamId, teams, setScope, sessions, onBack, onToggleAc
                       <DayTimeField time={s.time} onSetTime={(t) => onUpdateSession(s.id, { time: t })} editable={editable} />
                     </div>
                     {clashes.map((clash, i) => (
-                      <p key={i} style={{ color: "var(--vir-orange, #E67E22)", fontSize: 11, margin: "8px 0 0", lineHeight: 1.4 }}>
+                      <p key={i} style={{ color: "var(--vir-orange, var(--vir-orange, #E67E22))", fontSize: 11, margin: "8px 0 0", lineHeight: 1.4 }}>
                         ⚠ Mismo bote ({clash.boat}) que {clash.team}, que lo usa a las {clash.time}
                       </p>
                     ))}
                   </>
                 )}
                 {!s.active && s.suspendedReason && (
-                  <p style={{ color: "var(--vir-error, #FF8890)", fontSize: 11.5, margin: "8px 0 0" }}>Suspendido: {s.suspendedReason}</p>
+                  <p style={{ color: "var(--vir-error, var(--vir-error, #FF8890))", fontSize: 11.5, margin: "8px 0 0" }}>Suspendido: {s.suspendedReason}</p>
                 )}
               </div>
             );
@@ -6393,10 +6393,10 @@ function SwipeableNotification({ n, isRead, subtitle, onOpen, onMarkRead, onHide
   return (
     <div style={{ position: "relative", borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
       <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: ACTIONS_WIDTH, display: "flex" }}>
-        <button className="vir-btn" onClick={() => { onMarkRead(); setOpen(false); setDragX(0); }} style={{ flex: 1, background: "#3EA55A", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <button className="vir-btn" onClick={() => { onMarkRead(); setOpen(false); setDragX(0); }} style={{ flex: 1, background: "var(--vir-green, #3EA55A)", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Check size={18} />
         </button>
-        <button className="vir-btn" onClick={() => onHide()} style={{ flex: 1, background: "#E61E29", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <button className="vir-btn" onClick={() => onHide()} style={{ flex: 1, background: "var(--vir-red, #E61E29)", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Trash2 size={18} />
         </button>
       </div>
@@ -6407,16 +6407,16 @@ function SwipeableNotification({ n, isRead, subtitle, onOpen, onMarkRead, onHide
         className="vir-btn"
         style={{
           position: "relative", transform: `translateX(${dragX}px)`, transition: dragging.current ? "none" : "transform 0.2s",
-          background: isRead ? "#3A3A3A" : "#404040", border: `1px solid ${isRead ? "#4A4A4A" : "#565656"}`,
+          background: isRead ? "var(--vir-bg-surface-alt, #3A3A3A)" : "var(--vir-bg-surface, #404040)", border: `1px solid ${isRead ? "var(--vir-border, #4A4A4A)" : "var(--vir-border, #565656)"}`,
           borderRadius: 12, padding: 14, display: "flex", gap: 10, cursor: "pointer", touchAction: "pan-y",
         }}
       >
-        <div style={{ width: 30, height: 30, borderRadius: 15, background: isRead ? "#3A3A3A" : "#402226", border: isRead ? "1px solid #565656" : "none", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <Bell size={14} color={isRead ? "#8A8A8A" : "#E61E29"} />
+        <div style={{ width: 30, height: 30, borderRadius: 15, background: isRead ? "var(--vir-bg-surface-alt, #3A3A3A)" : "var(--vir-danger-bg, #402226)", border: isRead ? "1px solid var(--vir-border, #565656)" : "none", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Bell size={14} color={isRead ? "var(--vir-text-muted, #8A8A8A)" : "var(--vir-red, #E61E29)"} />
         </div>
         <div>
-          {subtitle && <p style={{ color: "#ADADAD", fontSize: 11, margin: "0 0 3px" }}>{subtitle}</p>}
-          <p style={{ color: isRead ? "#ADADAD" : "#F5F5F5", fontSize: 12.5, margin: 0, lineHeight: 1.45 }}>{n.text}</p>
+          {subtitle && <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11, margin: "0 0 3px" }}>{subtitle}</p>}
+          <p style={{ color: isRead ? "var(--vir-text-secondary, #ADADAD)" : "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, margin: 0, lineHeight: 1.45 }}>{n.text}</p>
         </div>
       </div>
     </div>
@@ -6428,7 +6428,7 @@ function NotificationsScreen({ items, role, nameOf, onOpen, onMarkRead, onHide }
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={role === "rower" ? "Confirmaciones de tripulación · desliza para ver más opciones" : "Registro de notificaciones enviadas · desliza para ver más opciones"}>Notificaciones</SectionTitle>
       <div style={{ padding: "10px 16px" }}>
-        {items.length === 0 && <p style={{ color: "#8A8A8A", fontSize: 13, marginTop: 20 }}>Aún no hay notificaciones.</p>}
+        {items.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13, marginTop: 20 }}>Aún no hay notificaciones.</p>}
         {items.map(n => (
           <SwipeableNotification
             key={n.id}
@@ -6534,13 +6534,13 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
-        <p style={{ color: "#F5F5F5", fontSize: 13, margin: 0 }}>Modo {theme === "dark" ? "oscuro" : "claro"}</p>
+        <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13, margin: 0 }}>Modo {theme === "dark" ? "oscuro" : "claro"}</p>
         <ToggleSwitch checked={theme === "light"} onChange={() => onToggleTheme(theme === "dark" ? "light" : "dark")} />
       </div>
 
       {editing && (role === "rower" || role === "coach") && (
-        <div style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 12, padding: 14, marginBottom: 20 }}>
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Editar perfil</p>
+        <div style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, marginBottom: 20 }}>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Editar perfil</p>
 
           <label style={labelStyle}>Nombre</label>
           <input value={firstNameInput} onChange={e => setFirstNameInput(e.target.value)} style={fieldStyle} />
@@ -6566,14 +6566,14 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
                   return (
                     <button key={key} className="vir-btn" onClick={() => setSideInput(key)} style={{
                       display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 10,
-                      background: active ? meta.color : "#404040",
-                      border: `1px solid ${active ? meta.color : "#565656"}`,
+                      background: active ? meta.color : "var(--vir-bg-surface, #404040)",
+                      border: `1px solid ${active ? meta.color : "var(--vir-border, #565656)"}`,
                     }}>
                       <span style={{
                         width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                        background: active ? "rgba(0,0,0,0.2)" : "#565656", color: active ? "#FFFFFF" : "#ADADAD", fontSize: 9.5, fontWeight: 800,
+                        background: active ? "rgba(0,0,0,0.2)" : "var(--vir-bg-surface-alt, var(--vir-border, #565656))", color: active ? "#FFFFFF" : "var(--vir-text-secondary, var(--vir-text-secondary, #ADADAD))", fontSize: 9.5, fontWeight: 800,
                       }}>{meta.letter}</span>
-                      <span style={{ fontSize: 11.5, fontWeight: 600, color: active ? "#FFFFFF" : "#E8E8E8" }}>{meta.label}</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 600, color: active ? "#FFFFFF" : "var(--vir-text-primary, #E8E8E8)" }}>{meta.label}</span>
                     </button>
                   );
                 })}
@@ -6592,8 +6592,8 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
       )}
 
       {editing && role === "club" && (
-        <div style={{ background: "#3A3A3A", border: "1px dashed #565656", borderRadius: 12, padding: 14, marginBottom: 20 }}>
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Editar perfil</p>
+        <div style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, marginBottom: 20 }}>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Editar perfil</p>
 
           <label style={labelStyle}>Nombre del club</label>
           <input value={clubNameInput} onChange={e => setClubNameInput(e.target.value)} style={fieldStyle} />
@@ -6601,7 +6601,7 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
           <label style={labelStyle}>Correo (acceso y recuperación)</label>
           <input type="email" value={clubEmailInput} onChange={e => setClubEmailInput(e.target.value)} style={fieldStyle} />
 
-          <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "16px 0 8px" }}>Datos del club</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "16px 0 8px" }}>Datos del club</p>
           <label style={labelStyle}>Nombre fiscal del club</label>
           <input value={legalNameInput} onChange={e => setLegalNameInput(e.target.value)} style={fieldStyle} />
           <label style={labelStyle}>NIF</label>
@@ -6613,7 +6613,7 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
           <label style={labelStyle}>Código postal</label>
           <input value={postalCodeInput} onChange={e => setPostalCodeInput(e.target.value)} style={fieldStyle} />
 
-          <p style={{ color: "#8A8A8A", fontSize: 10.5, textTransform: "uppercase", margin: "16px 0 8px" }}>Persona de contacto</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "16px 0 8px" }}>Persona de contacto</p>
           <label style={labelStyle}>Nombre</label>
           <input value={contactFirstNameInput} onChange={e => setContactFirstNameInput(e.target.value)} style={fieldStyle} />
           <label style={labelStyle}>Apellido</label>
@@ -6632,22 +6632,22 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
 
       {role === "rower" && (
         <div style={{ marginBottom: 22 }}>
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Asistencia a entrenos de agua</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Asistencia a entrenos de agua</p>
           <div style={{ display: "flex", gap: 10 }}>
             <AttendanceCard label={`Este mes · ${attendance.month.label}`} attended={attendance.month.attended} total={attendance.month.total} />
             <AttendanceCard label={`Este año · ${attendance.year.label}`} attended={attendance.year.attended} total={attendance.year.total} />
           </div>
-          <p style={{ color: "#8A8A8A", fontSize: 11, margin: "8px 2px 0" }}>Se actualiza cuando termina el horario del entreno, no al apuntarte.</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, margin: "8px 2px 0" }}>Se actualiza cuando termina el horario del entreno, no al apuntarte.</p>
           <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
             <InfoRow icon={<Check size={15} />} label="Días confirmados de asistencia" value={crewStats.convocado} />
           </div>
-          <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "4px 2px 0" }}>Veces que el entrenador te ha convocado para el entreno de agua, hayan pasado ya o no.</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "4px 2px 0" }}>Veces que el entrenador te ha convocado para el entreno de agua, hayan pasado ya o no.</p>
         </div>
       )}
 
       {role === "rower" && (
         <div style={{ marginBottom: 22 }}>
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Entrenamiento</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Entrenamiento</p>
           {[
             { id: "rowerGymPlan", label: "Entrenos de gim", sub: "5 sesiones de cada semana, con foto/PDF" },
             { id: "testPesos", label: "Datos de gim", sub: "Registra tus marcas de fuerza" },
@@ -6657,12 +6657,12 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
             { id: "recordatorios", label: "Recordatorios", sub: "Notas del club y de tu equipo" },
             { id: "estadisticas", label: "Estadísticas", sub: "Asistencia, agua y gimnasio, todo junto" },
           ].map(item => (
-            <div key={item.id} className="vir-btn" onClick={() => onOpenTraining(item.id)} style={{ background: "#404040", border: "1px solid #565656", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <div key={item.id} className="vir-btn" onClick={() => onOpenTraining(item.id)} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
               <div>
-                <p style={{ color: "#F5F5F5", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{item.label}</p>
-                <p style={{ color: "#8A8A8A", fontSize: 11.5, margin: "3px 0 0" }}>{item.sub}</p>
+                <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{item.label}</p>
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>{item.sub}</p>
               </div>
-              <ChevronRight size={18} color="#8A8A8A" />
+              <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
             </div>
           ))}
         </div>
@@ -6672,7 +6672,7 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
         <>
           <InfoRow icon={<KeyRound size={15} />} label="Número de club" value={clubCode} mono />
           <InfoRow icon={<Users size={15} />} label="Tripulaciones" value={teams.length} />
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "18px 2px 8px" }}>Códigos de tripulación</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "18px 2px 8px" }}>Códigos de tripulación</p>
           {teams.map(t => (
             <InfoRow key={t.id} icon={<KeyRound size={15} />} label={t.name} value={t.code} mono />
           ))}
@@ -6683,7 +6683,7 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
       {role === "coach" ? (
         <>
           <InfoRow icon={<Anchor size={15} />} label="Acceso" value={scope === "club" ? "Todo el club" : teamName(scope)} />
-          <p style={{ color: "#8A8A8A", fontSize: 11, textTransform: "uppercase", margin: "18px 2px 8px" }}>Códigos de tripulación · compártelos con tus remeros</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "18px 2px 8px" }}>Códigos de tripulación · compártelos con tus remeros</p>
           {teams.map(t => (
             <InfoRow key={t.id} icon={<KeyRound size={15} />} label={t.name} value={t.code} mono />
           ))}
@@ -6696,7 +6696,7 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
           <InfoRow icon={<KeyRound size={15} />} label="Código de club" value={clubCode} mono />
           <InfoRow icon={<Users size={15} />} label="Tripulación" value={teamName(myTeam)} />
           <InfoRow icon={<KeyRound size={15} />} label="Código de tripulación" value={teamCode(myTeam)} mono />
-          <p style={{ color: "#8A8A8A", fontSize: 10.5, margin: "10px 2px 0", lineHeight: 1.4 }}>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "10px 2px 0", lineHeight: 1.4 }}>
             Código de remero = año de alta + código de club + número correlativo.
           </p>
         </>
