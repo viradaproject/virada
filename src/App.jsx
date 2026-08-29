@@ -1939,6 +1939,8 @@ export default function ViradaPrototype() {
           --vir-orange: #E67E22;
           --vir-danger: #E24B4A;
           --vir-danger-bg: #402226;
+          --vir-signed-bg: #3D2A2C;
+          --vir-signed-text: #F0A8AC;
           --vir-success-bg: #1E3A2A;
           --vir-warning-bg: #3D2E17;
           --vir-error: #FF8890;
@@ -1963,6 +1965,8 @@ export default function ViradaPrototype() {
           --vir-orange: #C96A16;
           --vir-danger: #C93A38;
           --vir-danger-bg: #FBE4E3;
+          --vir-signed-bg: #FBE4E3;
+          --vir-signed-text: #C93A38;
           --vir-success-bg: #E3F3E9;
           --vir-warning-bg: #FBEFDF;
           --vir-error: #C93A38;
@@ -2940,11 +2944,11 @@ const rowerSemaphore = (s, myId) => {
 
 function Badge({ text, tone, onClick }) {
   const tones = {
-    open: { bg: "#454545", color: "#ADADAD" },
-    signed: { bg: "#3D2A2C", color: "#F0A8AC" },
+    open: { bg: "var(--vir-bg-surface-alt, #454545)", color: "var(--vir-text-secondary, #ADADAD)" },
+    signed: { bg: "var(--vir-signed-bg, #3D2A2C)", color: "var(--vir-signed-text, #F0A8AC)" },
     selected: { bg: "#F5F5F5", color: "#B5151E" },
-    closed: { bg: "#3D3D3D", color: "#8A8A8A" },
-    action: { bg: "#E61E29", color: "#F5F5F5" },
+    closed: { bg: "var(--vir-bg-surface, #3D3D3D)", color: "var(--vir-text-muted, #8A8A8A)" },
+    action: { bg: "var(--vir-red, #E61E29)", color: "#F5F5F5" },
   };
   const t = tones[tone] || tones.open;
   const Tag = onClick ? "button" : "span";
