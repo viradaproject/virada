@@ -442,7 +442,10 @@ export default function ViradaPrototype() {
       setGymCompletion(completion);
     }
   };
-  const loadData = async () => {
+  // Carga en dos tiempos: primero solo lo imprescindible para que se vea el inicio cuanto antes
+  // (usuarios, equipos, entrenos, avisos y alertas — lo que se ve directamente en esa pantalla),
+  // y justo después, sin bloquear nada, el resto de datos (regatas, gimnasio, notas, medidas...)
+  const loadEssentialData = async () => {
       const { data: clubsData, error: clubsErr } = await supabase.from("clubs").select("*");
       if (!clubsErr && clubsData) {
         setClubs(clubsData.map(c => ({
@@ -508,6 +511,10 @@ export default function ViradaPrototype() {
         });
         setSessionAlerts(bySession);
       }
+  };
+
+  // Todo lo que no hace falta para el primer vistazo — se carga justo después, sin bloquear
+  const loadSecondaryData = async () => {
       await refetchRaces();
       await refetchGymPlans();
       await refetchGymCompletions();
@@ -556,12 +563,18 @@ export default function ViradaPrototype() {
         setBroadcasts(broadcastsData.map(mapBroadcastRow));
       }
   };
+  // Se mantiene por compatibilidad con quien ya llamaba a loadData() a secas (por ejemplo, tras
+  // regenerar una temporada) — recarga las dos partes, una detrás de otra
+  const loadData = async () => {
+    await loadEssentialData();
+    await loadSecondaryData();
+  };
 
   // Nota: la restauración automática de sesión al abrir la app se ha probado y aparcado por ahora
   // (pendiente de retomar más adelante) — de momento la app siempre pide entrar con usuario/contraseña.
 
   useEffect(() => {
-    loadData();
+    loadEssentialData().then(() => { loadSecondaryData(); });
   }, []);
 
   // Tiempo real: si otra persona activa un día, se apunta, monta la alineación o cierra/reabre
