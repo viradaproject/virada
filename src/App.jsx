@@ -2079,7 +2079,7 @@ export default function ViradaPrototype() {
   };
 
   return (
-    <div data-theme={theme} style={{ display: "flex", justifyContent: "center", padding: "24px 8px", background: "var(--vir-bg-page, #262626)" }}>
+    <div className="vir-app-backdrop" data-theme={theme} style={{ display: "flex", justifyContent: "center", padding: "24px 8px", background: "var(--vir-bg-page, #262626)" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap');
         .vir-app * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
@@ -2145,6 +2145,20 @@ export default function ViradaPrototype() {
           --vir-week-divider: var(--vir-red, #E61E29);
           --vir-boat-label: #333333;
           --vir-boat-name: #333333;
+        }
+
+        /* En un móvil de verdad (pantalla estrecha), la app ocupa la pantalla entera —
+           el marco decorativo de "teléfono" solo tiene sentido viéndolo en un ordenador */
+        @media (max-width: 480px) {
+          .vir-app-backdrop { padding: 0 !important; }
+          .vir-app {
+            width: 100vw !important;
+            height: 100vh !important;
+            height: 100dvh !important;
+            border-radius: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
         }
 
         @media print {
