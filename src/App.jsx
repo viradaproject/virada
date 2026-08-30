@@ -234,6 +234,17 @@ const openFileReliably = (dataUrl) => {
     window.open(dataUrl, "_blank"); // si algo falla, al menos lo intentamos como antes
   }
 };
+// --- Notificaciones push ---
+// Clave pública VAPID (no es sensible, se puede incrustar en el código sin problema —
+// la privada, esa sí, se queda solo en el servidor, dentro de la función de Vercel)
+const VAPID_PUBLIC_KEY = "BHGcpOyRcuEDfZ_fKLH-ExVzo3s5j9e-jamy5mtcgz98u2m6pOsKsrKRANEYNQIhDhQGSVWAsbObSiJddObWsJA";
+const urlBase64ToUint8Array = (base64String) => {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+};
+
 const toLocalISODate = (date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -449,6 +460,7 @@ export default function ViradaPrototype() {
         const activeUsers = usersData.filter(u => u.status === "active").map(u => ({
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
           firstName: u.first_name || "", lastName: u.last_name || "", birthDate: u.birth_date || "", phone: u.phone || "",
+          authUserId: u.auth_user_id,
         }));
         const pendingList = usersData.filter(u => u.status === "pending").map(u => ({
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
@@ -644,6 +656,7 @@ export default function ViradaPrototype() {
         const entry = {
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
           firstName: u.first_name || "", lastName: u.last_name || "", birthDate: u.birth_date || "", phone: u.phone || "",
+          authUserId: u.auth_user_id,
         };
         if (u.status === "active") {
           setAssignedUsers(prev => {
@@ -1289,6 +1302,8 @@ export default function ViradaPrototype() {
     ).select();
     if (!error && data) {
       setNotifications(prev => [...data.map(mapNotificationRow), ...prev]);
+      // Push a cada remero avisado (el resumen del entrenador, rowerId null, no lleva push aquí)
+      notes.filter(n => n.rowerId).forEach(n => sendPushToRower(n.rowerId, "VIRADA", n.text));
     } else if (error) {
       flash(`Tripulación cerrada, pero hubo un problema guardando las notificaciones: ${error.message}`);
       return;
@@ -1436,6 +1451,84 @@ export default function ViradaPrototype() {
       return r === "coach" || r === "rower";
     }).map(u => u.id);
   };
+  // --- Notificaciones push: suscribirse, desuscribirse, y mandar un aviso a un dispositivo ---
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const checkPushSubscribed = async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) { setPushSubscribed(false); return; }
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      setPushSubscribed(!!sub);
+    } catch { setPushSubscribed(false); }
+  };
+  useEffect(() => { checkPushSubscribed(); }, []);
+
+  const subscribeToPush = async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      flash("Este dispositivo o navegador no admite avisos push.");
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") { flash("No has dado permiso para recibir avisos."); return; }
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { flash("No se pudo identificar tu cuenta. Inténtalo de nuevo."); return; }
+      const json = sub.toJSON();
+      const { error } = await supabase.from("push_subscriptions").upsert(
+        { auth_user_id: user.id, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
+        { onConflict: "endpoint" }
+      );
+      if (error) { flash("No se pudo activar el aviso en este dispositivo. Inténtalo de nuevo."); return; }
+      setPushSubscribed(true);
+      flash("Avisos activados en este dispositivo");
+    } catch (e) {
+      flash("No se pudo activar el aviso en este dispositivo.");
+    }
+  };
+  const unsubscribeFromPush = async () => {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await supabase.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+        await sub.unsubscribe();
+      }
+      setPushSubscribed(false);
+      flash("Avisos desactivados en este dispositivo");
+    } catch (e) {
+      flash("No se pudo desactivar. Inténtalo de nuevo.");
+    }
+  };
+  // Manda un push a todos los dispositivos suscritos de una persona (por su id de auth.users)
+  const sendPushToAuthUser = async (authUserId, title, body, url) => {
+    if (!authUserId) return;
+    const { data: subs } = await supabase.from("push_subscriptions").select("*").eq("auth_user_id", authUserId);
+    if (!subs || subs.length === 0) return;
+    await Promise.all(subs.map(sub =>
+      fetch("/api/send-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscription: { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          title, body, url,
+        }),
+      }).catch(() => {})
+    ));
+  };
+  // Igual, pero a partir del id de remero/entrenador (users.id), resolviendo su auth_user_id
+  const sendPushToRower = async (rowerId, title, body) => {
+    const au = assignedUsers.find(u => u.id === rowerId);
+    if (au && au.authUserId) await sendPushToAuthUser(au.authUserId, title, body, "/");
+  };
+
   const dispatchBroadcast = async (broadcast) => {
     const recipients = recipientsFor(broadcast);
     if (recipients.length > 0) {
@@ -1443,6 +1536,7 @@ export default function ViradaPrototype() {
         recipients.map(rid => ({ rower_id: rid, session_id: null, text: `📌 ${broadcast.text}` }))
       ).select();
       if (error) { flash("El aviso se guardó, pero hubo un problema al enviarlo a todos."); }
+      else { recipients.forEach(rid => sendPushToRower(rid, "VIRADA", broadcast.text)); }
     }
     const sentAt = new Date().toISOString();
     await supabase.from("reminder_broadcasts").update({ sent_at: sentAt }).eq("id", broadcast.id);
@@ -2470,6 +2564,9 @@ export default function ViradaPrototype() {
                   onUpdateClubPhoto={updateClubPhoto}
                   theme={theme}
                   onToggleTheme={setTheme}
+                  pushSubscribed={pushSubscribed}
+                  onSubscribePush={subscribeToPush}
+                  onUnsubscribePush={unsubscribeFromPush}
                 />
               )}
               {screen === "testPesos" && role === "rower" && (
@@ -6767,7 +6864,7 @@ function NotificationsScreen({ items, role, nameOf, onOpen, onMarkRead, onHide }
   );
 }
 
-function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, teamCode, onOpenTraining, myId, myDisplayName, myNickname, mySide, myTeam, myEmail, myFirstName, myLastName, myBirthDate, myPhone, myRowerCode, myPhoto, onUpdateMyProfile, onUpdateMyPhoto, clubDisplayName, clubCode, clubPhoto, clubProfile, onUpdateClubProfile, onUpdateClubPhoto, theme, onToggleTheme }) {
+function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, teamCode, onOpenTraining, myId, myDisplayName, myNickname, mySide, myTeam, myEmail, myFirstName, myLastName, myBirthDate, myPhone, myRowerCode, myPhoto, onUpdateMyProfile, onUpdateMyPhoto, clubDisplayName, clubCode, clubPhoto, clubProfile, onUpdateClubProfile, onUpdateClubPhoto, theme, onToggleTheme, pushSubscribed, onSubscribePush, onUnsubscribePush }) {
   const name = role === "coach" ? myDisplayName : role === "club" ? clubDisplayName : myDisplayName;
   const roleLabel = role === "coach" ? "Entrenador" : role === "club" ? "Club" : "Remero";
   const photo = role === "club" ? clubPhoto : myPhoto;
@@ -6858,6 +6955,16 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
         <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13, margin: 0 }}>Modo {theme === "dark" ? "oscuro" : "claro"}</p>
         <ToggleSwitch checked={theme === "light"} onChange={() => onToggleTheme(theme === "dark" ? "light" : "dark")} />
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
+        <div style={{ flex: 1, paddingRight: 10 }}>
+          <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13, margin: 0 }}>Avisos en este dispositivo</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, margin: "3px 0 0", lineHeight: 1.4 }}>
+            {pushSubscribed ? "Activados — recibirás avisos aunque tengas la app cerrada" : "Actívalos para recibir avisos sin tener la app abierta"}
+          </p>
+        </div>
+        <ToggleSwitch checked={pushSubscribed} onChange={() => pushSubscribed ? onUnsubscribePush() : onSubscribePush()} />
       </div>
 
       {editing && (role === "rower" || role === "coach") && (
