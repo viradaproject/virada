@@ -347,7 +347,7 @@ export default function ViradaPrototype() {
   const [viewMode, setViewMode] = useState("coach"); // "coach" | "rower" — solo aplica si role === "coach", para quien también rema
   const effectiveRole = (role === "coach" && viewMode === "rower") ? "rower" : role;
   const [currentUserId, setCurrentUserId] = useState(ME_ROWER);
-  const [theme, setTheme] = useState(() => localStorage.getItem("vir-theme") || "dark"); // "dark" | "light" — se guarda en este dispositivo
+  const [theme, setTheme] = useState(() => localStorage.getItem("vir-theme") || "light"); // "dark" | "light" — se guarda en este dispositivo
   useEffect(() => { localStorage.setItem("vir-theme", theme); }, [theme]);
   const [openSession, setOpenSession] = useState(null);
   const [openTeam, setOpenTeam] = useState(null);
@@ -2109,24 +2109,24 @@ export default function ViradaPrototype() {
         [data-theme="dark"] {
           --vir-bg-page: #262626;
           --vir-bg-phone: #333333;
-          --vir-bg-surface: var(--vir-bg-surface, #404040);
-          --vir-bg-surface-alt: var(--vir-bg-surface-alt, #3A3A3A);
+          --vir-bg-surface: #404040;
+          --vir-bg-surface-alt: #3A3A3A;
           --vir-bg-input: var(--vir-bg-surface, #404040);
-          --vir-border: var(--vir-border, #565656);
-          --vir-text-primary: var(--vir-text-primary, #F5F5F5);
-          --vir-text-secondary: var(--vir-text-secondary, #ADADAD);
-          --vir-text-muted: var(--vir-text-muted, #8A8A8A);
-          --vir-red: var(--vir-red, #E61E29);
-          --vir-green: var(--vir-green, #3EA55A);
-          --vir-orange: var(--vir-orange, #E67E22);
-          --vir-danger: var(--vir-danger, #E24B4A);
-          --vir-danger-bg: var(--vir-danger-bg, #402226);
+          --vir-border: #565656;
+          --vir-text-primary: #F5F5F5;
+          --vir-text-secondary: #ADADAD;
+          --vir-text-muted: #8A8A8A;
+          --vir-red: #E61E29;
+          --vir-green: #3EA55A;
+          --vir-orange: #E67E22;
+          --vir-danger: #E24B4A;
+          --vir-danger-bg: #402226;
           --vir-signed-bg: #3D2A2C;
           --vir-signed-text: #F0A8AC;
           --vir-success-text: #9FE1CB;
-          --vir-success-bg: var(--vir-success-bg, #1E3A2A);
-          --vir-warning-bg: var(--vir-warning-bg, #3D2E17);
-          --vir-error: var(--vir-error, #FF8890);
+          --vir-success-bg: #1E3A2A;
+          --vir-warning-bg: #3D2E17;
+          --vir-error: #FF8890;
           --vir-boat-bg: #333333;
           --vir-boat-zodiac-bg: #333333;
           --vir-week-divider: #FFFFFF;
@@ -3326,7 +3326,7 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
         <div className="vir-btn" onClick={onTeamStats} style={{ background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: "1px solid var(--vir-border, var(--vir-border, #565656))", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
           <BarChart3 size={20} color="var(--vir-red, var(--vir-red, #E61E29))" style={{ flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
-            <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Estadísticas de tripulación</p>
+            <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Control y estadística de tripulación</p>
             <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>Frecuencia, convocatorias y entrenos de agua</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
@@ -3612,7 +3612,7 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
 
       <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
         <ScopeChip active={section === "gymControl"} onClick={() => setSection("gymControl")} label="Control de gim" />
-        <ScopeChip active={section === "stats"} onClick={() => setSection("stats")} label="Control y estadística de tripulación" />
+        <ScopeChip active={section === "stats"} onClick={() => setSection("stats")} label="Estadísticas de tripulación" />
       </div>
 
       {section === "gymControl" && (
@@ -7455,7 +7455,7 @@ function PesosScreen({ exercises, onAddExercise, onSetBase, onRemoveExercise, on
 
 function PesosExerciseCard({ exercise, onSetBase, onRemove, editable }) {
   const [editing, setEditing] = useState(false);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [baseInput, setBaseInput] = useState(exercise.baseKg || "");
 
@@ -7486,7 +7486,7 @@ function PesosExerciseCard({ exercise, onSetBase, onRemove, editable }) {
             <button
               className="vir-btn"
               onClick={() => { setBaseInput(exercise.baseKg || ""); setEditing(true); setExpanded(true); setMenuOpen(false); }}
-              style={{ display: "block", width: "100%", textAlign: "left", padding: "11px 14px", color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13, background: "transparent", borderBottom: "1px solid var(--vir-border, #565656)" }}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "11px 14px", color: "#F5F5F5", fontSize: 13, background: "transparent", borderBottom: "1px solid #565656" }}
             >
               Modificar peso
             </button>
