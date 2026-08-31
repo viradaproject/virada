@@ -3545,7 +3545,7 @@ function TeamGymControlBlock({ team, members, gymWeekMetaFor, gymRecordFor, onTo
 }
 
 function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeople, statsFor, totalPastActiveFor, onOpenPerson, sessions, gymWeekMetaFor, gymRecordFor, currentGymWeek, onToggleValidation }) {
-  const [section, setSection] = useState("stats"); // "stats" | "gymControl"
+  const [section, setSection] = useState("gymControl"); // "stats" | "gymControl"
   const [block, setBlock] = useState("colectivo"); // "individual" | "colectivo"
   const people = allPeople.filter(p => scope === "club" || teamOf(p.id) === scope);
 
@@ -3611,8 +3611,8 @@ function CoachTeamStatsScreen({ onBack, scope, teams, teamOf, teamName, allPeopl
       <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "0 0 16px" }}>Alcance: {scope === "club" ? "todo el club" : teamName(scope)}{scope !== "club" ? ` · ${scopeTotalPastActive} entrenos de agua realizados` : ""}</p>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
-        <ScopeChip active={section === "stats"} onClick={() => setSection("stats")} label="Estadísticas de tripulación" />
         <ScopeChip active={section === "gymControl"} onClick={() => setSection("gymControl")} label="Control de gim" />
+        <ScopeChip active={section === "stats"} onClick={() => setSection("stats")} label="Control y estadística de tripulación" />
       </div>
 
       {section === "gymControl" && (
