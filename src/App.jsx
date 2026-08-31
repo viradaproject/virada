@@ -344,6 +344,8 @@ export default function ViradaPrototype() {
   const [sessions, setSessions] = useState([]);
   const [screen, setScreen] = useState("login");
   const [role, setRole] = useState(null);
+  const [viewMode, setViewMode] = useState("coach"); // "coach" | "rower" — solo aplica si role === "coach", para quien también rema
+  const effectiveRole = (role === "coach" && viewMode === "rower") ? "rower" : role;
   const [currentUserId, setCurrentUserId] = useState(ME_ROWER);
   const [theme, setTheme] = useState(() => localStorage.getItem("vir-theme") || "dark"); // "dark" | "light" — se guarda en este dispositivo
   useEffect(() => { localStorage.setItem("vir-theme", theme); }, [theme]);
@@ -2073,7 +2075,7 @@ export default function ViradaPrototype() {
     markNotificationRead(n.id, forRole);
     if (!n.sessionId) {
       // aviso general (recordatorio, sin entreno asociado): lleva a la pantalla de Recordatorios
-      if (role === "rower") setScreen("recordatorios");
+      if (forRole === "rower") setScreen("recordatorios");
       else if (role === "club") setScreen("remindersClub");
       else setScreen("remindersCoach"); // entrenador o admin
       return;
@@ -2210,15 +2212,36 @@ export default function ViradaPrototype() {
 
         {screen !== "login" && screen !== "pendingRole" && screen !== "resetPassword" && (
           <>
-            <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--vir-border, var(--vir-border, #565656))", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--vir-border, var(--vir-border, #565656))", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <Logo size={26} />
-              <button className="vir-btn" onClick={async () => { await supabase.auth.signOut(); setScreen("login"); setRole(null); setOpenSession(null); setCurrentClubId(null); setCurrentUserId(null); }} style={{ background: "transparent", color: "var(--vir-text-secondary, var(--vir-text-secondary, #ADADAD))" }}>
+              {role === "coach" && (
+                <div style={{ display: "flex", background: "var(--vir-bg-surface, #404040)", borderRadius: 20, padding: 2, flexShrink: 0 }}>
+                  <button className="vir-btn" onClick={() => { setViewMode("coach"); setScreen("home"); }} style={{
+                    padding: "5px 10px", borderRadius: 18, fontSize: 10.5, fontWeight: 700,
+                    background: viewMode === "coach" ? "var(--vir-red, #E61E29)" : "transparent",
+                    color: viewMode === "coach" ? "#FFFFFF" : "var(--vir-text-muted, #8A8A8A)",
+                  }}>Entrenador</button>
+                  <button
+                    className="vir-btn"
+                    disabled={!myTeamId}
+                    onClick={() => { setViewMode("rower"); setScreen("home"); }}
+                    title={!myTeamId ? "El club todavía no te ha asignado tripulación como remero" : ""}
+                    style={{
+                      padding: "5px 10px", borderRadius: 18, fontSize: 10.5, fontWeight: 700,
+                      background: viewMode === "rower" ? "var(--vir-red, #E61E29)" : "transparent",
+                      color: viewMode === "rower" ? "#FFFFFF" : myTeamId ? "var(--vir-text-muted, #8A8A8A)" : "var(--vir-border, #565656)",
+                      opacity: myTeamId ? 1 : 0.6,
+                    }}
+                  >Remero</button>
+                </div>
+              )}
+              <button className="vir-btn" onClick={async () => { await supabase.auth.signOut(); setScreen("login"); setRole(null); setViewMode("coach"); setOpenSession(null); setCurrentClubId(null); setCurrentUserId(null); }} style={{ background: "transparent", color: "var(--vir-text-secondary, var(--vir-text-secondary, #ADADAD))", flexShrink: 0 }}>
                 <LogOut size={18} />
               </button>
             </div>
 
             <div className="vir-scroll" style={{ flex: 1, overflowY: "auto" }}>
-              {screen === "home" && role === "rower" && (
+              {screen === "home" && effectiveRole === "rower" && (
                 <RowerHome
                   sessions={rowerWeekAhead}
                   onOpen={(s) => { setOpenSession(s); setScreen("sessionRower"); }}
@@ -2236,7 +2259,7 @@ export default function ViradaPrototype() {
                   alertsFor={alertsFor}
                 />
               )}
-              {screen === "home" && role === "coach" && (
+              {screen === "home" && effectiveRole === "coach" && (
                 <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} onOpenMeasurements={() => setScreen("medidasCoach")} onOpenFleet={() => setScreen("botesCoach")} onOpenReminders={() => setScreen("remindersCoach")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} alertsFor={alertsFor} />
               )}
               {screen === "coachPlan" && (role === "coach" || role === "admin") && (
@@ -2270,7 +2293,7 @@ export default function ViradaPrototype() {
                   onOpenSeason={() => setScreen("coachPlan")}
                 />
               )}
-              {screen === "rowerGymPlan" && role === "rower" && (
+              {screen === "rowerGymPlan" && effectiveRole === "rower" && (
                 <RowerGymPlanScreen
                   teamId={teamOf(currentUserId)}
                   teamName={teamName}
@@ -2501,14 +2524,14 @@ export default function ViradaPrototype() {
               {screen === "users" && (role === "club" || role === "admin") && (
                 <ClubUsersScreen teams={clubTeams} teamName={teamName} teamOf={teamOf} roleOf={roleOf} onAssignTeam={assignTeam} onSetRole={setPersonRole} pendingUsers={clubPendingUsers} assignedUsers={clubAssignedUsers} onAssignPending={assignPendingUser} onRejectPending={rejectPendingUser} onRemoveUser={removeAssignedUser} managedTeamsOf={managedTeamsOf} onToggleCoachTeam={toggleCoachTeam} />
               )}
-              {screen === "calendar" && role === "rower" && (
+              {screen === "calendar" && effectiveRole === "rower" && (
                 <CalendarScreen sessions={rowerUpcoming} onOpen={(s) => { setOpenSession(s); setScreen("sessionRower"); }} onToggle={toggleSignup} myId={currentUserId} alertsFor={alertsFor} />
               )}
-              {screen === "calendar" && role === "coach" && (
+              {screen === "calendar" && effectiveRole === "coach" && (
                 <CalendarScreen sessions={coachUpcoming} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} myId={currentUserId} teamName={teamName} showTeamLabel={coachScope === "club"} alertsFor={alertsFor} />
               )}
               {screen === "sessionRower" && openSession && (
-                <SessionRowerScreen session={openSession} onBack={() => setScreen(role === "rower" ? "home" : "calendar")} onToggle={toggleSignup} onSendAlert={sendCantComeAlert} myAlerts={openSession ? alertsFor(openSession.id).filter(a => a.rowerId === currentUserId) : []} myId={currentUserId} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} photoOf={(id) => profilePhotos[id] || null} fleetBoats={openSession ? fleetBoatsFor(openSession.teamId) : []} boatMeasurements={boatMeasurements} />
+                <SessionRowerScreen session={openSession} onBack={() => setScreen(effectiveRole === "rower" ? "home" : "calendar")} onToggle={toggleSignup} onSendAlert={sendCantComeAlert} myAlerts={openSession ? alertsFor(openSession.id).filter(a => a.rowerId === currentUserId) : []} myId={currentUserId} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} photoOf={(id) => profilePhotos[id] || null} fleetBoats={openSession ? fleetBoatsFor(openSession.teamId) : []} boatMeasurements={boatMeasurements} />
               )}
               {screen === "sessionCoach" && openSession && (
                 <SessionCoachScreen
@@ -2550,17 +2573,17 @@ export default function ViradaPrototype() {
               )}
               {screen === "notifications" && (
                 <NotificationsScreen
-                  items={role === "rower" ? myNotifications : coachNotifications}
-                  role={role}
+                  items={effectiveRole === "rower" ? myNotifications : coachNotifications}
+                  role={effectiveRole}
                   nameOf={nameOf}
-                  onOpen={(n) => openNotificationSession(n, role === "rower" ? "rower" : "coach")}
-                  onMarkRead={(id) => markNotificationRead(id, role === "rower" ? "rower" : "coach")}
-                  onHide={(id) => hideNotification(id, role === "rower" ? "rower" : "coach")}
+                  onOpen={(n) => openNotificationSession(n, effectiveRole === "rower" ? "rower" : "coach")}
+                  onMarkRead={(id) => markNotificationRead(id, effectiveRole === "rower" ? "rower" : "coach")}
+                  onHide={(id) => hideNotification(id, effectiveRole === "rower" ? "rower" : "coach")}
                 />
               )}
               {screen === "profile" && (
                 <ProfileScreen
-                  role={role}
+                  role={effectiveRole}
                   scope={coachScope}
                   attendance={attendanceStats}
                   crewStats={statsFor(currentUserId)}
@@ -2595,7 +2618,7 @@ export default function ViradaPrototype() {
                   onUnsubscribePush={unsubscribeFromPush}
                 />
               )}
-              {screen === "testPesos" && role === "rower" && (
+              {screen === "testPesos" && effectiveRole === "rower" && (
                 <PesosScreen
                   exercises={pesosExercisesOf(currentUserId)}
                   onAddExercise={(name) => addPesosExercise(currentUserId, name)}
@@ -2616,21 +2639,21 @@ export default function ViradaPrototype() {
                   subtitle={`Datos de gim de ${openPerson.name} · lo gestiona el propio remero desde su perfil`}
                 />
               )}
-              {screen === "zonasErgo" && role === "rower" && (
+              {screen === "zonasErgo" && effectiveRole === "rower" && (
                 <ErgoZonesScreen
                   testTime={ergoTestTimes[currentUserId] || null}
                   onSetTest={setErgoTest}
                   onBack={() => setScreen("profile")}
                 />
               )}
-              {screen === "notas" && role === "rower" && (
+              {screen === "notas" && effectiveRole === "rower" && (
                 <NotesScreen
                   notes={rowerNotes[currentUserId] || ""}
                   onSave={updateMyNotes}
                   onBack={() => setScreen("profile")}
                 />
               )}
-              {screen === "medidas" && role === "rower" && (
+              {screen === "medidas" && effectiveRole === "rower" && (
                 <RowerMeasurementsScreen
                   boats={fleetBoatsFor(teamOf(currentUserId))}
                   measurements={boatMeasurements}
@@ -2638,7 +2661,7 @@ export default function ViradaPrototype() {
                   onBack={() => setScreen("profile")}
                 />
               )}
-              {screen === "estadisticas" && role === "rower" && (
+              {screen === "estadisticas" && effectiveRole === "rower" && (
                 <RowerStatsScreen
                   onBack={() => setScreen("profile")}
                   attendance={attendanceStats}
@@ -2653,7 +2676,7 @@ export default function ViradaPrototype() {
               )}
             </div>
 
-            <TabBar screen={screen} setScreen={setScreen} notifCount={role === "rower" ? myNotifications.filter(n => !n.read).length : coachNotifications.filter(n => !n.readByCoach).length} role={role} />
+            <TabBar screen={screen} setScreen={setScreen} notifCount={effectiveRole === "rower" ? myNotifications.filter(n => !n.read).length : coachNotifications.filter(n => !n.readByCoach).length} role={effectiveRole} />
           </>
         )}
       </div>
@@ -4375,6 +4398,19 @@ function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetR
                 </div>
                 <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "6px 0 0", lineHeight: 1.4 }}>
                   Puede ver el calendario de todas las tripulaciones, pero solo editar y montar botes en las que tenga marcadas aquí.
+                </p>
+
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "16px 0 6px" }}>Rema en (opcional)</p>
+                <select
+                  value={teamOf(openPerson.id) || ""}
+                  onChange={e => onAssignTeam(openPerson.id, e.target.value)}
+                  style={{ ...inputStyle, padding: "10px 11px", fontSize: 13 }}
+                >
+                  <option value="">No rema — solo entrena</option>
+                  {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "6px 0 0", lineHeight: 1.4 }}>
+                  Si rema en alguna tripulación, podrá cambiar a "Vista Remero" desde su propia app para apuntarse a los físicos de gimnasio como cualquier otro remero. Sus entrenos de agua ya cuentan al asignarse él mismo desde la gestión de la tripulación.
                 </p>
               </div>
             )}
