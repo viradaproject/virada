@@ -2315,7 +2315,7 @@ export default function ViradaPrototype() {
                   gymWeekMetaFor={gymWeekMeta}
                   gymRecordFor={gymRecordOf}
                   members={[...ROWERS, ...clubAssignedUsers]
-                    .filter(p => roleOf(p.id) === "rower" && teamOf(p.id) === coachScope)
+                    .filter(p => (roleOf(p.id) === "rower" || roleOf(p.id) === "coach") && teamOf(p.id) === coachScope)
                     .map(p => ({ id: p.id, name: p.name || p.username, nickname: nicknameOf(p.id) }))}
                   currentGymWeek={currentGymWeek}
                   waterStatsFor={waterStatsFor}
@@ -2332,7 +2332,7 @@ export default function ViradaPrototype() {
                   setScope={setCoachScope}
                   boats={fleetBoatsFor(coachScope)}
                   members={[...ROWERS, ...clubAssignedUsers]
-                    .filter(p => roleOf(p.id) === "rower" && teamOf(p.id) === coachScope)
+                    .filter(p => (roleOf(p.id) === "rower" || roleOf(p.id) === "coach") && teamOf(p.id) === coachScope)
                     .map(p => ({ id: p.id, name: p.name || p.username, nickname: nicknameOf(p.id), side: sideOf(p.id) }))}
                   measurements={boatMeasurements}
                   editable={role === "admin" ? true : canManage(coachScope)}
@@ -2401,7 +2401,7 @@ export default function ViradaPrototype() {
                   allPeople={[
                     ...ROWERS.map(r => ({ id: r.id, name: r.name, nickname: r.nickname })),
                     ...clubAssignedUsers.map(u => ({ id: u.id, name: u.username, nickname: u.apodo })),
-                  ].filter(p => roleOf(p.id) === "rower")}
+                  ].filter(p => roleOf(p.id) === "rower" || (roleOf(p.id) === "coach" && teamOf(p.id)))}
                   onOpenPerson={(p) => { setOpenPerson(p); setScreen("coachRowerDetail"); }}
                 />
               )}
