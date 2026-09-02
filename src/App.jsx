@@ -359,6 +359,7 @@ export default function ViradaPrototype() {
   const [suspendTarget, setSuspendTarget] = useState(null);
   const [viewPhoto, setViewPhoto] = useState(null); // { photo, caption }
   const [openRace, setOpenRace] = useState(null); // { catId, raceId }
+  const [openClubEventId, setOpenClubEventId] = useState(null); // id del evento (no oficial o extraordinario) abierto
   const [selectedRowerChip, setSelectedRowerChip] = useState(null);
   const [coachScope, setCoachScope] = useState("club");
   const [teams, setTeams] = useState([]); // { id, clubId, name, code }
@@ -370,6 +371,8 @@ export default function ViradaPrototype() {
   const [clubs, setClubs] = useState([DEMO_CLUB]); // { id, name, code, username, password, createdAt }
   const [currentClubId, setCurrentClubId] = useState(null);
   const [raceCategories, setRaceCategories] = useState([]); // se carga desde Supabase
+  const [clubEvents, setClubEvents] = useState([]); // regatas no oficiales y eventos extraordinarios del club
+  const [clubEvents, setClubEvents] = useState([]); // regatas no oficiales y eventos extraordinarios, de cualquier club
   const [passwords, setPasswords] = useState(DEMO_PASSWORDS);
   const [recoveryEmails, setRecoveryEmails] = useState({});
   const [loginError, setLoginError] = useState(null);
@@ -414,6 +417,32 @@ export default function ViradaPrototype() {
         })),
       }));
       setRaceCategories(assembled);
+    }
+  };
+  const refetchClubEvents = async () => {
+    const { data: eventsData } = await supabase.from("club_events").select("*").order("event_date", { ascending: true });
+    const { data: eventDocsData } = await supabase.from("club_event_documents").select("*");
+    if (eventsData) {
+      setClubEvents(eventsData.map(e => ({
+        id: e.id, clubId: e.club_id, visibility: e.visibility, title: e.title || "",
+        eventDate: e.event_date, location: e.location || "", notes: e.notes || "",
+        docs: (eventDocsData || []).filter(d => d.event_id === e.id).map(d => ({
+          id: d.id, label: d.title, name: d.file_name, fileType: d.file_type, dataUrl: d.file_url,
+        })),
+      })));
+    }
+  };
+  const refetchClubEvents = async () => {
+    const { data: eventsData } = await supabase.from("club_events").select("*").order("event_date", { ascending: true });
+    const { data: docsData } = await supabase.from("club_event_documents").select("*");
+    if (eventsData) {
+      setClubEvents(eventsData.map(e => ({
+        id: e.id, clubId: e.club_id, visibility: e.visibility, title: e.title || "",
+        eventDate: e.event_date, location: e.location || "", notes: e.notes || "", targetTeamId: e.target_team_id || null,
+        docs: (docsData || []).filter(d => d.event_id === e.id).map(d => ({
+          id: d.id, label: d.title, name: d.file_name, fileType: d.file_type, dataUrl: d.file_url,
+        })),
+      })));
     }
   };
   const refetchGymPlans = async () => {
@@ -527,6 +556,8 @@ export default function ViradaPrototype() {
   // Todo lo que no hace falta para el primer vistazo — se carga justo después, sin bloquear
   const loadSecondaryData = async () => {
       await refetchRaces();
+      await refetchClubEvents();
+      await refetchClubEvents();
       await refetchGymPlans();
       await refetchGymCompletions();
       const { data: pesosData } = await supabase.from("pesos_exercises").select("*");
@@ -659,6 +690,8 @@ export default function ViradaPrototype() {
           return exists ? prev.map(r => r.id === mapped.id ? mapped : r) : [mapped, ...prev];
         });
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "club_events" }, () => refetchClubEvents())
+      .on("postgres_changes", { event: "*", schema: "public", table: "club_event_documents" }, () => refetchClubEvents())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
@@ -1010,13 +1043,11 @@ export default function ViradaPrototype() {
     if (!p) return;
     const updates = { status: "active", role, activated_at: new Date().toISOString() };
     if (role === "rower" && teamId) updates.team_id = teamId;
-    let newRowerCode = null;
-    if (role === "rower") {
-      // Genera un código de remero estable, único dentro del club — se guarda para siempre, no se recalcula
-      const clubRowerCount = assignedUsers.filter(u => u.clubId === p.clubId && u.rowerCode).length;
-      newRowerCode = `26${clubCode || ""}${String(clubRowerCount + 1).padStart(4, "0")}`;
-      updates.rower_code = newRowerCode;
-    }
+    // Genera un código de usuario estable, único dentro del club — se guarda para siempre, no se
+    // recalcula, y lo recibe cualquiera que se active, sea cual sea su rol
+    const clubUserCount = assignedUsers.filter(u => u.clubId === p.clubId && u.rowerCode).length;
+    const newRowerCode = `26${clubCode || ""}${String(clubUserCount + 1).padStart(4, "0")}`;
+    updates.rower_code = newRowerCode;
     const { data, error } = await supabase.from("users").update(updates).eq("id", id).select();
     if (error) { flash("No se pudo asignar el rol. Inténtalo de nuevo."); return; }
     if (!data || data.length === 0) { flash("No se pudo asignar el rol: no tienes permiso sobre este usuario."); return; }
@@ -2128,6 +2159,91 @@ export default function ViradaPrototype() {
     flash("Información actualizada");
   };
 
+  // --- Regatas no oficiales / Eventos extraordinarios (creados por el club o el entrenador) ---
+  const addClubEvent = async (visibility, title, eventDate, location, targetTeamId) => {
+    const { data, error } = await supabase.from("club_events").insert({
+      club_id: currentClubId, visibility, title: (title || "").trim(),
+      event_date: eventDate || null, location: (location || "").trim(), target_team_id: visibility === "club" ? (targetTeamId || null) : null,
+    }).select().single();
+    if (error) { flash("No se pudo crear el evento. Inténtalo de nuevo."); return; }
+    setClubEvents(prev => [...prev, {
+      id: data.id, clubId: data.club_id, visibility: data.visibility, title: data.title || "",
+      eventDate: data.event_date, location: data.location || "", notes: data.notes || "", targetTeamId: data.target_team_id || null, docs: [],
+    }]);
+    flash("Evento creado");
+  };
+  const removeClubEvent = async (eventId) => {
+    const { error } = await supabase.from("club_events").delete().eq("id", eventId);
+    if (error) { flash("No se pudo eliminar el evento. Inténtalo de nuevo."); return; }
+    setClubEvents(prev => prev.filter(e => e.id !== eventId));
+    flash("Evento eliminado");
+  };
+  const updateClubEvent = async (eventId, updates) => {
+    const dbUpdates = {};
+    if ("title" in updates) dbUpdates.title = updates.title;
+    if ("eventDate" in updates) dbUpdates.event_date = updates.eventDate || null;
+    if ("location" in updates) dbUpdates.location = updates.location;
+    if ("notes" in updates) dbUpdates.notes = updates.notes;
+    if ("targetTeamId" in updates) dbUpdates.target_team_id = updates.targetTeamId || null;
+    const { error } = await supabase.from("club_events").update(dbUpdates).eq("id", eventId);
+    if (error) { flash("No se pudo guardar el cambio. Inténtalo de nuevo."); return; }
+    setClubEvents(prev => prev.map(e => e.id === eventId ? { ...e, ...updates } : e));
+  };
+  const addClubEventDoc = async (eventId, doc) => {
+    const { data, error } = await supabase.from("club_event_documents").insert({
+      event_id: eventId, title: doc.label, file_name: doc.name, file_type: doc.fileType, file_url: doc.dataUrl,
+    }).select().single();
+    if (error) { flash("No se pudo subir el documento. Inténtalo de nuevo."); return; }
+    const newDoc = { id: data.id, label: data.title, name: data.file_name, fileType: data.file_type, dataUrl: data.file_url };
+    setClubEvents(prev => prev.map(e => e.id !== eventId ? e : { ...e, docs: [...e.docs, newDoc] }));
+    flash("Documento subido");
+  };
+  const removeClubEventDoc = async (eventId, docId) => {
+    const { error } = await supabase.from("club_event_documents").delete().eq("id", docId);
+    if (error) { flash("No se pudo eliminar el documento. Inténtalo de nuevo."); return; }
+    setClubEvents(prev => prev.map(e => e.id !== eventId ? e : { ...e, docs: e.docs.filter(d => d.id !== docId) }));
+  };
+
+  // --- Eventos del club: regatas no oficiales (visibles a todo el mundo) y eventos extraordinarios
+  // (solo visibles a gente del propio club) — misma estructura por debajo, distinta visibilidad
+  const addClubEvent = async (visibility, title, eventDate, location) => {
+    const { data, error } = await supabase.from("club_events").insert({
+      club_id: currentClubId, visibility, title: (title || "").trim(), event_date: eventDate || null, location: (location || "").trim(),
+    }).select().single();
+    if (error) { flash("No se pudo crear el evento. Inténtalo de nuevo."); return; }
+    setClubEvents(prev => [...prev, { id: data.id, clubId: data.club_id, visibility: data.visibility, title: data.title || "", eventDate: data.event_date, location: data.location || "", notes: data.notes || "", docs: [] }]);
+    flash("Evento creado");
+  };
+  const removeClubEvent = async (id) => {
+    const { error } = await supabase.from("club_events").delete().eq("id", id);
+    if (error) { flash("No se pudo eliminar el evento. Inténtalo de nuevo."); return; }
+    setClubEvents(prev => prev.filter(e => e.id !== id));
+    flash("Evento eliminado");
+  };
+  const updateClubEvent = async (id, updates) => {
+    const dbUpdates = {};
+    if ("title" in updates) dbUpdates.title = updates.title;
+    if ("eventDate" in updates) dbUpdates.event_date = updates.eventDate || null;
+    if ("location" in updates) dbUpdates.location = updates.location;
+    if ("notes" in updates) dbUpdates.notes = updates.notes;
+    const { error } = await supabase.from("club_events").update(dbUpdates).eq("id", id);
+    if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
+    setClubEvents(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+  };
+  const addClubEventDoc = async (eventId, doc) => {
+    const { data, error } = await supabase.from("club_event_documents").insert({
+      event_id: eventId, title: doc.label, file_name: doc.name, file_type: doc.fileType, file_url: doc.dataUrl,
+    }).select().single();
+    if (error) { flash("No se pudo subir el documento. Inténtalo de nuevo."); return; }
+    const newDoc = { id: data.id, label: data.title, name: data.file_name, fileType: data.file_type, dataUrl: data.file_url };
+    setClubEvents(prev => prev.map(e => e.id === eventId ? { ...e, docs: [...e.docs, newDoc] } : e));
+  };
+  const removeClubEventDoc = async (eventId, docId) => {
+    const { error } = await supabase.from("club_event_documents").delete().eq("id", docId);
+    if (error) { flash("No se pudo eliminar el documento. Inténtalo de nuevo."); return; }
+    setClubEvents(prev => prev.map(e => e.id !== eventId ? e : { ...e, docs: e.docs.filter(d => d.id !== docId) }));
+  };
+
   const recoverPassword = async (username) => {
     const cleanUsername = (username || "").trim().toLowerCase();
     if (cleanUsername) {
@@ -2355,7 +2471,7 @@ export default function ViradaPrototype() {
                 />
               )}
               {screen === "home" && effectiveRole === "coach" && (
-                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} onOpenMeasurements={() => setScreen("medidasCoach")} onOpenFleet={() => setScreen("botesCoach")} onOpenReminders={() => setScreen("remindersCoach")} onOpenCrewRequest={() => setScreen("crewRequest")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} alertsFor={alertsFor} />
+                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenClubEvents={() => setScreen("clubEvents")} onOpenExtraEvents={() => setScreen("extraEvents")} onOpenInformes={() => setScreen("informes")} onOpenMeasurements={() => setScreen("medidasCoach")} onOpenFleet={() => setScreen("botesCoach")} onOpenReminders={() => setScreen("remindersCoach")} onOpenCrewRequest={() => setScreen("crewRequest")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} alertsFor={alertsFor} />
               )}
               {screen === "crewRequest" && (role === "coach" || role === "admin") && (
                 <CrewRequestScreen
@@ -2545,6 +2661,8 @@ export default function ViradaPrototype() {
                   onManageTeams={() => setScreen("teams")}
                   onManageUsers={() => setScreen("users")}
                   onOpenRegattas={() => setScreen("regattas")}
+                  onOpenClubEvents={() => setScreen("clubEvents")}
+                  onOpenExtraEvents={() => setScreen("extraEvents")}
                   onOpenReminders={() => setScreen("remindersClub")}
                   clubDisplayName={clubDisplayName}
                   clubCode={clubCode}
@@ -2601,6 +2719,56 @@ export default function ViradaPrototype() {
                     onAddDoc={(doc) => addRaceDoc(openRace.catId, openRace.raceId, doc)}
                     onRemoveDoc={(docId) => removeRaceDoc(openRace.catId, openRace.raceId, docId)}
                     onViewPhoto={(photo, caption) => setViewPhoto({ photo, caption })}
+                  />
+                );
+              })()}
+              {screen === "clubEvents" && (
+                <ClubEventsScreen
+                  mode="publica"
+                  events={clubEvents}
+                  canCreate={role === "club"}
+                  canManage={() => role === "club"}
+                  teams={clubTeams}
+                  teamName={teamName}
+                  currentClubId={currentClubId}
+                  myTeamId={teamOf(currentUserId)}
+                  role={role}
+                  onBack={() => setScreen("home")}
+                  onOpenEvent={(id) => { setOpenClubEventId(id); setScreen("clubEventDetail"); }}
+                  onAddEvent={(mode, title, eventDate, location) => addClubEvent(mode, title, eventDate, location, null)}
+                />
+              )}
+              {screen === "extraEvents" && (
+                <ClubEventsScreen
+                  mode="club"
+                  events={clubEvents}
+                  canCreate={role === "club" || role === "coach"}
+                  canManage={() => role === "club" || role === "coach"}
+                  teams={clubTeams}
+                  teamName={teamName}
+                  currentClubId={currentClubId}
+                  myTeamId={teamOf(currentUserId)}
+                  role={role}
+                  onBack={() => setScreen("home")}
+                  onOpenEvent={(id) => { setOpenClubEventId(id); setScreen("clubEventDetail"); }}
+                  onAddEvent={addClubEvent}
+                />
+              )}
+              {screen === "clubEventDetail" && openClubEventId && (() => {
+                const ev = clubEvents.find(e => e.id === openClubEventId);
+                if (!ev) return null;
+                const editable = ev.clubId === currentClubId && (role === "club" || role === "coach" || role === "admin");
+                return (
+                  <ClubEventDetailScreen
+                    event={ev}
+                    editable={editable}
+                    teams={clubTeams}
+                    teamName={teamName}
+                    onBack={() => setScreen(ev.visibility === "publica" ? "clubEvents" : "extraEvents")}
+                    onUpdate={updateClubEvent}
+                    onRemove={removeClubEvent}
+                    onAddDoc={addClubEventDoc}
+                    onRemoveDoc={removeClubEventDoc}
                   />
                 );
               })()}
@@ -3329,6 +3497,8 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
       label: "Regatas",
       tiles: [
         { id: "regattas", label: "Calendario de regatas", sub: "Fechas, dosier, horarios y resultados", icon: KeyRound },
+        { id: "clubEvents", label: "Regatas no oficiales", sub: "Regatas lúdicas, dentro y fuera de tu club", icon: Trophy },
+        { id: "extraEvents", label: "Eventos extraordinarios", sub: "Eventos internos de tu club", icon: StickyNote },
       ],
     },
     {
@@ -3428,7 +3598,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
   );
 }
 
-function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenInformes, onOpenMeasurements, onOpenFleet, onOpenReminders, onOpenCrewRequest, coachName, teamName, showTeamLabel, alertsFor }) {
+function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenClubEvents, onOpenExtraEvents, onOpenInformes, onOpenMeasurements, onOpenFleet, onOpenReminders, onOpenCrewRequest, coachName, teamName, showTeamLabel, alertsFor }) {
   return (
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={`Hola, ${coachName} · ${CLUB_NAME}`}>Planificación de botes</SectionTitle>
@@ -3503,6 +3673,22 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
           <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Calendario de regatas</p>
             <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>Fechas, dosieres, horarios y resultados</p>
+          </div>
+          <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
+        </div>
+        <div className="vir-btn" onClick={onOpenClubEvents} style={{ background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: "1px solid var(--vir-border, var(--vir-border, #565656))", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <Trophy size={20} color="var(--vir-red, var(--vir-red, #E61E29))" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Regatas no oficiales</p>
+            <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>Regatas lúdicas del club, fuera del calendario FCR</p>
+          </div>
+          <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
+        </div>
+        <div className="vir-btn" onClick={onOpenExtraEvents} style={{ background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: "1px solid var(--vir-border, var(--vir-border, #565656))", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <StickyNote size={20} color="var(--vir-red, var(--vir-red, #E61E29))" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Eventos extraordinarios</p>
+            <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>Para todo el club o para una tripulación</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
         </div>
@@ -4098,7 +4284,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, teams, stats
   );
 }
 
-function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, onOpenReminders, clubDisplayName, clubCode, coachCount, rowerCount }) {
+function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, onOpenClubEvents, onOpenExtraEvents, onOpenReminders, clubDisplayName, clubCode, coachCount, rowerCount }) {
   return (
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={`Hola, ${clubDisplayName}`}>Panel del club</SectionTitle>
@@ -4138,6 +4324,24 @@ function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, onOpenR
           <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Calendario de regatas</p>
             <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>Fechas, dosieres, horarios y resultados</p>
+          </div>
+          <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
+        </div>
+
+        <div className="vir-btn" onClick={onOpenClubEvents} style={{ background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: "1px solid var(--vir-border, var(--vir-border, #565656))", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <Trophy size={20} color="var(--vir-red, var(--vir-red, #E61E29))" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Regatas no oficiales</p>
+            <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>Regatas lúdicas del club, fuera del calendario FCR</p>
+          </div>
+          <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
+        </div>
+
+        <div className="vir-btn" onClick={onOpenExtraEvents} style={{ background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: "1px solid var(--vir-border, var(--vir-border, #565656))", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <StickyNote size={20} color="var(--vir-red, var(--vir-red, #E61E29))" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Eventos extraordinarios</p>
+            <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>Eventos internos, para todo el club o un equipo</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
         </div>
@@ -4450,6 +4654,183 @@ function RegattasScreen({ categories, editable, onBack, onOpenRace, onAddCategor
 
               <button className="vir-btn" onClick={() => { onAddRace(activeCat.id, newDate, newTitle, newSubcat); setNewDate(""); setNewTitle(""); setNewSubcat(""); }} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13 }}>Añadir día</button>
             </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// Lista de eventos del club — sirve tanto para "Regatas no oficiales" (visibility="publica",
+// solo las crea el club) como para "Eventos extraordinarios" (visibility="club", los crea el
+// club o los entrenadores, y se pueden dirigir a todo el club o a un equipo concreto)
+function ClubEventsScreen({ mode, events, canCreate, canManage, teams, teamName, currentClubId, myTeamId, role, onBack, onOpenEvent, onAddEvent }) {
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState("");
+  const [eventDate, setEventDate] = useState("");
+  const [location, setLocation] = useState("");
+  const [targetTeamId, setTargetTeamId] = useState("");
+
+  const isExtra = mode === "club";
+  const heading = isExtra ? "Eventos extraordinarios" : "Regatas no oficiales";
+  const sub = isExtra
+    ? "Eventos internos del club — solo los ven sus propios usuarios"
+    : "Regatas lúdicas fuera del calendario oficial FCR — las ve cualquier usuario";
+
+  const visible = events
+    .filter(e => e.visibility === mode)
+    .filter(e => mode === "publica" || e.clubId === currentClubId || !e.targetTeamId || e.targetTeamId === myTeamId);
+  const sorted = [...visible].sort((a, b) => (a.eventDate || "9999-99-99").localeCompare(b.eventDate || "9999-99-99"));
+  const todayIso = toLocalISODate(new Date());
+
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>{heading}</h2>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>{sub}</p>
+
+      {sorted.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13, marginBottom: 14 }}>Todavía no hay ningún evento.</p>}
+
+      {sorted.map(e => {
+        const isPast = e.eventDate && e.eventDate < todayIso;
+        const mine = e.clubId === currentClubId;
+        return (
+          <div key={e.id} className="vir-btn" onClick={() => onOpenEvent(e.id)} style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)",
+            borderRadius: 12, padding: "12px 14px", marginBottom: 10, opacity: isPast ? 0.55 : 1,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 56, textAlign: "center" }}>
+                {e.eventDate ? (
+                  <>
+                    <p className="vir-mono" style={{ color: "var(--vir-red, #E61E29)", fontSize: 15, fontWeight: 700, margin: 0, lineHeight: 1.1 }}>{e.eventDate.slice(8, 10)}</p>
+                    <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 9.5, margin: 0, textTransform: "uppercase" }}>{MONTHS_ES[parseInt(e.eventDate.slice(5, 7), 10) - 1]?.slice(0, 3)}</p>
+                  </>
+                ) : <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: 0 }}>Sin fecha</p>}
+              </div>
+              <div>
+                <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{e.title || "Sin título"}</p>
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, margin: "3px 0 0" }}>
+                  {e.location}
+                  {isExtra && e.targetTeamId && ` · ${teamName(e.targetTeamId)}`}
+                  {isExtra && !e.targetTeamId && " · Todo el club"}
+                  {e.docs.length > 0 && ` · 📎 ${e.docs.length}`}
+                </p>
+              </div>
+            </div>
+            <ChevronRight size={16} color="var(--vir-text-muted, #8A8A8A)" />
+          </div>
+        );
+      })}
+
+      {canCreate && (
+        adding ? (
+          <div style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, marginTop: 6 }}>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Nuevo evento</p>
+
+            <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Título</label>
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Ej. Diada del club" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }} />
+
+            <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Fecha</label>
+            <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }} />
+
+            <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Lugar</label>
+            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Ej. Platja de Lloret" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }} />
+
+            {isExtra && (
+              <>
+                <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Dirigido a</label>
+                <select value={targetTeamId} onChange={e => setTargetTeamId(e.target.value)} style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 14 }}>
+                  <option value="">Todo el club</option>
+                  {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </>
+            )}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                className="vir-btn"
+                disabled={!title.trim()}
+                onClick={() => { onAddEvent(mode, title, eventDate, location, targetTeamId); setTitle(""); setEventDate(""); setLocation(""); setTargetTeamId(""); setAdding(false); }}
+                style={{ ...primaryBtn, width: "auto", flex: 1, padding: "11px 0", fontSize: 13, opacity: title.trim() ? 1 : 0.4 }}
+              >Crear</button>
+              <button className="vir-btn" onClick={() => setAdding(false)} style={{ ...ghostBtn, width: "auto", padding: "11px 16px", fontSize: 13 }}>Cancelar</button>
+            </div>
+          </div>
+        ) : (
+          <button className="vir-btn" onClick={() => setAdding(true)} style={{ ...primaryBtn, padding: "12px 0", fontSize: 13.5, marginTop: 6 }}>
+            + Nuevo evento
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
+function ClubEventDetailScreen({ event: e, editable, teams, teamName, onBack, onUpdate, onRemove, onAddDoc, onRemoveDoc }) {
+  const [title, setTitle] = useState(e.title);
+  const [eventDate, setEventDate] = useState(e.eventDate || "");
+  const [location, setLocation] = useState(e.location);
+  const [notes, setNotes] = useState(e.notes);
+  const [pendingDoc, setPendingDoc] = useState(null);
+  const [pendingKind, setPendingKind] = useState(null);
+  const isExtra = e.visibility === "club";
+
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "10px 0 18px" }}>
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: 0 }}>{e.title || "Evento"}</h2>
+        {editable && (
+          <button className="vir-btn" onClick={() => { if (window.confirm("¿Eliminar este evento entero? Se perderán también sus documentos.")) { onRemove(e.id); onBack(); } }} style={{ background: "transparent", color: "var(--vir-error, #FF8890)", fontSize: 11, textDecoration: "underline" }}>Eliminar</button>
+        )}
+      </div>
+
+      <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Título</label>
+      <input value={title} onChange={e2 => setTitle(e2.target.value)} disabled={!editable} onBlur={() => title !== e.title && onUpdate(e.id, { title })} style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 14, opacity: editable ? 1 : 0.6 }} />
+
+      <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Fecha</label>
+      <input type="date" value={eventDate} onChange={e2 => { setEventDate(e2.target.value); onUpdate(e.id, { eventDate: e2.target.value }); }} disabled={!editable} style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 14, opacity: editable ? 1 : 0.6 }} />
+
+      <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Lugar</label>
+      <input value={location} onChange={e2 => setLocation(e2.target.value)} disabled={!editable} onBlur={() => location !== e.location && onUpdate(e.id, { location })} style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 14, opacity: editable ? 1 : 0.6 }} />
+
+      {isExtra && editable && (
+        <>
+          <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Dirigido a</label>
+          <select value={e.targetTeamId || ""} onChange={e2 => onUpdate(e.id, { targetTeamId: e2.target.value || null })} style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 14 }}>
+            <option value="">Todo el club</option>
+            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </>
+      )}
+      {isExtra && !editable && (
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12, marginBottom: 14 }}>Dirigido a: {e.targetTeamId ? teamName(e.targetTeamId) : "Todo el club"}</p>
+      )}
+
+      <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Información</label>
+      <textarea value={notes} onChange={e2 => setNotes(e2.target.value)} disabled={!editable} onBlur={() => notes !== e.notes && onUpdate(e.id, { notes })} rows={4} placeholder="Horarios, inscripción, punto de encuentro..." style={{ ...inputStyle, padding: "11px", fontSize: 14, width: "100%", marginBottom: 18, resize: "vertical", opacity: editable ? 1 : 0.6 }} />
+
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Documentos</p>
+      {e.docs.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, marginBottom: 10 }}>Sin documentos todavía.</p>}
+      {e.docs.map(d => (
+        <div key={d.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>
+          <span className="vir-btn" onClick={() => openFileReliably(d.dataUrl)} style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12.5, cursor: "pointer" }}>📎 {d.name}</span>
+          {editable && (
+            <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar "${d.name}"?`)) onRemoveDoc(e.id, d.id); }} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", padding: 4 }}>
+              <X size={15} />
+            </button>
+          )}
+        </div>
+      ))}
+      {editable && (
+        <>
+          <PhotoField photo={pendingDoc} onChange={(dataUrl, kind) => { setPendingDoc(dataUrl); setPendingKind(kind); }} jpgOnly allowPdf />
+          {pendingDoc && (
+            <button className="vir-btn" onClick={() => { onAddDoc(e.id, { label: "Documento", name: `documento-${e.docs.length + 1}`, fileType: pendingKind, dataUrl: pendingDoc }); setPendingDoc(null); setPendingKind(null); }} style={{ ...primaryBtn, padding: "10px 0", fontSize: 13, marginTop: 10 }}>
+              Subir documento
+            </button>
           )}
         </>
       )}
@@ -7411,6 +7792,9 @@ function ProfileScreen({ role, scope, attendance, crewStats, teams, teamName, te
           </p>
         </>
       ) : null}
+      {role !== "rower" && myRowerCode && myRowerCode !== "—" && (
+        <InfoRow icon={<KeyRound size={15} />} label="Código de usuario" value={myRowerCode} mono />
+      )}
       <InfoRow icon={<Anchor size={15} />} label="Rol" value={roleLabel} />
     </div>
   );
