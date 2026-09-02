@@ -280,6 +280,10 @@ const mapNotificationRow = (n) => ({
   read: !!n.read, readByCoach: !!n.read_by_coach,
   hiddenForRower: !!n.hidden_for_rower, hiddenForCoach: !!n.hidden_for_coach,
 });
+const mapCrewRequestRow = (r) => ({
+  id: r.id, sessionId: r.session_id, teamId: r.requesting_team_id, coachId: r.requesting_coach_id,
+  rowerId: r.rower_id, roleRequested: r.role_requested, status: r.status, createdAt: r.created_at,
+});
 const mapCrewRow = (c) => ({
   id: c.id, sessionId: c.session_id, boat: c.boat, layout: c.layout || "llagut8", oars: c.oars, status: c.status,
   seats: (c.seats && c.seats.length >= 8) ? [...c.seats, ...Array(Math.max(0, 9 - c.seats.length)).fill(null)] : Array(9).fill(null),
@@ -373,6 +377,7 @@ export default function ViradaPrototype() {
   const [assignedUsers, setAssignedUsers] = useState(DEMO_USERS); // incluyen clubId
   const [lastRegistered, setLastRegistered] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [crewRequests, setCrewRequests] = useState([]); // solicitudes de remero/patrón entre tripulaciones
   const [toast, setToast] = useState(null);
 
   // Cada club es totalmente independiente: solo ve y gestiona sus propias tripulaciones y usuarios
@@ -513,6 +518,10 @@ export default function ViradaPrototype() {
         });
         setSessionAlerts(bySession);
       }
+      const { data: crewReqData } = await supabase.from("crew_requests").select("*").order("created_at", { ascending: false });
+      if (crewReqData) {
+        setCrewRequests(crewReqData.map(mapCrewRequestRow));
+      }
   };
 
   // Todo lo que no hace falta para el primer vistazo — se carga justo después, sin bloquear
@@ -637,6 +646,17 @@ export default function ViradaPrototype() {
             ? list.map(x => x.id === a.id ? { id: a.id, rowerId: a.rower_id, text: a.text, resolved: a.resolved } : x)
             : [...list, { id: a.id, rowerId: a.rower_id, text: a.text, resolved: a.resolved }];
           return { ...prev, [a.session_id]: nextList };
+        });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "crew_requests" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          setCrewRequests(prev => prev.filter(r => r.id !== payload.old.id));
+          return;
+        }
+        const mapped = mapCrewRequestRow(payload.new);
+        setCrewRequests(prev => {
+          const exists = prev.some(r => r.id === mapped.id);
+          return exists ? prev.map(r => r.id === mapped.id ? mapped : r) : [mapped, ...prev];
         });
       })
       .subscribe();
@@ -1768,6 +1788,59 @@ export default function ViradaPrototype() {
     if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
   };
 
+  // Busca un remero activo del mismo club por su código de remero (el que se ve en su Perfil)
+  const findRowerByCode = (code) => {
+    const clean = (code || "").trim().toUpperCase();
+    if (!clean) return null;
+    return clubAssignedUsers.find(u => roleOf(u.id) === "rower" && rowerCodeOf(u.id).toUpperCase() === clean) || null;
+  };
+
+  // El entrenador pide a un remero de otra tripulación (mismo club) que venga a remar un día concreto
+  const sendCrewRequest = async (sessionId, teamId, rowerId, roleRequested) => {
+    const already = crewRequests.find(r => r.sessionId === sessionId && r.rowerId === rowerId && r.status !== "declined");
+    if (already) { flash("Ya le has mandado (o aceptado) una solicitud a ese remero para este día."); return; }
+    const { data, error } = await supabase.from("crew_requests").insert({
+      session_id: sessionId, requesting_team_id: teamId, requesting_coach_id: currentUserId,
+      rower_id: rowerId, role_requested: roleRequested || "remero",
+    }).select().single();
+    if (error) { flash("No se pudo enviar la solicitud. Inténtalo de nuevo."); return; }
+    setCrewRequests(prev => [mapCrewRequestRow(data), ...prev]);
+    const session = sessions.find(s => s.id === sessionId);
+    const dayLabel = session ? `${session.date.getDate()} de ${MONTHS_ES[session.date.getMonth()]}` : "";
+    const teamLbl = teamName(teamId);
+    await supabase.from("notifications").insert({
+      rower_id: rowerId, session_id: sessionId,
+      text: `${nameOf(currentUserId)} te ha pedido para remar con ${teamLbl} el ${dayLabel}. Responde desde tus solicitudes.`,
+    });
+    sendPushToRower(rowerId, "VIRADA", `${teamLbl} te ha pedido para remar el ${dayLabel}`);
+    flash("Solicitud enviada");
+  };
+
+  // El remero acepta o rechaza; si acepta, queda apuntado a ese día como cualquier otro remero de esa tripulación
+  const respondCrewRequest = async (requestId, accept) => {
+    const req = crewRequests.find(r => r.id === requestId);
+    if (!req) return;
+    const { error } = await supabase.from("crew_requests").update({
+      status: accept ? "accepted" : "declined", responded_at: new Date().toISOString(),
+    }).eq("id", requestId);
+    if (error) { flash("No se pudo responder. Inténtalo de nuevo."); return; }
+    setCrewRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: accept ? "accepted" : "declined" } : r));
+    if (accept) {
+      const session = sessions.find(s => s.id === req.sessionId);
+      if (session && !session.signups.has(req.rowerId)) {
+        const { error: sErr } = await supabase.from("water_sessions")
+          .update({ signups: [...session.signups, req.rowerId] })
+          .eq("id", req.sessionId);
+        if (!sErr) {
+          setSessions(prev => prev.map(s => s.id === req.sessionId ? { ...s, signups: new Set([...s.signups, req.rowerId]) } : s));
+        }
+      }
+      flash("Solicitud aceptada — ya estás apuntado a ese entreno");
+    } else {
+      flash("Solicitud rechazada");
+    }
+  };
+
   const waterStatsFor = (rowerId, teamId) => {
     const teamPast = sessions.filter(s => s.teamId === teamId && s.active && hasPassed(s, today));
     const weekPast = teamPast.filter(s => weekOfDate(s.date) === currentWeek);
@@ -2257,10 +2330,35 @@ export default function ViradaPrototype() {
                   myName={displayNameOf(currentUserId)}
                   myTeam={teamOf(currentUserId)}
                   alertsFor={alertsFor}
+                  myCrewRequests={crewRequests
+                    .filter(r => r.rowerId === currentUserId && (r.status === "pending" || (r.status === "accepted" && sessions.find(s => s.id === r.sessionId)?.date >= today)))
+                    .map(r => {
+                      const s = sessions.find(x => x.id === r.sessionId);
+                      return { ...r, sessionDate: s ? `${s.date.getDate()} de ${MONTHS_ES[s.date.getMonth()]}` : "" };
+                    })}
+                  onRespondCrewRequest={respondCrewRequest}
                 />
               )}
               {screen === "home" && effectiveRole === "coach" && (
-                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} onOpenMeasurements={() => setScreen("medidasCoach")} onOpenFleet={() => setScreen("botesCoach")} onOpenReminders={() => setScreen("remindersCoach")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} alertsFor={alertsFor} />
+                <CoachHome sessions={coachWeekAhead} onOpen={(s) => { setOpenSession(s); setSelectedRowerChip(null); setScreen("sessionCoach"); }} scope={coachScope} setScope={setCoachScope} teams={clubTeams} onPlanCalendar={() => setScreen("coachPlan")} onGymPlan={() => setScreen("coachGymPlan")} onTeamStats={() => setScreen("coachTeamStats")} onOpenRegattas={() => setScreen("regattas")} onOpenInformes={() => setScreen("informes")} onOpenMeasurements={() => setScreen("medidasCoach")} onOpenFleet={() => setScreen("botesCoach")} onOpenReminders={() => setScreen("remindersCoach")} onOpenCrewRequest={() => setScreen("crewRequest")} coachName={displayNameOf(currentUserId)} teamName={teamName} showTeamLabel={coachScope === "club"} alertsFor={alertsFor} />
+              )}
+              {screen === "crewRequest" && (role === "coach" || role === "admin") && (
+                <CrewRequestScreen
+                  onBack={() => setScreen("home")}
+                  scope={coachScope}
+                  teams={clubTeams}
+                  setScope={setCoachScope}
+                  sessions={sessions}
+                  today={today}
+                  teamName={teamName}
+                  myRequests={crewRequests.filter(r => r.coachId === currentUserId)}
+                  onSend={async (sessionId, teamId, code, roleRequested) => {
+                    const rower = findRowerByCode(code);
+                    if (!rower) { flash("No se ha encontrado ningún remero de tu club con ese código."); return; }
+                    if (rower.id === currentUserId) { flash("No puedes pedirte a ti mismo."); return; }
+                    await sendCrewRequest(sessionId, teamId, rower.id, roleRequested);
+                  }}
+                />
               )}
               {screen === "coachPlan" && (role === "coach" || role === "admin") && (
                 <CoachPlanScreen
@@ -2555,6 +2653,7 @@ export default function ViradaPrototype() {
                   teamOf={teamOf}
                   roleOf={roleOf}
                   managedTeamsOf={managedTeamsOf}
+                  guestIds={new Set(crewRequests.filter(r => r.sessionId === openSession?.id && r.status === "accepted").map(r => r.rowerId))}
                   nameOf={nameOf}
                   nicknameOf={nicknameOf}
                   sideOf={sideOf}
@@ -3184,7 +3283,7 @@ function Badge({ text, tone, onClick }) {
   );
 }
 
-function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendance, crewStats, pesosExercises, ergoTest, onNavigate, myId, myName, myTeam, alertsFor }) {
+function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendance, crewStats, pesosExercises, ergoTest, onNavigate, myId, myName, myTeam, alertsFor, myCrewRequests, onRespondCrewRequest }) {
   const registeredExercises = pesosExercises.filter(ex => ex.baseKg).length;
   const pct = attendance.year.total > 0 ? Math.round((attendance.year.attended / attendance.year.total) * 100) : 0;
 
@@ -3227,6 +3326,27 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
 
   return (
     <div style={{ paddingBottom: 20 }}>
+      {myCrewRequests && myCrewRequests.length > 0 && (
+        <div style={{ padding: "12px 16px 0" }}>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Solicitudes de otras tripulaciones</p>
+          {myCrewRequests.map(r => (
+            <div key={r.id} style={{ background: "var(--vir-bg-surface, #404040)", border: `1px solid ${r.status === "pending" ? "var(--vir-orange, #E67E22)" : "var(--vir-green, #3EA55A)"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+              <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13, margin: 0, lineHeight: 1.4 }}>
+                <strong>{teamName(r.teamId)}</strong> te pide para remar de <strong>{r.roleRequested === "patron" ? "patrón" : "remero"}</strong> el {r.sessionDate}
+              </p>
+              {r.status === "pending" ? (
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button className="vir-btn" onClick={() => onRespondCrewRequest(r.id, true)} style={{ ...primaryBtn, flex: 1, padding: "9px 0", fontSize: 12.5 }}>Aceptar</button>
+                  <button className="vir-btn" onClick={() => onRespondCrewRequest(r.id, false)} style={{ ...ghostBtn, flex: 1, padding: "9px 0", fontSize: 12.5 }}>Rechazar</button>
+                </div>
+              ) : (
+                <p style={{ color: "var(--vir-green, #3EA55A)", fontSize: 11.5, fontWeight: 600, margin: "8px 0 0" }}>✓ Aceptada — ya estás apuntado a ese entreno</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <SectionTitle sub={`Hola, ${myName} · ${CLUB_NAME} · ${teamName(myTeam)}`}>Tu evolución</SectionTitle>
 
       <div style={{ padding: "0 16px 6px" }}>
@@ -3293,7 +3413,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
   );
 }
 
-function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenInformes, onOpenMeasurements, onOpenFleet, onOpenReminders, coachName, teamName, showTeamLabel, alertsFor }) {
+function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, onTeamStats, onGymPlan, onOpenRegattas, onOpenInformes, onOpenMeasurements, onOpenFleet, onOpenReminders, onOpenCrewRequest, coachName, teamName, showTeamLabel, alertsFor }) {
   return (
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={`Hola, ${coachName} · ${CLUB_NAME}`}>Planificación de botes</SectionTitle>
@@ -3352,6 +3472,14 @@ function CoachHome({ sessions, onOpen, scope, setScope, teams, onPlanCalendar, o
           <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Botes</p>
             <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>Crea o elimina la flota de esta tripulación</p>
+          </div>
+          <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
+        </div>
+        <div className="vir-btn" onClick={onOpenCrewRequest} style={{ background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: "1px solid var(--vir-border, var(--vir-border, #565656))", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <Search size={20} color="var(--vir-red, var(--vir-red, #E61E29))" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Solicita un remero o patrón</p>
+            <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>Pide a alguien de otra tripulación para un día concreto</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
         </div>
@@ -3539,6 +3667,105 @@ function TeamGymControlBlock({ team, members, gymWeekMetaFor, gymRecordFor, onTo
             </span>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Pantalla del entrenador para pedir prestado a un remero de otra tripulación del mismo club,
+// para un día concreto (patrón o remero)
+function CrewRequestScreen({ onBack, scope, teams, setScope, sessions, today, onSend, myRequests, teamName }) {
+  const [sessionId, setSessionId] = useState(null);
+  const [code, setCode] = useState("");
+  const [roleRequested, setRoleRequested] = useState("remero");
+
+  if (scope === "club") {
+    return (
+      <div style={{ padding: "16px 20px 28px" }}>
+        <BackRow onBack={onBack} />
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Solicita un remero o patrón</h2>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Elige para qué tripulación necesitas pedir a alguien.</p>
+        {teams.map(t => (
+          <div key={t.id} className="vir-btn" onClick={() => setScope(t.id)} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.name}</p>
+            <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const upcoming = sessions.filter(s => s.teamId === scope && s.active && s.date >= today).sort((a, b) => a.date - b.date).slice(0, 20);
+  const session = sessionId ? sessions.find(s => s.id === sessionId) : null;
+  const mine = myRequests.filter(r => r.teamId === scope).slice(0, 15);
+
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Solicita un remero o patrón</h2>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>
+        Para: <span style={{ color: "var(--vir-red, #E61E29)", fontWeight: 600 }}>{teamName(scope)}</span> · pide a alguien de otra tripulación del club que venga a remar un día concreto
+      </p>
+
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>1. Elige el día</p>
+      <select value={sessionId || ""} onChange={e => setSessionId(e.target.value || null)} style={{ ...inputStyle, padding: "10px 11px", fontSize: 13, marginBottom: 18 }}>
+        <option value="">Selecciona un entreno de agua</option>
+        {upcoming.map(s => (
+          <option key={s.id} value={s.id}>{s.date.getDate()} de {MONTHS_ES[s.date.getMonth()]} ({DAYS_ES[s.dow]}){s.time ? ` · ${s.time}` : ""}</option>
+        ))}
+      </select>
+
+      {session && (
+        <>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>2. Código de remero</p>
+          <input
+            value={code}
+            onChange={e => setCode(e.target.value)}
+            placeholder="Ej. 26ABC0007"
+            style={{ ...inputStyle, padding: "10px 11px", fontSize: 13, marginBottom: 6 }}
+          />
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "0 0 18px", lineHeight: 1.4 }}>Lo encuentra en su Perfil, "Código de remero". Tiene que ser de tu mismo club.</p>
+
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>3. ¿Para qué puesto?</p>
+          <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+            {[{ id: "remero", label: "Remero" }, { id: "patron", label: "Patrón" }].map(opt => (
+              <button key={opt.id} className="vir-btn" onClick={() => setRoleRequested(opt.id)} style={{
+                flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 12.5, fontWeight: roleRequested === opt.id ? 700 : 500,
+                background: roleRequested === opt.id ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+                border: `1px solid ${roleRequested === opt.id ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                color: roleRequested === opt.id ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+              }}>{opt.label}</button>
+            ))}
+          </div>
+
+          <button
+            className="vir-btn"
+            disabled={!code.trim()}
+            onClick={() => { onSend(sessionId, scope, code, roleRequested); setCode(""); }}
+            style={{ ...primaryBtn, padding: "12px 0", fontSize: 13.5, opacity: code.trim() ? 1 : 0.4, marginBottom: 24 }}
+          >
+            Enviar solicitud
+          </button>
+        </>
+      )}
+
+      {mine.length > 0 && (
+        <>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "10px 0 8px" }}>Solicitudes de esta tripulación</p>
+          {mine.map(r => {
+            const s = sessions.find(x => x.id === r.sessionId);
+            const statusLabel = { pending: "Pendiente de respuesta", accepted: "Aceptada", declined: "Rechazada" }[r.status];
+            const statusColor = { pending: "var(--vir-orange, #E67E22)", accepted: "var(--vir-green, #3EA55A)", declined: "var(--vir-error, #FF8890)" }[r.status];
+            return (
+              <div key={r.id} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>
+                <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, margin: 0 }}>
+                  {s ? `${s.date.getDate()} de ${MONTHS_ES[s.date.getMonth()]}` : "—"} · {r.roleRequested === "patron" ? "Patrón" : "Remero"}
+                </p>
+                <p style={{ color: statusColor, fontSize: 11, fontWeight: 600, margin: "4px 0 0" }}>{statusLabel}</p>
+              </div>
+            );
+          })}
+        </>
       )}
     </div>
   );
@@ -6399,7 +6626,7 @@ function SessionRowerScreen({ session, onBack, onToggle, onSendAlert, myAlerts, 
   );
 }
 
-function CrewCard({ session, crew, teamOf, roleOf, managedTeamsOf, nameOf, nicknameOf, sideOf, photoOf, waterStatsFor, gymStatsFor, editable, myId, selected, setSelected, onAssign, onClear, onClose, onReopen, onRemoveCrew, onSetBoat, onSetOars, overlapFor, fleetBoats, boatMeasurements }) {
+function CrewCard({ session, crew, teamOf, roleOf, managedTeamsOf, guestIds, nameOf, nicknameOf, sideOf, photoOf, waterStatsFor, gymStatsFor, editable, myId, selected, setSelected, onAssign, onClear, onClose, onReopen, onRemoveCrew, onSetBoat, onSetOars, overlapFor, fleetBoats, boatMeasurements }) {
   const [preEditRoster, setPreEditRoster] = useState(null);
   const handleReopen = () => {
     setPreEditRoster({ seats: [...crew.seats], patron: crew.patron, reserves: [...crew.reserves], zodiac: [...crew.zodiac] });
@@ -6409,7 +6636,7 @@ function CrewCard({ session, crew, teamOf, roleOf, managedTeamsOf, nameOf, nickn
     onClose(session, crew, preEditRoster);
     setPreEditRoster(null);
   };
-  const inScope = (id) => teamOf(id) === session.teamId || (roleOf(id) === "coach" && managedTeamsOf(id).includes(session.teamId));
+  const inScope = (id) => teamOf(id) === session.teamId || (roleOf(id) === "coach" && managedTeamsOf(id).includes(session.teamId)) || (guestIds && guestIds.has(id));
   const available = [...session.signups].filter(id => !allCrewedIds(session).includes(id) && (inScope(id) || id === myId));
   const filled = seatFill(crew);
   const canEdit = editable && crew.status === "abierto";
@@ -6505,7 +6732,7 @@ function CrewCard({ session, crew, teamOf, roleOf, managedTeamsOf, nameOf, nickn
   );
 }
 
-function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, onAddCrew, onRemoveCrew, onSetCrewBoat, onSetCrewOars, teamName, teamOf, roleOf, managedTeamsOf, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert, myId, onToggleSignup, photoOf, overlapFor, fleetBoats, boatMeasurements }) {
+function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, onClear, onClose, onReopen, onAddCrew, onRemoveCrew, onSetCrewBoat, onSetCrewOars, teamName, teamOf, roleOf, managedTeamsOf, guestIds, nameOf, nicknameOf, sideOf, waterStatsFor, gymStatsFor, onUpdateSession, editable, alerts, onResolveAlert, myId, onToggleSignup, photoOf, overlapFor, fleetBoats, boatMeasurements }) {
   const [newBoatName, setNewBoatName] = useState("");
   const availableBoats = fleetBoats.filter(b => !session.crews.some(c => c.boat === b.name));
 
@@ -6574,7 +6801,7 @@ function SessionCoachScreen({ session, onBack, selected, setSelected, onAssign, 
           <CrewCard
             key={crew.id}
             session={session} crew={crew}
-            teamOf={teamOf} roleOf={roleOf} managedTeamsOf={managedTeamsOf} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} photoOf={photoOf}
+            teamOf={teamOf} roleOf={roleOf} managedTeamsOf={managedTeamsOf} guestIds={guestIds} nameOf={nameOf} nicknameOf={nicknameOf} sideOf={sideOf} photoOf={photoOf}
             waterStatsFor={waterStatsFor} gymStatsFor={gymStatsFor} editable={editable} myId={myId}
             selected={selected} setSelected={setSelected}
             onAssign={onAssign} onClear={onClear} onClose={onClose} onReopen={onReopen} onRemoveCrew={onRemoveCrew}
