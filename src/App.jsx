@@ -470,7 +470,7 @@ export default function ViradaPrototype() {
         const activeUsers = usersData.filter(u => u.status === "active").map(u => ({
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
           firstName: u.first_name || "", lastName: u.last_name || "", birthDate: u.birth_date || "", phone: u.phone || "",
-          authUserId: u.auth_user_id,
+          authUserId: u.auth_user_id, rowerCode: u.rower_code || null,
         }));
         const pendingList = usersData.filter(u => u.status === "pending").map(u => ({
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
@@ -691,7 +691,7 @@ export default function ViradaPrototype() {
         const entry = {
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
           firstName: u.first_name || "", lastName: u.last_name || "", birthDate: u.birth_date || "", phone: u.phone || "",
-          authUserId: u.auth_user_id,
+          authUserId: u.auth_user_id, rowerCode: u.rower_code || null,
         };
         if (u.status === "active") {
           setAssignedUsers(prev => {
@@ -793,11 +793,8 @@ export default function ViradaPrototype() {
   const nameOf = displayNameOf;
   const rowerCodeOf = (id) => {
     if (ROWER_CODE[id]) return ROWER_CODE[id];
-    const idx = clubAssignedUsers.filter(u => roleOf(u.id) === "rower").findIndex(u => u.id === id);
-    if (idx === -1 || !clubCode) return "—";
-    const joinYear = "26"; // año de alta al club, prototipo
-    const seq = ROWERS.length + idx + 1;
-    return `${joinYear}${clubCode}${String(seq).padStart(4, "0")}`;
+    const u = assignedUsers.find(u => u.id === id);
+    return (u && u.rowerCode) || "—";
   };
   const updateMyProfile = async ({ apodo, side, email, newPassword, firstName, lastName, birthDate, phone }) => {
     const updates = { nickname: capitalizeFirst((apodo || "").trim()), side };
@@ -887,10 +884,21 @@ export default function ViradaPrototype() {
     flash("Perfil del club actualizado");
   };
   const assignTeam = async (id, teamId) => {
-    const { data, error } = await supabase.from("users").update({ team_id: teamId }).eq("id", id).select();
+    const updates = { team_id: teamId };
+    const person = assignedUsers.find(u => u.id === id);
+    let newRowerCode = null;
+    // Si a esta persona no le habíamos guardado nunca un código de remero (por ejemplo, un
+    // entrenador al que ahora se le asigna dónde rema), se genera aquí, la primera vez
+    if (teamId && person && !person.rowerCode) {
+      const clubRowerCount = assignedUsers.filter(u => u.clubId === person.clubId && u.rowerCode).length;
+      newRowerCode = `26${clubCode || ""}${String(clubRowerCount + 1).padStart(4, "0")}`;
+      updates.rower_code = newRowerCode;
+    }
+    const { data, error } = await supabase.from("users").update(updates).eq("id", id).select();
     if (error) { flash("No se pudo guardar la tripulación. Inténtalo de nuevo."); return; }
     if (!data || data.length === 0) { flash("No se pudo guardar: no tienes permiso sobre este usuario."); return; }
     setTeamOverrides(prev => ({ ...prev, [id]: teamId }));
+    if (newRowerCode) setAssignedUsers(prev => prev.map(u => u.id === id ? { ...u, rowerCode: newRowerCode } : u));
     flash(`${displayNameOf(id)} asignado a ${teamName(teamId)}`);
   };
   const setPersonRole = async (id, role) => {
@@ -1002,11 +1010,18 @@ export default function ViradaPrototype() {
     if (!p) return;
     const updates = { status: "active", role, activated_at: new Date().toISOString() };
     if (role === "rower" && teamId) updates.team_id = teamId;
+    let newRowerCode = null;
+    if (role === "rower") {
+      // Genera un código de remero estable, único dentro del club — se guarda para siempre, no se recalcula
+      const clubRowerCount = assignedUsers.filter(u => u.clubId === p.clubId && u.rowerCode).length;
+      newRowerCode = `26${clubCode || ""}${String(clubRowerCount + 1).padStart(4, "0")}`;
+      updates.rower_code = newRowerCode;
+    }
     const { data, error } = await supabase.from("users").update(updates).eq("id", id).select();
     if (error) { flash("No se pudo asignar el rol. Inténtalo de nuevo."); return; }
     if (!data || data.length === 0) { flash("No se pudo asignar el rol: no tienes permiso sobre este usuario."); return; }
     setPendingUsers(prev => prev.filter(u => u.id !== id));
-    setAssignedUsers(prev => [...prev, p]);
+    setAssignedUsers(prev => [...prev, { ...p, rowerCode: newRowerCode }]);
     setRoleOverrides(prev => ({ ...prev, [id]: role }));
     if (role === "rower" && teamId) setTeamOverrides(prev => ({ ...prev, [id]: teamId }));
     flash(`${p.apodo || p.username} asignado como ${role === "coach" ? "Entrenador" : "Remero"}`);
