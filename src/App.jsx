@@ -2346,7 +2346,7 @@ export default function ViradaPrototype() {
                   myTeam={teamOf(currentUserId)}
                   alertsFor={alertsFor}
                   myCrewRequests={crewRequests
-                    .filter(r => r.rowerId === currentUserId && (r.status === "pending" || (r.status === "accepted" && sessions.find(s => s.id === r.sessionId)?.date >= today)))
+                    .filter(r => r.rowerId === currentUserId && (r.status === "pending" || r.status === "accepted") && sessions.find(s => s.id === r.sessionId)?.date >= today)
                     .map(r => {
                       const s = sessions.find(x => x.id === r.sessionId);
                       return { ...r, sessionDate: s ? `${s.date.getDate()} de ${MONTHS_ES[s.date.getMonth()]}` : "" };
@@ -3343,7 +3343,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
     <div style={{ paddingBottom: 20 }}>
       {myCrewRequests && myCrewRequests.length > 0 && (
         <div style={{ padding: "12px 16px 0" }}>
-          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Solicitudes de otras tripulaciones</p>
+          <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13, fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase", margin: "0 0 8px" }}>Solicitudes</p>
           {myCrewRequests.map(r => (
             <div key={r.id} style={{ background: "var(--vir-bg-surface, #404040)", border: `1px solid ${r.status === "pending" ? "var(--vir-orange, #E67E22)" : "var(--vir-green, #3EA55A)"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
               <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13, margin: 0, lineHeight: 1.4 }}>
