@@ -360,6 +360,7 @@ export default function ViradaPrototype() {
   const [viewPhoto, setViewPhoto] = useState(null); // { photo, caption }
   const [openRace, setOpenRace] = useState(null); // { catId, raceId }
   const [openClubEventId, setOpenClubEventId] = useState(null); // id del evento (no oficial o extraordinario) abierto
+  const [openFeePlanId, setOpenFeePlanId] = useState(null); // id de la cuota abierta
   const [selectedRowerChip, setSelectedRowerChip] = useState(null);
   const [coachScope, setCoachScope] = useState("club");
   const [teams, setTeams] = useState([]); // { id, clubId, name, code }
@@ -371,8 +372,9 @@ export default function ViradaPrototype() {
   const [clubs, setClubs] = useState([DEMO_CLUB]); // { id, name, code, username, password, createdAt }
   const [currentClubId, setCurrentClubId] = useState(null);
   const [raceCategories, setRaceCategories] = useState([]); // se carga desde Supabase
-  const [clubEvents, setClubEvents] = useState([]); // regatas no oficiales y eventos extraordinarios del club
   const [clubEvents, setClubEvents] = useState([]); // regatas no oficiales y eventos extraordinarios, de cualquier club
+  const [feePlans, setFeePlans] = useState([]); // cuotas definidas por el club
+  const [feeCharges, setFeeCharges] = useState([]); // cargos concretos, periodo a periodo
   const [passwords, setPasswords] = useState(DEMO_PASSWORDS);
   const [recoveryEmails, setRecoveryEmails] = useState({});
   const [loginError, setLoginError] = useState(null);
@@ -421,19 +423,6 @@ export default function ViradaPrototype() {
   };
   const refetchClubEvents = async () => {
     const { data: eventsData } = await supabase.from("club_events").select("*").order("event_date", { ascending: true });
-    const { data: eventDocsData } = await supabase.from("club_event_documents").select("*");
-    if (eventsData) {
-      setClubEvents(eventsData.map(e => ({
-        id: e.id, clubId: e.club_id, visibility: e.visibility, title: e.title || "",
-        eventDate: e.event_date, location: e.location || "", notes: e.notes || "",
-        docs: (eventDocsData || []).filter(d => d.event_id === e.id).map(d => ({
-          id: d.id, label: d.title, name: d.file_name, fileType: d.file_type, dataUrl: d.file_url,
-        })),
-      })));
-    }
-  };
-  const refetchClubEvents = async () => {
-    const { data: eventsData } = await supabase.from("club_events").select("*").order("event_date", { ascending: true });
     const { data: docsData } = await supabase.from("club_event_documents").select("*");
     if (eventsData) {
       setClubEvents(eventsData.map(e => ({
@@ -442,6 +431,23 @@ export default function ViradaPrototype() {
         docs: (docsData || []).filter(d => d.event_id === e.id).map(d => ({
           id: d.id, label: d.title, name: d.file_name, fileType: d.file_type, dataUrl: d.file_url,
         })),
+      })));
+    }
+  };
+  const refetchFees = async () => {
+    const { data: plansData } = await supabase.from("fee_plans").select("*");
+    if (plansData) {
+      setFeePlans(plansData.map(p => ({
+        id: p.id, clubId: p.club_id, teamId: p.team_id, name: p.name, amount: parseFloat(p.amount),
+        frequency: p.frequency, active: p.active,
+      })));
+    }
+    const { data: chargesData } = await supabase.from("fee_charges").select("*").order("due_date", { ascending: false });
+    if (chargesData) {
+      setFeeCharges(chargesData.map(c => ({
+        id: c.id, feePlanId: c.fee_plan_id, rowerId: c.rower_id, periodLabel: c.period_label,
+        dueDate: c.due_date, amount: parseFloat(c.amount), status: c.status,
+        paidAt: c.paid_at, paidMethod: c.paid_method, notes: c.notes || "",
       })));
     }
   };
@@ -557,7 +563,7 @@ export default function ViradaPrototype() {
   const loadSecondaryData = async () => {
       await refetchRaces();
       await refetchClubEvents();
-      await refetchClubEvents();
+      await refetchFees();
       await refetchGymPlans();
       await refetchGymCompletions();
       const { data: pesosData } = await supabase.from("pesos_exercises").select("*");
@@ -2204,44 +2210,61 @@ export default function ViradaPrototype() {
     setClubEvents(prev => prev.map(e => e.id !== eventId ? e : { ...e, docs: e.docs.filter(d => d.id !== docId) }));
   };
 
-  // --- Eventos del club: regatas no oficiales (visibles a todo el mundo) y eventos extraordinarios
-  // (solo visibles a gente del propio club) — misma estructura por debajo, distinta visibilidad
-  const addClubEvent = async (visibility, title, eventDate, location) => {
-    const { data, error } = await supabase.from("club_events").insert({
-      club_id: currentClubId, visibility, title: (title || "").trim(), event_date: eventDate || null, location: (location || "").trim(),
+  // --- Cuotas del club ---
+  const addFeePlan = async (teamId, name, amount, frequency) => {
+    const { data, error } = await supabase.from("fee_plans").insert({
+      club_id: currentClubId, team_id: teamId || null, name: (name || "").trim(), amount: parseFloat(amount) || 0, frequency,
     }).select().single();
-    if (error) { flash("No se pudo crear el evento. Inténtalo de nuevo."); return; }
-    setClubEvents(prev => [...prev, { id: data.id, clubId: data.club_id, visibility: data.visibility, title: data.title || "", eventDate: data.event_date, location: data.location || "", notes: data.notes || "", docs: [] }]);
-    flash("Evento creado");
+    if (error) { flash("No se pudo crear la cuota. Inténtalo de nuevo."); return; }
+    setFeePlans(prev => [...prev, { id: data.id, clubId: data.club_id, teamId: data.team_id, name: data.name, amount: parseFloat(data.amount), frequency: data.frequency, active: data.active }]);
+    flash("Cuota creada");
   };
-  const removeClubEvent = async (id) => {
-    const { error } = await supabase.from("club_events").delete().eq("id", id);
-    if (error) { flash("No se pudo eliminar el evento. Inténtalo de nuevo."); return; }
-    setClubEvents(prev => prev.filter(e => e.id !== id));
-    flash("Evento eliminado");
+  const toggleFeePlanActive = async (planId, active) => {
+    const { error } = await supabase.from("fee_plans").update({ active }).eq("id", planId);
+    if (error) { flash("No se pudo actualizar. Inténtalo de nuevo."); return; }
+    setFeePlans(prev => prev.map(p => p.id === planId ? { ...p, active } : p));
   };
-  const updateClubEvent = async (id, updates) => {
-    const dbUpdates = {};
-    if ("title" in updates) dbUpdates.title = updates.title;
-    if ("eventDate" in updates) dbUpdates.event_date = updates.eventDate || null;
-    if ("location" in updates) dbUpdates.location = updates.location;
-    if ("notes" in updates) dbUpdates.notes = updates.notes;
-    const { error } = await supabase.from("club_events").update(dbUpdates).eq("id", id);
-    if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
-    setClubEvents(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+  const removeFeePlan = async (planId) => {
+    const { error } = await supabase.from("fee_plans").delete().eq("id", planId);
+    if (error) { flash("No se pudo eliminar — puede que ya tenga cargos generados. Desactívala en vez de eliminarla."); return; }
+    setFeePlans(prev => prev.filter(p => p.id !== planId));
+    flash("Cuota eliminada");
   };
-  const addClubEventDoc = async (eventId, doc) => {
-    const { data, error } = await supabase.from("club_event_documents").insert({
-      event_id: eventId, title: doc.label, file_name: doc.name, file_type: doc.fileType, file_url: doc.dataUrl,
-    }).select().single();
-    if (error) { flash("No se pudo subir el documento. Inténtalo de nuevo."); return; }
-    const newDoc = { id: data.id, label: data.title, name: data.file_name, fileType: data.file_type, dataUrl: data.file_url };
-    setClubEvents(prev => prev.map(e => e.id === eventId ? { ...e, docs: [...e.docs, newDoc] } : e));
+  // Genera un cargo pendiente para cada remero al que aplique el plan, para el periodo indicado —
+  // no duplica si ya se habían generado los cargos de ese mismo periodo
+  const generateFeeCharges = async (planId, periodLabel, dueDate) => {
+    const plan = feePlans.find(p => p.id === planId);
+    if (!plan || !periodLabel.trim()) return;
+    const targetRowers = assignedUsers.filter(u => roleOf(u.id) === "rower" && u.clubId === currentClubId && (!plan.teamId || teamOf(u.id) === plan.teamId));
+    const already = new Set(feeCharges.filter(c => c.feePlanId === planId && c.periodLabel === periodLabel).map(c => c.rowerId));
+    const toCreate = targetRowers.filter(u => !already.has(u.id));
+    if (toCreate.length === 0) { flash("Ya se habían generado los cargos de ese periodo (o no hay remeros a los que aplique)."); return; }
+    const rows = toCreate.map(u => ({
+      fee_plan_id: planId, rower_id: u.id, period_label: periodLabel.trim(), due_date: dueDate || null, amount: plan.amount, status: "pending",
+    }));
+    const { data, error } = await supabase.from("fee_charges").insert(rows).select();
+    if (error) { flash("No se pudieron generar los cargos. Inténtalo de nuevo."); return; }
+    setFeeCharges(prev => [...data.map(c => ({
+      id: c.id, feePlanId: c.fee_plan_id, rowerId: c.rower_id, periodLabel: c.period_label,
+      dueDate: c.due_date, amount: parseFloat(c.amount), status: c.status, paidAt: c.paid_at, paidMethod: c.paid_method, notes: c.notes || "",
+    })), ...prev]);
+    flash(`${data.length} cargo${data.length === 1 ? "" : "s"} generado${data.length === 1 ? "" : "s"} para "${periodLabel}"`);
   };
-  const removeClubEventDoc = async (eventId, docId) => {
-    const { error } = await supabase.from("club_event_documents").delete().eq("id", docId);
-    if (error) { flash("No se pudo eliminar el documento. Inténtalo de nuevo."); return; }
-    setClubEvents(prev => prev.map(e => e.id !== eventId ? e : { ...e, docs: e.docs.filter(d => d.id !== docId) }));
+  const markChargePaid = async (chargeId, method) => {
+    const paidAt = new Date().toISOString();
+    const { error } = await supabase.from("fee_charges").update({ status: "paid", paid_at: paidAt, paid_method: method }).eq("id", chargeId);
+    if (error) { flash("No se pudo marcar como pagado. Inténtalo de nuevo."); return; }
+    setFeeCharges(prev => prev.map(c => c.id === chargeId ? { ...c, status: "paid", paidAt, paidMethod: method } : c));
+  };
+  const markChargeUnpaid = async (chargeId) => {
+    const { error } = await supabase.from("fee_charges").update({ status: "pending", paid_at: null, paid_method: null }).eq("id", chargeId);
+    if (error) { flash("No se pudo actualizar. Inténtalo de nuevo."); return; }
+    setFeeCharges(prev => prev.map(c => c.id === chargeId ? { ...c, status: "pending", paidAt: null, paidMethod: null } : c));
+  };
+  const removeFeeCharge = async (chargeId) => {
+    const { error } = await supabase.from("fee_charges").delete().eq("id", chargeId);
+    if (error) { flash("No se pudo eliminar el cargo. Inténtalo de nuevo."); return; }
+    setFeeCharges(prev => prev.filter(c => c.id !== chargeId));
   };
 
   const recoverPassword = async (username) => {
@@ -2663,6 +2686,7 @@ export default function ViradaPrototype() {
                   onOpenRegattas={() => setScreen("regattas")}
                   onOpenClubEvents={() => setScreen("clubEvents")}
                   onOpenExtraEvents={() => setScreen("extraEvents")}
+                  onOpenFees={() => setScreen("clubFees")}
                   onOpenReminders={() => setScreen("remindersClub")}
                   clubDisplayName={clubDisplayName}
                   clubCode={clubCode}
@@ -2772,6 +2796,41 @@ export default function ViradaPrototype() {
                   />
                 );
               })()}
+              {screen === "clubFees" && (role === "club" || role === "admin") && (
+                <ClubFeesScreen
+                  plans={feePlans.filter(p => p.clubId === currentClubId)}
+                  teams={clubTeams}
+                  teamName={teamName}
+                  onBack={() => setScreen("home")}
+                  onOpenPlan={(id) => { setOpenFeePlanId(id); setScreen("feePlanDetail"); }}
+                  onAddPlan={addFeePlan}
+                />
+              )}
+              {screen === "feePlanDetail" && openFeePlanId && (() => {
+                const plan = feePlans.find(p => p.id === openFeePlanId);
+                if (!plan) return null;
+                return (
+                  <FeePlanDetailScreen
+                    plan={plan}
+                    charges={feeCharges.filter(c => c.feePlanId === plan.id)}
+                    nameOf={displayNameOf}
+                    teamName={teamName}
+                    onBack={() => setScreen("clubFees")}
+                    onToggleActive={toggleFeePlanActive}
+                    onRemovePlan={(id) => { removeFeePlan(id); setScreen("clubFees"); }}
+                    onGenerate={generateFeeCharges}
+                    onMarkPaid={markChargePaid}
+                    onMarkUnpaid={markChargeUnpaid}
+                    onRemoveCharge={removeFeeCharge}
+                  />
+                );
+              })()}
+              {screen === "myFees" && (
+                <MyFeesScreen
+                  charges={feeCharges.filter(c => c.rowerId === currentUserId)}
+                  onBack={() => setScreen("home")}
+                />
+              )}
               {screen === "teams" && (role === "club" || role === "admin") && (
                 <ClubTeamsScreen teams={clubTeams} onAddTeam={addTeam} onRemoveTeam={removeTeam} teamOf={teamOf} roleOf={roleOf} members={clubAssignedUsers} onOpenTeam={(t) => { setOpenTeam(t); setScreen("teamDetail"); }} />
               )}
@@ -3491,6 +3550,7 @@ function RowerHome({ sessions, onOpen, onToggle, notifCount, teamName, attendanc
       label: "Tú",
       tiles: [
         { id: "notas", label: "Notas", sub: "Tus apuntes personales, privados", icon: Pencil },
+        { id: "myFees", label: "Mis cuotas", sub: "Lo que debes y lo que ya has pagado", icon: KeyRound },
       ],
     },
     {
@@ -4284,7 +4344,7 @@ function CoachRowerDetailScreen({ person, onBack, teamName, teamOf, teams, stats
   );
 }
 
-function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, onOpenClubEvents, onOpenExtraEvents, onOpenReminders, clubDisplayName, clubCode, coachCount, rowerCount }) {
+function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, onOpenClubEvents, onOpenExtraEvents, onOpenFees, onOpenReminders, clubDisplayName, clubCode, coachCount, rowerCount }) {
   return (
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub={`Hola, ${clubDisplayName}`}>Panel del club</SectionTitle>
@@ -4342,6 +4402,15 @@ function ClubHome({ teams, onManageTeams, onManageUsers, onOpenRegattas, onOpenC
           <div style={{ flex: 1 }}>
             <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Eventos extraordinarios</p>
             <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>Eventos internos, para todo el club o un equipo</p>
+          </div>
+          <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
+        </div>
+
+        <div className="vir-btn" onClick={onOpenFees} style={{ background: "var(--vir-bg-surface, var(--vir-bg-surface, #404040))", border: "1px solid var(--vir-border, var(--vir-border, #565656))", borderRadius: 12, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", marginBottom: 10 }}>
+          <KeyRound size={20} color="var(--vir-red, var(--vir-red, #E61E29))" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ color: "var(--vir-text-primary, var(--vir-text-primary, #F5F5F5))", fontSize: 13.5, fontWeight: 600, margin: 0 }}>Gestión de cuotas</p>
+            <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 11.5, margin: "3px 0 0" }}>Define cuotas, genera cargos y marca pagos</p>
           </div>
           <ChevronRight size={18} color="var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))" />
         </div>
@@ -4834,6 +4903,209 @@ function ClubEventDetailScreen({ event: e, editable, teams, teamName, onBack, on
           )}
         </>
       )}
+    </div>
+  );
+}
+
+const FEE_FREQ_LABELS = { monthly: "Mensual", quarterly: "Trimestral", once: "Pago único" };
+
+// Lista de cuotas del club — el club crea las cuotas (nombre, importe, a quién aplica, frecuencia),
+// y desde aquí entra en cada una para generar los cargos periodo a periodo
+function ClubFeesScreen({ plans, teams, teamName, onBack, onOpenPlan, onAddPlan }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [teamId, setTeamId] = useState("");
+  const [frequency, setFrequency] = useState("monthly");
+
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Gestión de cuotas</h2>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Define las cuotas del club, y desde cada una genera los cargos del periodo que toque.</p>
+
+      {plans.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13, marginBottom: 14 }}>Todavía no hay ninguna cuota definida.</p>}
+
+      {plans.map(p => (
+        <div key={p.id} className="vir-btn" onClick={() => onOpenPlan(p.id)} style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)",
+          borderRadius: 12, padding: "13px 16px", marginBottom: 10, opacity: p.active ? 1 : 0.55,
+        }}>
+          <div>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{p.name}{!p.active && " (inactiva)"}</p>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>
+              {p.amount.toFixed(2)}€ · {FEE_FREQ_LABELS[p.frequency]} · {p.teamId ? teamName(p.teamId) : "Todo el club"}
+            </p>
+          </div>
+          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
+        </div>
+      ))}
+
+      {adding ? (
+        <div style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, marginTop: 6 }}>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Nueva cuota</p>
+
+          <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Nombre</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Ej. Cuota Senior Masculino" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }} />
+
+          <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Importe (€)</label>
+          <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="35.00" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }} />
+
+          <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Aplica a</label>
+          <select value={teamId} onChange={e => setTeamId(e.target.value)} style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }}>
+            <option value="">Todo el club</option>
+            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+
+          <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Frecuencia</label>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            {Object.entries(FEE_FREQ_LABELS).map(([id, label]) => (
+              <button key={id} className="vir-btn" onClick={() => setFrequency(id)} style={{
+                flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 12, fontWeight: frequency === id ? 700 : 500,
+                background: frequency === id ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+                border: `1px solid ${frequency === id ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                color: frequency === id ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+              }}>{label}</button>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              className="vir-btn"
+              disabled={!name.trim() || !amount}
+              onClick={() => { onAddPlan(teamId, name, amount, frequency); setName(""); setAmount(""); setTeamId(""); setFrequency("monthly"); setAdding(false); }}
+              style={{ ...primaryBtn, width: "auto", flex: 1, padding: "11px 0", fontSize: 13, opacity: (name.trim() && amount) ? 1 : 0.4 }}
+            >Crear</button>
+            <button className="vir-btn" onClick={() => setAdding(false)} style={{ ...ghostBtn, width: "auto", padding: "11px 16px", fontSize: 13 }}>Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <button className="vir-btn" onClick={() => setAdding(true)} style={{ ...primaryBtn, padding: "12px 0", fontSize: 13.5, marginTop: 6 }}>+ Nueva cuota</button>
+      )}
+    </div>
+  );
+}
+
+const FEE_STATUS_META = {
+  pending: { label: "Pendiente", color: "var(--vir-orange, #E67E22)" },
+  paid: { label: "Pagado", color: "var(--vir-green, #3EA55A)" },
+  overdue: { label: "Atrasado", color: "var(--vir-error, #FF8890)" },
+  waived: { label: "Exento", color: "var(--vir-text-muted, #8A8A8A)" },
+};
+
+// Detalle de una cuota: generar los cargos de un periodo nuevo, y ver/marcar el estado de cada cargo ya generado
+function FeePlanDetailScreen({ plan, charges, nameOf, teamName, onBack, onToggleActive, onRemovePlan, onGenerate, onMarkPaid, onMarkUnpaid, onRemoveCharge }) {
+  const [periodLabel, setPeriodLabel] = useState("");
+  const [dueDate, setDueDate] = useState("");
+
+  const byPeriod = {};
+  charges.forEach(c => { (byPeriod[c.periodLabel] = byPeriod[c.periodLabel] || []).push(c); });
+  const periods = Object.keys(byPeriod).sort().reverse();
+
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "10px 0 2px" }}>
+        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: 0 }}>{plan.name}</h2>
+        <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar la cuota "${plan.name}"?`)) onRemovePlan(plan.id); }} style={{ background: "transparent", color: "var(--vir-error, #FF8890)", fontSize: 11, textDecoration: "underline" }}>Eliminar</button>
+      </div>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 14px" }}>
+        {plan.amount.toFixed(2)}€ · {FEE_FREQ_LABELS[plan.frequency]} · {plan.teamId ? teamName(plan.teamId) : "Todo el club"}
+      </p>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "10px 14px", marginBottom: 20 }}>
+        <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, margin: 0 }}>Cuota activa</p>
+        <ToggleSwitch checked={plan.active} onChange={() => onToggleActive(plan.id, !plan.active)} />
+      </div>
+
+      <div style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, marginBottom: 22 }}>
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Generar cargos de un periodo</p>
+        <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Periodo</label>
+        <input value={periodLabel} onChange={e => setPeriodLabel(e.target.value)} placeholder="Ej. Septiembre 2026" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }} />
+        <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Fecha límite de pago (opcional)</label>
+        <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 14 }} />
+        <button
+          className="vir-btn"
+          disabled={!periodLabel.trim()}
+          onClick={() => { onGenerate(plan.id, periodLabel, dueDate); setPeriodLabel(""); setDueDate(""); }}
+          style={{ ...primaryBtn, padding: "11px 0", fontSize: 13, opacity: periodLabel.trim() ? 1 : 0.4 }}
+        >Generar cargos para todos</button>
+      </div>
+
+      {periods.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>Todavía no se han generado cargos para esta cuota.</p>}
+
+      {periods.map(period => {
+        const items = byPeriod[period];
+        const paidCount = items.filter(c => c.status === "paid").length;
+        return (
+          <div key={period} style={{ marginBottom: 18 }}>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>
+              {period} · {paidCount}/{items.length} pagados
+            </p>
+            {items.map(c => {
+              const meta = FEE_STATUS_META[c.status] || FEE_STATUS_META.pending;
+              return (
+                <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: `1px solid ${meta.color}`, borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>
+                  <div>
+                    <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, fontWeight: 600, margin: 0 }}>{nameOf(c.rowerId)}</p>
+                    <p style={{ color: meta.color, fontSize: 11, fontWeight: 600, margin: "3px 0 0" }}>{meta.label} · {c.amount.toFixed(2)}€{c.dueDate ? ` · vence ${c.dueDate}` : ""}</p>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {c.status === "paid" ? (
+                      <button className="vir-btn" onClick={() => onMarkUnpaid(c.id)} style={{ ...ghostBtn, width: "auto", padding: "7px 10px", fontSize: 11 }}>Deshacer</button>
+                    ) : (
+                      <button className="vir-btn" onClick={() => onMarkPaid(c.id, "transferencia")} style={{ ...primaryBtn, width: "auto", padding: "7px 10px", fontSize: 11 }}>Marcar pagado</button>
+                    )}
+                    <button className="vir-btn" onClick={() => { if (window.confirm("¿Eliminar este cargo?")) onRemoveCharge(c.id); }} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", padding: 4 }}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Vista del remero: lo que debe, lo que ya ha pagado, y cuándo
+function MyFeesScreen({ charges, onBack }) {
+  const pending = charges.filter(c => c.status === "pending" || c.status === "overdue");
+  const totalPending = pending.reduce((sum, c) => sum + c.amount, 0);
+  const sorted = [...charges].sort((a, b) => (b.dueDate || "0000-00-00").localeCompare(a.dueDate || "0000-00-00"));
+
+  return (
+    <div style={{ padding: "16px 20px 28px" }}>
+      <BackRow onBack={onBack} />
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Mis cuotas</h2>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Lo que debes y lo que ya has pagado al club.</p>
+
+      {pending.length > 0 && (
+        <div style={{ background: "var(--vir-danger-bg, #402226)", border: "1px solid var(--vir-danger, #E24B4A)", borderRadius: 12, padding: "14px 16px", marginBottom: 20 }}>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 4px" }}>Pendiente de pago</p>
+          <p className="vir-mono" style={{ color: "var(--vir-error, #FF8890)", fontSize: 24, fontWeight: 700, margin: 0 }}>{totalPending.toFixed(2)}€</p>
+        </div>
+      )}
+
+      {sorted.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>No tienes ninguna cuota registrada todavía.</p>}
+
+      {sorted.map(c => {
+        const meta = FEE_STATUS_META[c.status] || FEE_STATUS_META.pending;
+        return (
+          <div key={c.id} style={{ background: "var(--vir-bg-surface, #404040)", border: `1px solid ${meta.color}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13, fontWeight: 600, margin: 0 }}>{c.periodLabel}</p>
+              <p className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 14, fontWeight: 700, margin: 0 }}>{c.amount.toFixed(2)}€</p>
+            </div>
+            <p style={{ color: meta.color, fontSize: 11.5, fontWeight: 600, margin: "6px 0 0" }}>
+              {meta.label}{c.status === "paid" && c.paidMethod ? ` · ${c.paidMethod}` : ""}{c.dueDate ? ` · vence ${c.dueDate}` : ""}
+            </p>
+          </div>
+        );
+      })}
     </div>
   );
 }
