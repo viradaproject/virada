@@ -1616,6 +1616,11 @@ export default function ViradaPrototype() {
     if (au && au.authUserId) await sendPushToAuthUser(au.authUserId, title, body, "/");
   };
 
+  const removeBroadcast = async (id) => {
+    const { error } = await supabase.from("reminder_broadcasts").delete().eq("id", id);
+    if (error) { flash("No se pudo eliminar. Inténtalo de nuevo."); return; }
+    setBroadcasts(prev => prev.filter(b => b.id !== id));
+  };
   const dispatchBroadcast = async (broadcast) => {
     const recipients = recipientsFor(broadcast);
     if (recipients.length > 0) {
@@ -2612,6 +2617,7 @@ export default function ViradaPrototype() {
                   onRemoveNote={removeClubNote}
                   broadcasts={broadcasts.filter(b => b.teamId === null)}
                   onSend={(payload) => sendBroadcast({ ...payload, teamId: null })}
+                  onRemoveBroadcast={removeBroadcast}
                   onBack={() => setScreen("home")}
                 />
               )}
@@ -2625,6 +2631,7 @@ export default function ViradaPrototype() {
                   onRemoveNote={() => removeTeamNote(coachScope)}
                   broadcasts={broadcasts.filter(b => b.teamId === coachScope)}
                   onSend={(payload) => sendBroadcast({ ...payload, teamId: coachScope })}
+                  onRemoveBroadcast={removeBroadcast}
                   editable={role === "admin" ? true : canManage(coachScope)}
                   onBack={() => setScreen("home")}
                 />
@@ -5654,14 +5661,21 @@ function BroadcastComposer({ onSend, audienceOptions }) {
   );
 }
 
-function BroadcastLog({ items }) {
+function BroadcastLog({ items, onRemove }) {
   if (items.length === 0) return <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5 }}>Todavía no se ha enviado ningún aviso.</p>;
   const fmt = (iso) => new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
   return (
     <>
       {items.map(b => (
         <div key={b.id} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
-          <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, margin: "0 0 6px", lineHeight: 1.4 }}>{b.text}</p>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, margin: "0 0 6px", lineHeight: 1.4, flex: 1 }}>{b.text}</p>
+            {onRemove && (
+              <button className="vir-btn" onClick={() => { if (window.confirm("¿Eliminar este aviso de tu historial? No afecta a lo que ya haya visto cada remero.")) onRemove(b.id); }} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", padding: 2, flexShrink: 0 }}>
+                <X size={15} />
+              </button>
+            )}
+          </div>
           <p style={{ color: b.sentAt ? "var(--vir-text-muted, #8A8A8A)" : "var(--vir-orange, #E67E22)", fontSize: 10.5, margin: 0 }}>
             {b.sentAt ? `Enviado · ${fmt(b.sentAt)}` : `Programado para ${fmt(b.scheduledFor)}`}
           </p>
@@ -5671,7 +5685,7 @@ function BroadcastLog({ items }) {
   );
 }
 
-function ClubRemindersScreen({ note, onSaveNote, onRemoveNote, broadcasts, onSend, onBack }) {
+function ClubRemindersScreen({ note, onSaveNote, onRemoveNote, broadcasts, onSend, onRemoveBroadcast, onBack }) {
   const [editing, setEditing] = useState(false);
   const [input, setInput] = useState(note?.text || "");
   return (
@@ -5714,12 +5728,12 @@ function ClubRemindersScreen({ note, onSaveNote, onRemoveNote, broadcasts, onSen
       />
 
       <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Avisos del club</p>
-      <BroadcastLog items={broadcasts} />
+      <BroadcastLog items={broadcasts} onRemove={onRemoveBroadcast} />
     </div>
   );
 }
 
-function CoachRemindersScreen({ teamId, teams, setScope, note, onSaveNote, onRemoveNote, broadcasts, onSend, editable, onBack }) {
+function CoachRemindersScreen({ teamId, teams, setScope, note, onSaveNote, onRemoveNote, broadcasts, onSend, onRemoveBroadcast, editable, onBack }) {
   const [editing, setEditing] = useState(false);
   const [input, setInput] = useState(note?.text || "");
 
@@ -5787,7 +5801,7 @@ function CoachRemindersScreen({ teamId, teams, setScope, note, onSaveNote, onRem
       {editable && <BroadcastComposer onSend={onSend} />}
 
       <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Avisos de este equipo</p>
-      <BroadcastLog items={broadcasts} />
+      <BroadcastLog items={broadcasts} onRemove={onRemoveBroadcast} />
     </div>
   );
 }
@@ -7735,7 +7749,8 @@ function SignupsBySide({ ids, sideOf, nameOf, nicknameOf }) {
 // Una notificación deslizable: arrastra hacia la izquierda para descubrir los botones de "visto" y "eliminar".
 // Tocar el texto (sin deslizar) lleva directo al entreno que menciona.
 function SwipeableNotification({ n, isRead, subtitle, onOpen, onMarkRead, onHide }) {
-  const ACTIONS_WIDTH = 132;
+  const canHide = isRead; // solo se puede eliminar una vez ya se ha visto/leído
+  const ACTIONS_WIDTH = canHide ? 132 : 66;
   const [dragX, setDragX] = useState(0);
   const [open, setOpen] = useState(false);
   const startX = useRef(null);
@@ -7772,9 +7787,11 @@ function SwipeableNotification({ n, isRead, subtitle, onOpen, onMarkRead, onHide
         <button className="vir-btn" onClick={() => { onMarkRead(); setOpen(false); setDragX(0); }} style={{ flex: 1, background: "var(--vir-green, var(--vir-green, #3EA55A))", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Check size={18} />
         </button>
-        <button className="vir-btn" onClick={() => onHide()} style={{ flex: 1, background: "var(--vir-red, var(--vir-red, #E61E29))", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Trash2 size={18} />
-        </button>
+        {canHide && (
+          <button className="vir-btn" onClick={() => onHide()} style={{ flex: 1, background: "var(--vir-red, var(--vir-red, #E61E29))", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Trash2 size={18} />
+          </button>
+        )}
       </div>
       <div
         onMouseDown={onPointerDown} onMouseMove={onPointerMove} onMouseUp={endDrag} onMouseLeave={endDrag}
@@ -7802,7 +7819,7 @@ function SwipeableNotification({ n, isRead, subtitle, onOpen, onMarkRead, onHide
 function NotificationsScreen({ items, role, nameOf, onOpen, onMarkRead, onHide }) {
   return (
     <div style={{ paddingBottom: 20 }}>
-      <SectionTitle sub={role === "rower" ? "Confirmaciones de tripulación · desliza para ver más opciones" : "Registro de notificaciones enviadas · desliza para ver más opciones"}>Notificaciones</SectionTitle>
+      <SectionTitle sub={role === "rower" ? "Confirmaciones de tripulación · marca como leído para poder eliminarlo" : "Registro de notificaciones enviadas · marca como leído para poder eliminarlo"}>Notificaciones</SectionTitle>
       <div style={{ padding: "10px 16px" }}>
         {items.length === 0 && <p style={{ color: "var(--vir-text-muted, var(--vir-text-muted, #8A8A8A))", fontSize: 13, marginTop: 20 }}>Aún no hay notificaciones.</p>}
         {items.map(n => (
