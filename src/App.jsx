@@ -438,11 +438,11 @@ export default function ViradaPrototype() {
   const refetchFees = async () => {
     const { data: catalogData } = await supabase.from("fee_catalog_items").select("*").order("position", { ascending: true });
     if (catalogData) {
-      setFeeCatalog(catalogData.map(i => ({ id: i.id, clubId: i.club_id, name: i.name, amount: parseFloat(i.amount), position: i.position })));
+      setFeeCatalog(catalogData.map(i => ({ id: i.id, clubId: i.club_id, name: i.name, amount: parseFloat(i.amount), position: i.position, nextPaymentDate: i.next_payment_date })));
     }
     const { data: statusData } = await supabase.from("fee_user_status").select("*");
     if (statusData) {
-      setFeeStatus(statusData.map(s => ({ id: s.id, feeItemId: s.fee_item_id, rowerId: s.rower_id, paid: !!s.paid, paidAt: s.paid_at })));
+      setFeeStatus(statusData.map(s => ({ id: s.id, feeItemId: s.fee_item_id, rowerId: s.rower_id, assigned: !!s.assigned, paid: !!s.paid, paidAt: s.paid_at })));
     }
     const { data: notesData } = await supabase.from("club_member_notes").select("*");
     if (notesData) {
@@ -2216,22 +2216,29 @@ export default function ViradaPrototype() {
   };
 
   // --- Catálogo de cuotas del club (la "Configuración") ---
-  const addFeeCatalogItem = async (name, amount) => {
+  const addFeeCatalogItem = async (name, amount, nextPaymentDate) => {
     const position = feeCatalog.length;
     const { data, error } = await supabase.from("fee_catalog_items").insert({
       club_id: currentClubId, name: (name || "").trim(), amount: parseFloat(amount) || 0, position,
+      next_payment_date: nextPaymentDate || null,
     }).select().single();
     if (error) { flash("No se pudo crear la cuota. Inténtalo de nuevo."); return; }
-    setFeeCatalog(prev => [...prev, { id: data.id, clubId: data.club_id, name: data.name, amount: parseFloat(data.amount), position: data.position }]);
+    setFeeCatalog(prev => [...prev, { id: data.id, clubId: data.club_id, name: data.name, amount: parseFloat(data.amount), position: data.position, nextPaymentDate: data.next_payment_date }]);
     flash("Cuota añadida");
   };
   const updateFeeCatalogItem = async (itemId, updates) => {
     const dbUpdates = {};
     if ("name" in updates) dbUpdates.name = updates.name;
     if ("amount" in updates) dbUpdates.amount = parseFloat(updates.amount) || 0;
+    if ("nextPaymentDate" in updates) dbUpdates.next_payment_date = updates.nextPaymentDate || null;
     const { error } = await supabase.from("fee_catalog_items").update(dbUpdates).eq("id", itemId);
     if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
-    setFeeCatalog(prev => prev.map(i => i.id === itemId ? { ...i, ...updates, amount: dbUpdates.amount ?? i.amount } : i));
+    setFeeCatalog(prev => prev.map(i => i.id === itemId ? {
+      ...i,
+      name: "name" in updates ? updates.name : i.name,
+      amount: "amount" in dbUpdates ? dbUpdates.amount : i.amount,
+      nextPaymentDate: "nextPaymentDate" in updates ? (updates.nextPaymentDate || null) : i.nextPaymentDate,
+    } : i));
   };
   const removeFeeCatalogItem = async (itemId) => {
     const { error } = await supabase.from("fee_catalog_items").delete().eq("id", itemId);
@@ -2241,18 +2248,21 @@ export default function ViradaPrototype() {
     flash("Cuota eliminada del catálogo");
   };
 
-  // --- Estado de pago de cada usuario, cuota a cuota ---
-  const toggleFeeStatus = async (feeItemId, rowerId, paid) => {
+  // --- Estado de cada usuario respecto a una cuota: si se le asigna, y si ya la ha pagado ---
+  const setFeeUserStatus = async (feeItemId, rowerId, updates) => {
     const existing = feeStatus.find(s => s.feeItemId === feeItemId && s.rowerId === rowerId);
-    const paidAt = paid ? new Date().toISOString() : null;
-    const { data, error } = await supabase.from("fee_user_status").upsert(
-      { fee_item_id: feeItemId, rower_id: rowerId, paid, paid_at: paidAt },
-      { onConflict: "fee_item_id,rower_id" }
-    ).select().single();
+    const nextAssigned = "assigned" in updates ? updates.assigned : (existing?.assigned || false);
+    const nextPaid = "paid" in updates ? updates.paid : (existing?.paid || false);
+    const payload = {
+      fee_item_id: feeItemId, rower_id: rowerId, assigned: nextAssigned, paid: nextPaid,
+      paid_at: nextPaid ? new Date().toISOString() : null,
+    };
+    const { data, error } = await supabase.from("fee_user_status").upsert(payload, { onConflict: "fee_item_id,rower_id" }).select().single();
     if (error) { flash("No se pudo actualizar. Inténtalo de nuevo."); return; }
     setFeeStatus(prev => {
-      const mapped = { id: data.id, feeItemId: data.fee_item_id, rowerId: data.rower_id, paid: !!data.paid, paidAt: data.paid_at };
-      return existing ? prev.map(s => (s.feeItemId === feeItemId && s.rowerId === rowerId) ? mapped : s) : [...prev, mapped];
+      const mapped = { id: data.id, feeItemId: data.fee_item_id, rowerId: data.rower_id, assigned: !!data.assigned, paid: !!data.paid, paidAt: data.paid_at };
+      const exists = prev.some(s => s.feeItemId === feeItemId && s.rowerId === rowerId);
+      return exists ? prev.map(s => (s.feeItemId === feeItemId && s.rowerId === rowerId) ? mapped : s) : [...prev, mapped];
     });
   };
 
@@ -2819,7 +2829,7 @@ export default function ViradaPrototype() {
                   feeStatus={feeStatus}
                   note={clubMemberNotes[openFeeMemberId] || ""}
                   onBack={() => setScreen("clubFees")}
-                  onToggleFee={toggleFeeStatus}
+                  onSetStatus={setFeeUserStatus}
                   onSaveNote={setClubMemberNote}
                 />
               )}
@@ -4906,11 +4916,6 @@ function ClubEventDetailScreen({ event: e, editable, teams, teamName, onBack, on
   );
 }
 
-const FEE_STATUS_META_2 = {
-  paid: { label: "Pagado", color: "var(--vir-green, #3EA55A)" },
-  pending: { label: "Pendiente", color: "var(--vir-error, #FF8890)" },
-};
-
 // CUOTAS DEL CLUB — dos apartados: la "Configuración" (el catálogo de cuotas anuales que tiene
 // el club, editable), y "Usuarios" (todos los usuarios del club, para entrar en la ficha de cada uno)
 function ClubFeesScreen({ catalog, members, feeStatus, onBack, onOpenMember, onAddItem, onUpdateItem, onRemoveItem }) {
@@ -4918,21 +4923,24 @@ function ClubFeesScreen({ catalog, members, feeStatus, onBack, onOpenMember, onA
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
+  const [nextPaymentDate, setNextPaymentDate] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editAmount, setEditAmount] = useState("");
+  const [editDate, setEditDate] = useState("");
 
-  const paidCountFor = (rowerId) => {
-    if (catalog.length === 0) return null;
-    const paid = feeStatus.filter(s => s.rowerId === rowerId && s.paid).length;
-    return `${paid}/${catalog.length}`;
+  const assignedCountFor = (rowerId) => {
+    const assigned = feeStatus.filter(s => s.rowerId === rowerId && s.assigned);
+    if (assigned.length === 0) return null;
+    const paid = assigned.filter(s => s.paid).length;
+    return `${paid}/${assigned.length}`;
   };
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Cuotas del club</h2>
-      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Configura las cuotas anuales del club, y marca en la ficha de cada usuario cuáles tiene pagadas.</p>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Configura las cuotas anuales del club, y desde cada usuario decide a cuáles está asignado y si las ha pagado.</p>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
         <ScopeChip active={section === "config"} onClick={() => setSection("config")} label="Configuración" />
@@ -4943,42 +4951,54 @@ function ClubFeesScreen({ catalog, members, feeStatus, onBack, onOpenMember, onA
         <>
           <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Cuotas anuales</p>
           {catalog.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13, marginBottom: 14 }}>Todavía no hay ninguna cuota definida.</p>}
-          {catalog.map(item => (
-            <div key={item.id} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
-              {editingId === item.id ? (
-                <>
-                  <input value={editName} onChange={e => setEditName(e.target.value)} style={{ ...inputStyle, padding: "9px 11px", fontSize: 13, width: "100%", marginBottom: 8 }} />
-                  <input type="number" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)} style={{ ...inputStyle, padding: "9px 11px", fontSize: 13, width: "100%", marginBottom: 10 }} />
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button className="vir-btn" onClick={() => { onUpdateItem(item.id, { name: editName, amount: editAmount }); setEditingId(null); }} style={{ ...primaryBtn, width: "auto", flex: 1, padding: "8px 0", fontSize: 12 }}>Guardar</button>
-                    <button className="vir-btn" onClick={() => setEditingId(null)} style={{ ...ghostBtn, width: "auto", padding: "8px 14px", fontSize: 12 }}>Cancelar</button>
+          {catalog.map(item => {
+            const isEditing = editingId === item.id;
+            return (
+              <div key={item.id} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
+                {isEditing ? (
+                  <>
+                    <label style={{ fontSize: 11.5, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 5, display: "block" }}>Nombre</label>
+                    <input value={editName} onChange={e => setEditName(e.target.value)} style={{ ...inputStyle, padding: "9px 11px", fontSize: 13, width: "100%", marginBottom: 10 }} />
+                    <label style={{ fontSize: 11.5, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 5, display: "block" }}>Importe (€)</label>
+                    <input type="number" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)} style={{ ...inputStyle, padding: "9px 11px", fontSize: 13, width: "100%", marginBottom: 10 }} />
+                    <label style={{ fontSize: 11.5, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 5, display: "block" }}>Próximo pago</label>
+                    <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} style={{ ...inputStyle, padding: "9px 11px", fontSize: 13, width: "100%", marginBottom: 14 }} />
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button className="vir-btn" onClick={() => { onUpdateItem(item.id, { name: editName, amount: editAmount, nextPaymentDate: editDate }); setEditingId(null); }} style={{ ...primaryBtn, width: "auto", flex: 1, padding: "9px 0", fontSize: 12 }}>Guardar</button>
+                      <button className="vir-btn" onClick={() => setEditingId(null)} style={{ ...ghostBtn, width: "auto", flex: 1, padding: "9px 0", fontSize: 12 }}>Cancelar</button>
+                      <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar "${item.name}" del catálogo? Se perderá también el registro de quién la tenía asignada.`)) { onRemoveItem(item.id); setEditingId(null); } }} style={{ background: "transparent", color: "var(--vir-error, #FF8890)", padding: "9px 10px", fontSize: 12 }}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="vir-btn" onClick={() => { setEditingId(item.id); setEditName(item.name); setEditAmount(String(item.amount)); setEditDate(item.nextPaymentDate || ""); }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 14.5, fontWeight: 700, margin: 0 }}>{item.name}</p>
+                      <p className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 18, fontWeight: 800, margin: 0 }}>{item.amount.toFixed(2)}€</p>
+                    </div>
+                    {item.nextPaymentDate && (
+                      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, margin: "6px 0 0" }}>Próximo pago: {item.nextPaymentDate}</p>
+                    )}
                   </div>
-                </>
-              ) : (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div className="vir-btn" onClick={() => { setEditingId(item.id); setEditName(item.name); setEditAmount(String(item.amount)); }} style={{ flex: 1 }}>
-                    <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{item.name}</p>
-                    <p className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12, margin: "3px 0 0" }}>{item.amount.toFixed(2)}€</p>
-                  </div>
-                  <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar "${item.name}" del catálogo? Se perderá también el registro de quién la había pagado.`)) onRemoveItem(item.id); }} style={{ background: "transparent", color: "var(--vir-error, #FF8890)", padding: 6 }}>
-                    <X size={16} />
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            );
+          })}
 
           {adding ? (
             <div style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, marginTop: 6 }}>
               <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Nombre</label>
               <input value={name} onChange={e => setName(e.target.value)} placeholder="Ej. Cuota inscripción al club" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }} />
               <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Importe (€)</label>
-              <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="35.00" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 14 }} />
+              <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="35.00" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }} />
+              <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Próximo pago (opcional)</label>
+              <input type="date" value={nextPaymentDate} onChange={e => setNextPaymentDate(e.target.value)} style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 14 }} />
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   className="vir-btn"
                   disabled={!name.trim()}
-                  onClick={() => { onAddItem(name, amount); setName(""); setAmount(""); setAdding(false); }}
+                  onClick={() => { onAddItem(name, amount, nextPaymentDate); setName(""); setAmount(""); setNextPaymentDate(""); setAdding(false); }}
                   style={{ ...primaryBtn, width: "auto", flex: 1, padding: "11px 0", fontSize: 13, opacity: name.trim() ? 1 : 0.4 }}
                 >Añadir</button>
                 <button className="vir-btn" onClick={() => setAdding(false)} style={{ ...ghostBtn, width: "auto", padding: "11px 16px", fontSize: 13 }}>Cancelar</button>
@@ -4997,7 +5017,7 @@ function ClubFeesScreen({ catalog, members, feeStatus, onBack, onOpenMember, onA
             <div key={m.id} className="vir-btn" onClick={() => onOpenMember(m.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", marginBottom: 10 }}>
               <div>
                 <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{m.name}</p>
-                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>{m.roleLabel}{paidCountFor(m.id) ? ` · ${paidCountFor(m.id)} cuotas pagadas` : ""}</p>
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>{m.roleLabel}{assignedCountFor(m.id) ? ` · ${assignedCountFor(m.id)} cuotas pagadas` : " · sin cuotas asignadas"}</p>
               </div>
               <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
             </div>
@@ -5008,12 +5028,14 @@ function ClubFeesScreen({ catalog, members, feeStatus, onBack, onOpenMember, onA
   );
 }
 
-// Ficha de cuotas y notas de un usuario en concreto, vista del club — pestañas Cuotas / Notas
-function ClubMemberFeesScreen({ member, catalog, feeStatus, note, onBack, onToggleFee, onSaveNote }) {
+// Ficha de cuotas y notas de un usuario en concreto, vista del club — pestañas Cuotas / Notas.
+// Para cada cuota: si se le asigna a esta persona, y si ya la ha pagado (esto último solo
+// tiene sentido si está asignada).
+function ClubMemberFeesScreen({ member, catalog, feeStatus, note, onBack, onSetStatus, onSaveNote }) {
   const [tab, setTab] = useState("cuotas"); // "cuotas" | "notas"
   const [noteInput, setNoteInput] = useState(note || "");
 
-  const statusFor = (itemId) => feeStatus.find(s => s.feeItemId === itemId && s.rowerId === member.id)?.paid || false;
+  const statusFor = (itemId) => feeStatus.find(s => s.feeItemId === itemId && s.rowerId === member.id) || { assigned: false, paid: false };
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
@@ -5030,23 +5052,52 @@ function ClubMemberFeesScreen({ member, catalog, feeStatus, note, onBack, onTogg
         <>
           {catalog.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>Todavía no hay ninguna cuota configurada — añádelas desde "Configuración".</p>}
           {catalog.map(item => {
-            const paid = statusFor(item.id);
+            const st = statusFor(item.id);
             return (
-              <div key={item.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: `1px solid ${paid ? "var(--vir-green, #3EA55A)" : "var(--vir-error, #FF8890)"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
-                <div>
-                  <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{item.name}</p>
-                  <p className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12, margin: "3px 0 0" }}>{item.amount.toFixed(2)}€</p>
+              <div key={item.id} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div>
+                    <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 700, margin: 0 }}>{item.name}</p>
+                    {item.nextPaymentDate && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "3px 0 0" }}>Próximo pago: {item.nextPaymentDate}</p>}
+                  </div>
+                  <p className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 17, fontWeight: 800, margin: 0 }}>{item.amount.toFixed(2)}€</p>
                 </div>
-                <button
-                  className="vir-btn"
-                  onClick={() => onToggleFee(item.id, member.id, !paid)}
-                  style={{
-                    width: 38, height: 38, borderRadius: 19, display: "flex", alignItems: "center", justifyContent: "center",
-                    background: paid ? "var(--vir-green, #3EA55A)" : "var(--vir-error, #FF8890)", border: "none",
-                  }}
-                >
-                  {paid ? <Check size={20} color="#FFFFFF" /> : <X size={20} color="#FFFFFF" />}
-                </button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    className="vir-btn"
+                    onClick={() => onSetStatus(item.id, member.id, { assigned: !st.assigned })}
+                    style={{
+                      flex: 1, padding: "9px 4px", borderRadius: 9, fontSize: 11, fontWeight: st.assigned ? 700 : 500,
+                      background: st.assigned ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface-alt, #3A3A3A)",
+                      border: `1px solid ${st.assigned ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                      color: st.assigned ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                    }}
+                  >Asignada</button>
+                  <button
+                    className="vir-btn"
+                    disabled={!st.assigned}
+                    onClick={() => onSetStatus(item.id, member.id, { paid: true })}
+                    style={{
+                      flex: 1, padding: "9px 4px", borderRadius: 9, fontSize: 11, fontWeight: st.assigned && st.paid ? 700 : 500,
+                      background: st.assigned && st.paid ? "var(--vir-green, #3EA55A)" : "var(--vir-bg-surface-alt, #3A3A3A)",
+                      border: `1px solid ${st.assigned && st.paid ? "var(--vir-green, #3EA55A)" : "var(--vir-border, #565656)"}`,
+                      color: st.assigned && st.paid ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                      opacity: st.assigned ? 1 : 0.45,
+                    }}
+                  >✓ Pagado</button>
+                  <button
+                    className="vir-btn"
+                    disabled={!st.assigned}
+                    onClick={() => onSetStatus(item.id, member.id, { paid: false })}
+                    style={{
+                      flex: 1, padding: "9px 4px", borderRadius: 9, fontSize: 11, fontWeight: st.assigned && !st.paid ? 700 : 500,
+                      background: st.assigned && !st.paid ? "var(--vir-error, #FF8890)" : "var(--vir-bg-surface-alt, #3A3A3A)",
+                      border: `1px solid ${st.assigned && !st.paid ? "var(--vir-error, #FF8890)" : "var(--vir-border, #565656)"}`,
+                      color: st.assigned && !st.paid ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                      opacity: st.assigned ? 1 : 0.45,
+                    }}
+                  >✕ No pagado</button>
+                </div>
               </div>
             );
           })}
@@ -5070,30 +5121,38 @@ function ClubMemberFeesScreen({ member, catalog, feeStatus, note, onBack, onTogg
   );
 }
 
-// Vista del remero (o de cualquier usuario): solo consulta, sin poder tocar nada
+// Vista del remero (o de cualquier usuario): solo consulta, sin poder tocar nada — y solo ve las
+// cuotas que el club le ha asignado a él; las que no le apliquen ni aparecen
 function MyFeesScreen({ catalog, feeStatus, onBack }) {
-  const statusFor = (itemId) => feeStatus.find(s => s.feeItemId === itemId)?.paid || false;
+  const assigned = catalog.filter(item => feeStatus.find(s => s.feeItemId === item.id && s.assigned));
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Mis cuotas</h2>
-      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Las cuotas del club, y cuáles tienes pagadas.</p>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Las cuotas que el club te ha asignado, y cuáles tienes pagadas.</p>
 
-      {catalog.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>Tu club todavía no ha configurado ninguna cuota.</p>}
+      {assigned.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>El club todavía no te ha asignado ninguna cuota.</p>}
 
-      {catalog.map(item => {
-        const paid = statusFor(item.id);
+      {assigned.map(item => {
+        const st = feeStatus.find(s => s.feeItemId === item.id);
+        const paid = st?.paid || false;
         return (
-          <div key={item.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: `1px solid ${paid ? "var(--vir-green, #3EA55A)" : "var(--vir-error, #FF8890)"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
-            <div>
-              <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{item.name}</p>
-              <p className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12, margin: "3px 0 0" }}>{item.amount.toFixed(2)}€</p>
-            </div>
-            <div style={{
-              width: 32, height: 32, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center",
-              background: paid ? "var(--vir-green, #3EA55A)" : "var(--vir-error, #FF8890)",
-            }}>
-              {paid ? <Check size={16} color="#FFFFFF" /> : <X size={16} color="#FFFFFF" />}
+          <div key={item.id} style={{ background: "var(--vir-bg-surface, #404040)", border: `1px solid ${paid ? "var(--vir-green, #3EA55A)" : "var(--vir-error, #FF8890)"}`, borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 700, margin: 0 }}>{item.name}</p>
+                {item.nextPaymentDate && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "3px 0 0" }}>Próximo pago: {item.nextPaymentDate}</p>}
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <p className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 17, fontWeight: 800, margin: "0 0 4px" }}>{item.amount.toFixed(2)}€</p>
+                <div style={{
+                  display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 8,
+                  background: paid ? "var(--vir-green, #3EA55A)" : "var(--vir-error, #FF8890)",
+                }}>
+                  {paid ? <Check size={12} color="#FFFFFF" /> : <X size={12} color="#FFFFFF" />}
+                  <span style={{ color: "#FFFFFF", fontSize: 10.5, fontWeight: 700 }}>{paid ? "Pagado" : "No pagado"}</span>
+                </div>
+              </div>
             </div>
           </div>
         );
