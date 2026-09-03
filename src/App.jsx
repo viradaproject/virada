@@ -360,7 +360,7 @@ export default function ViradaPrototype() {
   const [viewPhoto, setViewPhoto] = useState(null); // { photo, caption }
   const [openRace, setOpenRace] = useState(null); // { catId, raceId }
   const [openClubEventId, setOpenClubEventId] = useState(null); // id del evento (no oficial o extraordinario) abierto
-  const [openFeePlanId, setOpenFeePlanId] = useState(null); // id de la cuota abierta
+  const [openFeeMemberId, setOpenFeeMemberId] = useState(null); // id del usuario cuya ficha de cuotas está abierta
   const [selectedRowerChip, setSelectedRowerChip] = useState(null);
   const [coachScope, setCoachScope] = useState("club");
   const [teams, setTeams] = useState([]); // { id, clubId, name, code }
@@ -373,8 +373,9 @@ export default function ViradaPrototype() {
   const [currentClubId, setCurrentClubId] = useState(null);
   const [raceCategories, setRaceCategories] = useState([]); // se carga desde Supabase
   const [clubEvents, setClubEvents] = useState([]); // regatas no oficiales y eventos extraordinarios, de cualquier club
-  const [feePlans, setFeePlans] = useState([]); // cuotas definidas por el club
-  const [feeCharges, setFeeCharges] = useState([]); // cargos concretos, periodo a periodo
+  const [feeCatalog, setFeeCatalog] = useState([]); // catálogo de cuotas del club (nombre + precio)
+  const [feeStatus, setFeeStatus] = useState([]); // { feeItemId, rowerId, paid } por cada usuario
+  const [clubMemberNotes, setClubMemberNotes] = useState({}); // notas del club sobre cada usuario, { [rowerId]: text }
   const [passwords, setPasswords] = useState(DEMO_PASSWORDS);
   const [recoveryEmails, setRecoveryEmails] = useState({});
   const [loginError, setLoginError] = useState(null);
@@ -435,20 +436,19 @@ export default function ViradaPrototype() {
     }
   };
   const refetchFees = async () => {
-    const { data: plansData } = await supabase.from("fee_plans").select("*");
-    if (plansData) {
-      setFeePlans(plansData.map(p => ({
-        id: p.id, clubId: p.club_id, teamId: p.team_id, name: p.name, amount: parseFloat(p.amount),
-        frequency: p.frequency, active: p.active,
-      })));
+    const { data: catalogData } = await supabase.from("fee_catalog_items").select("*").order("position", { ascending: true });
+    if (catalogData) {
+      setFeeCatalog(catalogData.map(i => ({ id: i.id, clubId: i.club_id, name: i.name, amount: parseFloat(i.amount), position: i.position })));
     }
-    const { data: chargesData } = await supabase.from("fee_charges").select("*").order("due_date", { ascending: false });
-    if (chargesData) {
-      setFeeCharges(chargesData.map(c => ({
-        id: c.id, feePlanId: c.fee_plan_id, rowerId: c.rower_id, periodLabel: c.period_label,
-        dueDate: c.due_date, amount: parseFloat(c.amount), status: c.status,
-        paidAt: c.paid_at, paidMethod: c.paid_method, notes: c.notes || "",
-      })));
+    const { data: statusData } = await supabase.from("fee_user_status").select("*");
+    if (statusData) {
+      setFeeStatus(statusData.map(s => ({ id: s.id, feeItemId: s.fee_item_id, rowerId: s.rower_id, paid: !!s.paid, paidAt: s.paid_at })));
+    }
+    const { data: notesData } = await supabase.from("club_member_notes").select("*");
+    if (notesData) {
+      const map = {};
+      notesData.forEach(n => { map[n.rower_id] = n.text || ""; });
+      setClubMemberNotes(map);
     }
   };
   const refetchGymPlans = async () => {
@@ -2215,61 +2215,55 @@ export default function ViradaPrototype() {
     setClubEvents(prev => prev.map(e => e.id !== eventId ? e : { ...e, docs: e.docs.filter(d => d.id !== docId) }));
   };
 
-  // --- Cuotas del club ---
-  const addFeePlan = async (teamId, name, amount, frequency) => {
-    const { data, error } = await supabase.from("fee_plans").insert({
-      club_id: currentClubId, team_id: teamId || null, name: (name || "").trim(), amount: parseFloat(amount) || 0, frequency,
+  // --- Catálogo de cuotas del club (la "Configuración") ---
+  const addFeeCatalogItem = async (name, amount) => {
+    const position = feeCatalog.length;
+    const { data, error } = await supabase.from("fee_catalog_items").insert({
+      club_id: currentClubId, name: (name || "").trim(), amount: parseFloat(amount) || 0, position,
     }).select().single();
     if (error) { flash("No se pudo crear la cuota. Inténtalo de nuevo."); return; }
-    setFeePlans(prev => [...prev, { id: data.id, clubId: data.club_id, teamId: data.team_id, name: data.name, amount: parseFloat(data.amount), frequency: data.frequency, active: data.active }]);
-    flash("Cuota creada");
+    setFeeCatalog(prev => [...prev, { id: data.id, clubId: data.club_id, name: data.name, amount: parseFloat(data.amount), position: data.position }]);
+    flash("Cuota añadida");
   };
-  const toggleFeePlanActive = async (planId, active) => {
-    const { error } = await supabase.from("fee_plans").update({ active }).eq("id", planId);
+  const updateFeeCatalogItem = async (itemId, updates) => {
+    const dbUpdates = {};
+    if ("name" in updates) dbUpdates.name = updates.name;
+    if ("amount" in updates) dbUpdates.amount = parseFloat(updates.amount) || 0;
+    const { error } = await supabase.from("fee_catalog_items").update(dbUpdates).eq("id", itemId);
+    if (error) { flash("No se pudo guardar. Inténtalo de nuevo."); return; }
+    setFeeCatalog(prev => prev.map(i => i.id === itemId ? { ...i, ...updates, amount: dbUpdates.amount ?? i.amount } : i));
+  };
+  const removeFeeCatalogItem = async (itemId) => {
+    const { error } = await supabase.from("fee_catalog_items").delete().eq("id", itemId);
+    if (error) { flash("No se pudo eliminar. Inténtalo de nuevo."); return; }
+    setFeeCatalog(prev => prev.filter(i => i.id !== itemId));
+    setFeeStatus(prev => prev.filter(s => s.feeItemId !== itemId));
+    flash("Cuota eliminada del catálogo");
+  };
+
+  // --- Estado de pago de cada usuario, cuota a cuota ---
+  const toggleFeeStatus = async (feeItemId, rowerId, paid) => {
+    const existing = feeStatus.find(s => s.feeItemId === feeItemId && s.rowerId === rowerId);
+    const paidAt = paid ? new Date().toISOString() : null;
+    const { data, error } = await supabase.from("fee_user_status").upsert(
+      { fee_item_id: feeItemId, rower_id: rowerId, paid, paid_at: paidAt },
+      { onConflict: "fee_item_id,rower_id" }
+    ).select().single();
     if (error) { flash("No se pudo actualizar. Inténtalo de nuevo."); return; }
-    setFeePlans(prev => prev.map(p => p.id === planId ? { ...p, active } : p));
+    setFeeStatus(prev => {
+      const mapped = { id: data.id, feeItemId: data.fee_item_id, rowerId: data.rower_id, paid: !!data.paid, paidAt: data.paid_at };
+      return existing ? prev.map(s => (s.feeItemId === feeItemId && s.rowerId === rowerId) ? mapped : s) : [...prev, mapped];
+    });
   };
-  const removeFeePlan = async (planId) => {
-    const { error } = await supabase.from("fee_plans").delete().eq("id", planId);
-    if (error) { flash("No se pudo eliminar — puede que ya tenga cargos generados. Desactívala en vez de eliminarla."); return; }
-    setFeePlans(prev => prev.filter(p => p.id !== planId));
-    flash("Cuota eliminada");
-  };
-  // Genera un cargo pendiente para cada remero al que aplique el plan, para el periodo indicado —
-  // no duplica si ya se habían generado los cargos de ese mismo periodo
-  const generateFeeCharges = async (planId, periodLabel, dueDate) => {
-    const plan = feePlans.find(p => p.id === planId);
-    if (!plan || !periodLabel.trim()) return;
-    const targetRowers = assignedUsers.filter(u => roleOf(u.id) === "rower" && u.clubId === currentClubId && (!plan.teamId || teamOf(u.id) === plan.teamId));
-    const already = new Set(feeCharges.filter(c => c.feePlanId === planId && c.periodLabel === periodLabel).map(c => c.rowerId));
-    const toCreate = targetRowers.filter(u => !already.has(u.id));
-    if (toCreate.length === 0) { flash("Ya se habían generado los cargos de ese periodo (o no hay remeros a los que aplique)."); return; }
-    const rows = toCreate.map(u => ({
-      fee_plan_id: planId, rower_id: u.id, period_label: periodLabel.trim(), due_date: dueDate || null, amount: plan.amount, status: "pending",
-    }));
-    const { data, error } = await supabase.from("fee_charges").insert(rows).select();
-    if (error) { flash("No se pudieron generar los cargos. Inténtalo de nuevo."); return; }
-    setFeeCharges(prev => [...data.map(c => ({
-      id: c.id, feePlanId: c.fee_plan_id, rowerId: c.rower_id, periodLabel: c.period_label,
-      dueDate: c.due_date, amount: parseFloat(c.amount), status: c.status, paidAt: c.paid_at, paidMethod: c.paid_method, notes: c.notes || "",
-    })), ...prev]);
-    flash(`${data.length} cargo${data.length === 1 ? "" : "s"} generado${data.length === 1 ? "" : "s"} para "${periodLabel}"`);
-  };
-  const markChargePaid = async (chargeId, method) => {
-    const paidAt = new Date().toISOString();
-    const { error } = await supabase.from("fee_charges").update({ status: "paid", paid_at: paidAt, paid_method: method }).eq("id", chargeId);
-    if (error) { flash("No se pudo marcar como pagado. Inténtalo de nuevo."); return; }
-    setFeeCharges(prev => prev.map(c => c.id === chargeId ? { ...c, status: "paid", paidAt, paidMethod: method } : c));
-  };
-  const markChargeUnpaid = async (chargeId) => {
-    const { error } = await supabase.from("fee_charges").update({ status: "pending", paid_at: null, paid_method: null }).eq("id", chargeId);
-    if (error) { flash("No se pudo actualizar. Inténtalo de nuevo."); return; }
-    setFeeCharges(prev => prev.map(c => c.id === chargeId ? { ...c, status: "pending", paidAt: null, paidMethod: null } : c));
-  };
-  const removeFeeCharge = async (chargeId) => {
-    const { error } = await supabase.from("fee_charges").delete().eq("id", chargeId);
-    if (error) { flash("No se pudo eliminar el cargo. Inténtalo de nuevo."); return; }
-    setFeeCharges(prev => prev.filter(c => c.id !== chargeId));
+
+  // --- Nota del club sobre un usuario en concreto (distinta de las notas privadas del propio remero) ---
+  const setClubMemberNote = async (rowerId, text) => {
+    const { error } = await supabase.from("club_member_notes").upsert(
+      { club_id: currentClubId, rower_id: rowerId, text, updated_at: new Date().toISOString() },
+      { onConflict: "club_id,rower_id" }
+    );
+    if (error) { flash("No se pudo guardar la nota. Inténtalo de nuevo."); return; }
+    setClubMemberNotes(prev => ({ ...prev, [rowerId]: text }));
   };
 
   const recoverPassword = async (username) => {
@@ -2805,36 +2799,34 @@ export default function ViradaPrototype() {
               })()}
               {screen === "clubFees" && (role === "club" || role === "admin") && (
                 <ClubFeesScreen
-                  plans={feePlans.filter(p => p.clubId === currentClubId)}
-                  teams={clubTeams}
-                  teamName={teamName}
+                  catalog={feeCatalog.filter(i => i.clubId === currentClubId)}
+                  members={[
+                    ...ROWERS.map(r => ({ id: r.id, name: r.name })),
+                    ...clubAssignedUsers,
+                  ].map(m => ({ id: m.id, name: displayNameOf(m.id), roleLabel: roleOf(m.id) === "coach" ? "Entrenador" : "Remero" }))}
+                  feeStatus={feeStatus}
                   onBack={() => setScreen("home")}
-                  onOpenPlan={(id) => { setOpenFeePlanId(id); setScreen("feePlanDetail"); }}
-                  onAddPlan={addFeePlan}
+                  onOpenMember={(id) => { setOpenFeeMemberId(id); setScreen("clubMemberFees"); }}
+                  onAddItem={addFeeCatalogItem}
+                  onUpdateItem={updateFeeCatalogItem}
+                  onRemoveItem={removeFeeCatalogItem}
                 />
               )}
-              {screen === "feePlanDetail" && openFeePlanId && (() => {
-                const plan = feePlans.find(p => p.id === openFeePlanId);
-                if (!plan) return null;
-                return (
-                  <FeePlanDetailScreen
-                    plan={plan}
-                    charges={feeCharges.filter(c => c.feePlanId === plan.id)}
-                    nameOf={displayNameOf}
-                    teamName={teamName}
-                    onBack={() => setScreen("clubFees")}
-                    onToggleActive={toggleFeePlanActive}
-                    onRemovePlan={(id) => { removeFeePlan(id); setScreen("clubFees"); }}
-                    onGenerate={generateFeeCharges}
-                    onMarkPaid={markChargePaid}
-                    onMarkUnpaid={markChargeUnpaid}
-                    onRemoveCharge={removeFeeCharge}
-                  />
-                );
-              })()}
+              {screen === "clubMemberFees" && openFeeMemberId && (
+                <ClubMemberFeesScreen
+                  member={{ id: openFeeMemberId, name: displayNameOf(openFeeMemberId), roleLabel: roleOf(openFeeMemberId) === "coach" ? "Entrenador" : "Remero" }}
+                  catalog={feeCatalog.filter(i => i.clubId === currentClubId)}
+                  feeStatus={feeStatus}
+                  note={clubMemberNotes[openFeeMemberId] || ""}
+                  onBack={() => setScreen("clubFees")}
+                  onToggleFee={toggleFeeStatus}
+                  onSaveNote={setClubMemberNote}
+                />
+              )}
               {screen === "myFees" && (
                 <MyFeesScreen
-                  charges={feeCharges.filter(c => c.rowerId === currentUserId)}
+                  catalog={feeCatalog.filter(i => i.clubId === currentClubId)}
+                  feeStatus={feeStatus.filter(s => s.rowerId === currentUserId)}
                   onBack={() => setScreen("home")}
                 />
               )}
@@ -4914,202 +4906,195 @@ function ClubEventDetailScreen({ event: e, editable, teams, teamName, onBack, on
   );
 }
 
-const FEE_FREQ_LABELS = { monthly: "Mensual", quarterly: "Trimestral", once: "Pago único" };
+const FEE_STATUS_META_2 = {
+  paid: { label: "Pagado", color: "var(--vir-green, #3EA55A)" },
+  pending: { label: "Pendiente", color: "var(--vir-error, #FF8890)" },
+};
 
-// Lista de cuotas del club — el club crea las cuotas (nombre, importe, a quién aplica, frecuencia),
-// y desde aquí entra en cada una para generar los cargos periodo a periodo
-function ClubFeesScreen({ plans, teams, teamName, onBack, onOpenPlan, onAddPlan }) {
+// CUOTAS DEL CLUB — dos apartados: la "Configuración" (el catálogo de cuotas anuales que tiene
+// el club, editable), y "Usuarios" (todos los usuarios del club, para entrar en la ficha de cada uno)
+function ClubFeesScreen({ catalog, members, feeStatus, onBack, onOpenMember, onAddItem, onUpdateItem, onRemoveItem }) {
+  const [section, setSection] = useState("config"); // "config" | "users"
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
-  const [teamId, setTeamId] = useState("");
-  const [frequency, setFrequency] = useState("monthly");
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editAmount, setEditAmount] = useState("");
+
+  const paidCountFor = (rowerId) => {
+    if (catalog.length === 0) return null;
+    const paid = feeStatus.filter(s => s.rowerId === rowerId && s.paid).length;
+    return `${paid}/${catalog.length}`;
+  };
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
-      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Gestión de cuotas</h2>
-      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Define las cuotas del club, y desde cada una genera los cargos del periodo que toque.</p>
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Cuotas del club</h2>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Configura las cuotas anuales del club, y marca en la ficha de cada usuario cuáles tiene pagadas.</p>
 
-      {plans.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13, marginBottom: 14 }}>Todavía no hay ninguna cuota definida.</p>}
+      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+        <ScopeChip active={section === "config"} onClick={() => setSection("config")} label="Configuración" />
+        <ScopeChip active={section === "users"} onClick={() => setSection("users")} label="Usuarios" />
+      </div>
 
-      {plans.map(p => (
-        <div key={p.id} className="vir-btn" onClick={() => onOpenPlan(p.id)} style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)",
-          borderRadius: 12, padding: "13px 16px", marginBottom: 10, opacity: p.active ? 1 : 0.55,
-        }}>
-          <div>
-            <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{p.name}{!p.active && " (inactiva)"}</p>
-            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>
-              {p.amount.toFixed(2)}€ · {FEE_FREQ_LABELS[p.frequency]} · {p.teamId ? teamName(p.teamId) : "Todo el club"}
-            </p>
-          </div>
-          <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
-        </div>
-      ))}
+      {section === "config" && (
+        <>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Cuotas anuales</p>
+          {catalog.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13, marginBottom: 14 }}>Todavía no hay ninguna cuota definida.</p>}
+          {catalog.map(item => (
+            <div key={item.id} style={{ background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+              {editingId === item.id ? (
+                <>
+                  <input value={editName} onChange={e => setEditName(e.target.value)} style={{ ...inputStyle, padding: "9px 11px", fontSize: 13, width: "100%", marginBottom: 8 }} />
+                  <input type="number" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)} style={{ ...inputStyle, padding: "9px 11px", fontSize: 13, width: "100%", marginBottom: 10 }} />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="vir-btn" onClick={() => { onUpdateItem(item.id, { name: editName, amount: editAmount }); setEditingId(null); }} style={{ ...primaryBtn, width: "auto", flex: 1, padding: "8px 0", fontSize: 12 }}>Guardar</button>
+                    <button className="vir-btn" onClick={() => setEditingId(null)} style={{ ...ghostBtn, width: "auto", padding: "8px 14px", fontSize: 12 }}>Cancelar</button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div className="vir-btn" onClick={() => { setEditingId(item.id); setEditName(item.name); setEditAmount(String(item.amount)); }} style={{ flex: 1 }}>
+                    <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{item.name}</p>
+                    <p className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12, margin: "3px 0 0" }}>{item.amount.toFixed(2)}€</p>
+                  </div>
+                  <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar "${item.name}" del catálogo? Se perderá también el registro de quién la había pagado.`)) onRemoveItem(item.id); }} style={{ background: "transparent", color: "var(--vir-error, #FF8890)", padding: 6 }}>
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
 
-      {adding ? (
-        <div style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, marginTop: 6 }}>
-          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Nueva cuota</p>
+          {adding ? (
+            <div style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, marginTop: 6 }}>
+              <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Nombre</label>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="Ej. Cuota inscripción al club" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }} />
+              <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Importe (€)</label>
+              <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="35.00" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 14 }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  className="vir-btn"
+                  disabled={!name.trim()}
+                  onClick={() => { onAddItem(name, amount); setName(""); setAmount(""); setAdding(false); }}
+                  style={{ ...primaryBtn, width: "auto", flex: 1, padding: "11px 0", fontSize: 13, opacity: name.trim() ? 1 : 0.4 }}
+                >Añadir</button>
+                <button className="vir-btn" onClick={() => setAdding(false)} style={{ ...ghostBtn, width: "auto", padding: "11px 16px", fontSize: 13 }}>Cancelar</button>
+              </div>
+            </div>
+          ) : (
+            <button className="vir-btn" onClick={() => setAdding(true)} style={{ ...primaryBtn, padding: "12px 0", fontSize: 13.5, marginTop: 6 }}>+ Añadir cuota</button>
+          )}
+        </>
+      )}
 
-          <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Nombre</label>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="Ej. Cuota Senior Masculino" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }} />
-
-          <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Importe (€)</label>
-          <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="35.00" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }} />
-
-          <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Aplica a</label>
-          <select value={teamId} onChange={e => setTeamId(e.target.value)} style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }}>
-            <option value="">Todo el club</option>
-            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-
-          <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Frecuencia</label>
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            {Object.entries(FEE_FREQ_LABELS).map(([id, label]) => (
-              <button key={id} className="vir-btn" onClick={() => setFrequency(id)} style={{
-                flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 12, fontWeight: frequency === id ? 700 : 500,
-                background: frequency === id ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
-                border: `1px solid ${frequency === id ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
-                color: frequency === id ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
-              }}>{label}</button>
-            ))}
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="vir-btn"
-              disabled={!name.trim() || !amount}
-              onClick={() => { onAddPlan(teamId, name, amount, frequency); setName(""); setAmount(""); setTeamId(""); setFrequency("monthly"); setAdding(false); }}
-              style={{ ...primaryBtn, width: "auto", flex: 1, padding: "11px 0", fontSize: 13, opacity: (name.trim() && amount) ? 1 : 0.4 }}
-            >Crear</button>
-            <button className="vir-btn" onClick={() => setAdding(false)} style={{ ...ghostBtn, width: "auto", padding: "11px 16px", fontSize: 13 }}>Cancelar</button>
-          </div>
-        </div>
-      ) : (
-        <button className="vir-btn" onClick={() => setAdding(true)} style={{ ...primaryBtn, padding: "12px 0", fontSize: 13.5, marginTop: 6 }}>+ Nueva cuota</button>
+      {section === "users" && (
+        <>
+          {members.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>No hay usuarios en el club todavía.</p>}
+          {members.map(m => (
+            <div key={m.id} className="vir-btn" onClick={() => onOpenMember(m.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, padding: "13px 16px", marginBottom: 10 }}>
+              <div>
+                <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{m.name}</p>
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>{m.roleLabel}{paidCountFor(m.id) ? ` · ${paidCountFor(m.id)} cuotas pagadas` : ""}</p>
+              </div>
+              <ChevronRight size={18} color="var(--vir-text-muted, #8A8A8A)" />
+            </div>
+          ))}
+        </>
       )}
     </div>
   );
 }
 
-const FEE_STATUS_META = {
-  pending: { label: "Pendiente", color: "var(--vir-orange, #E67E22)" },
-  paid: { label: "Pagado", color: "var(--vir-green, #3EA55A)" },
-  overdue: { label: "Atrasado", color: "var(--vir-error, #FF8890)" },
-  waived: { label: "Exento", color: "var(--vir-text-muted, #8A8A8A)" },
-};
+// Ficha de cuotas y notas de un usuario en concreto, vista del club — pestañas Cuotas / Notas
+function ClubMemberFeesScreen({ member, catalog, feeStatus, note, onBack, onToggleFee, onSaveNote }) {
+  const [tab, setTab] = useState("cuotas"); // "cuotas" | "notas"
+  const [noteInput, setNoteInput] = useState(note || "");
 
-// Detalle de una cuota: generar los cargos de un periodo nuevo, y ver/marcar el estado de cada cargo ya generado
-function FeePlanDetailScreen({ plan, charges, nameOf, teamName, onBack, onToggleActive, onRemovePlan, onGenerate, onMarkPaid, onMarkUnpaid, onRemoveCharge }) {
-  const [periodLabel, setPeriodLabel] = useState("");
-  const [dueDate, setDueDate] = useState("");
-
-  const byPeriod = {};
-  charges.forEach(c => { (byPeriod[c.periodLabel] = byPeriod[c.periodLabel] || []).push(c); });
-  const periods = Object.keys(byPeriod).sort().reverse();
+  const statusFor = (itemId) => feeStatus.find(s => s.feeItemId === itemId && s.rowerId === member.id)?.paid || false;
 
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "10px 0 2px" }}>
-        <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: 0 }}>{plan.name}</h2>
-        <button className="vir-btn" onClick={() => { if (window.confirm(`¿Eliminar la cuota "${plan.name}"?`)) onRemovePlan(plan.id); }} style={{ background: "transparent", color: "var(--vir-error, #FF8890)", fontSize: 11, textDecoration: "underline" }}>Eliminar</button>
-      </div>
-      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 14px" }}>
-        {plan.amount.toFixed(2)}€ · {FEE_FREQ_LABELS[plan.frequency]} · {plan.teamId ? teamName(plan.teamId) : "Todo el club"}
-      </p>
+      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>{member.name}</h2>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px" }}>{member.roleLabel}</p>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 10, padding: "10px 14px", marginBottom: 20 }}>
-        <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, margin: 0 }}>Cuota activa</p>
-        <ToggleSwitch checked={plan.active} onChange={() => onToggleActive(plan.id, !plan.active)} />
+      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+        <ScopeChip active={tab === "cuotas"} onClick={() => setTab("cuotas")} label="Cuotas" />
+        <ScopeChip active={tab === "notas"} onClick={() => setTab("notas")} label="Notas" />
       </div>
 
-      <div style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, marginBottom: 22 }}>
-        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Generar cargos de un periodo</p>
-        <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Periodo</label>
-        <input value={periodLabel} onChange={e => setPeriodLabel(e.target.value)} placeholder="Ej. Septiembre 2026" style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 12 }} />
-        <label style={{ fontSize: 12, color: "var(--vir-text-secondary, #ADADAD)", marginBottom: 6, display: "block" }}>Fecha límite de pago (opcional)</label>
-        <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={{ ...inputStyle, padding: "11px", fontSize: 15, width: "100%", marginBottom: 14 }} />
-        <button
-          className="vir-btn"
-          disabled={!periodLabel.trim()}
-          onClick={() => { onGenerate(plan.id, periodLabel, dueDate); setPeriodLabel(""); setDueDate(""); }}
-          style={{ ...primaryBtn, padding: "11px 0", fontSize: 13, opacity: periodLabel.trim() ? 1 : 0.4 }}
-        >Generar cargos para todos</button>
-      </div>
-
-      {periods.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>Todavía no se han generado cargos para esta cuota.</p>}
-
-      {periods.map(period => {
-        const items = byPeriod[period];
-        const paidCount = items.filter(c => c.status === "paid").length;
-        return (
-          <div key={period} style={{ marginBottom: 18 }}>
-            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>
-              {period} · {paidCount}/{items.length} pagados
-            </p>
-            {items.map(c => {
-              const meta = FEE_STATUS_META[c.status] || FEE_STATUS_META.pending;
-              return (
-                <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: `1px solid ${meta.color}`, borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>
-                  <div>
-                    <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, fontWeight: 600, margin: 0 }}>{nameOf(c.rowerId)}</p>
-                    <p style={{ color: meta.color, fontSize: 11, fontWeight: 600, margin: "3px 0 0" }}>{meta.label} · {c.amount.toFixed(2)}€{c.dueDate ? ` · vence ${c.dueDate}` : ""}</p>
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {c.status === "paid" ? (
-                      <button className="vir-btn" onClick={() => onMarkUnpaid(c.id)} style={{ ...ghostBtn, width: "auto", padding: "7px 10px", fontSize: 11 }}>Deshacer</button>
-                    ) : (
-                      <button className="vir-btn" onClick={() => onMarkPaid(c.id, "transferencia")} style={{ ...primaryBtn, width: "auto", padding: "7px 10px", fontSize: 11 }}>Marcar pagado</button>
-                    )}
-                    <button className="vir-btn" onClick={() => { if (window.confirm("¿Eliminar este cargo?")) onRemoveCharge(c.id); }} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", padding: 4 }}>
-                      <X size={14} />
-                    </button>
-                  </div>
+      {tab === "cuotas" && (
+        <>
+          {catalog.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>Todavía no hay ninguna cuota configurada — añádelas desde "Configuración".</p>}
+          {catalog.map(item => {
+            const paid = statusFor(item.id);
+            return (
+              <div key={item.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: `1px solid ${paid ? "var(--vir-green, #3EA55A)" : "var(--vir-error, #FF8890)"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+                <div>
+                  <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{item.name}</p>
+                  <p className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12, margin: "3px 0 0" }}>{item.amount.toFixed(2)}€</p>
                 </div>
-              );
-            })}
-          </div>
-        );
-      })}
+                <button
+                  className="vir-btn"
+                  onClick={() => onToggleFee(item.id, member.id, !paid)}
+                  style={{
+                    width: 38, height: 38, borderRadius: 19, display: "flex", alignItems: "center", justifyContent: "center",
+                    background: paid ? "var(--vir-green, #3EA55A)" : "var(--vir-error, #FF8890)", border: "none",
+                  }}
+                >
+                  {paid ? <Check size={20} color="#FFFFFF" /> : <X size={20} color="#FFFFFF" />}
+                </button>
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {tab === "notas" && (
+        <>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 8px" }}>Nota del club sobre este usuario</p>
+          <textarea
+            value={noteInput}
+            onChange={e => setNoteInput(e.target.value)}
+            onBlur={() => noteInput !== (note || "") && onSaveNote(member.id, noteInput)}
+            rows={8}
+            placeholder="Apuntes internos del club sobre este usuario — no lo ve él."
+            style={{ ...inputStyle, padding: "12px", fontSize: 14, width: "100%", resize: "vertical" }}
+          />
+        </>
+      )}
     </div>
   );
 }
 
-// Vista del remero: lo que debe, lo que ya ha pagado, y cuándo
-function MyFeesScreen({ charges, onBack }) {
-  const pending = charges.filter(c => c.status === "pending" || c.status === "overdue");
-  const totalPending = pending.reduce((sum, c) => sum + c.amount, 0);
-  const sorted = [...charges].sort((a, b) => (b.dueDate || "0000-00-00").localeCompare(a.dueDate || "0000-00-00"));
-
+// Vista del remero (o de cualquier usuario): solo consulta, sin poder tocar nada
+function MyFeesScreen({ catalog, feeStatus, onBack }) {
+  const statusFor = (itemId) => feeStatus.find(s => s.feeItemId === itemId)?.paid || false;
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>Mis cuotas</h2>
-      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Lo que debes y lo que ya has pagado al club.</p>
+      <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, margin: "0 0 18px", lineHeight: 1.4 }}>Las cuotas del club, y cuáles tienes pagadas.</p>
 
-      {pending.length > 0 && (
-        <div style={{ background: "var(--vir-danger-bg, #402226)", border: "1px solid var(--vir-danger, #E24B4A)", borderRadius: 12, padding: "14px 16px", marginBottom: 20 }}>
-          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 4px" }}>Pendiente de pago</p>
-          <p className="vir-mono" style={{ color: "var(--vir-error, #FF8890)", fontSize: 24, fontWeight: 700, margin: 0 }}>{totalPending.toFixed(2)}€</p>
-        </div>
-      )}
+      {catalog.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>Tu club todavía no ha configurado ninguna cuota.</p>}
 
-      {sorted.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 13 }}>No tienes ninguna cuota registrada todavía.</p>}
-
-      {sorted.map(c => {
-        const meta = FEE_STATUS_META[c.status] || FEE_STATUS_META.pending;
+      {catalog.map(item => {
+        const paid = statusFor(item.id);
         return (
-          <div key={c.id} style={{ background: "var(--vir-bg-surface, #404040)", border: `1px solid ${meta.color}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13, fontWeight: 600, margin: 0 }}>{c.periodLabel}</p>
-              <p className="vir-mono" style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 14, fontWeight: 700, margin: 0 }}>{c.amount.toFixed(2)}€</p>
+          <div key={item.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface, #404040)", border: `1px solid ${paid ? "var(--vir-green, #3EA55A)" : "var(--vir-error, #FF8890)"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+            <div>
+              <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{item.name}</p>
+              <p className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12, margin: "3px 0 0" }}>{item.amount.toFixed(2)}€</p>
             </div>
-            <p style={{ color: meta.color, fontSize: 11.5, fontWeight: 600, margin: "6px 0 0" }}>
-              {meta.label}{c.status === "paid" && c.paidMethod ? ` · ${c.paidMethod}` : ""}{c.dueDate ? ` · vence ${c.dueDate}` : ""}
-            </p>
+            <div style={{
+              width: 32, height: 32, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center",
+              background: paid ? "var(--vir-green, #3EA55A)" : "var(--vir-error, #FF8890)",
+            }}>
+              {paid ? <Check size={16} color="#FFFFFF" /> : <X size={16} color="#FFFFFF" />}
+            </div>
           </div>
         );
       })}
