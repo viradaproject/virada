@@ -5419,6 +5419,21 @@ function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetR
 
             {role === "rower" ? (
               <div>
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Sección del club</p>
+                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                  {[{ id: "competicion", label: "Competición" }, { id: "ludico", label: "Lúdico" }].map(s => {
+                    const active = openPerson.section === s.id;
+                    return (
+                      <button key={s.id} className="vir-btn" onClick={() => onSetSection(openPerson.id, s.id)} style={{
+                        flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 12, fontWeight: active ? 700 : 500,
+                        background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+                        border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                        color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                      }}>{s.label}</button>
+                    );
+                  })}
+                </div>
+
                 <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Tripulaciones donde puede apuntarse a remar</p>
                 {["competicion", "ludico"].map(sec => (
                   <div key={sec} style={{ marginBottom: 14 }}>
@@ -5444,21 +5459,6 @@ function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetR
                   Puede seleccionar ninguna, una o varias. La marcada como "principal" es la que cuenta para su gimnasio, estadísticas e inicio — se ajusta sola si la quitas.
                 </p>
 
-                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Sección del club</p>
-                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                  {[{ id: "competicion", label: "Competición" }, { id: "ludico", label: "Lúdico" }].map(s => {
-                    const active = openPerson.section === s.id;
-                    return (
-                      <button key={s.id} className="vir-btn" onClick={() => onSetSection(openPerson.id, s.id)} style={{
-                        flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 12, fontWeight: active ? 700 : 500,
-                        background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
-                        border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
-                        color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
-                      }}>{s.label}</button>
-                    );
-                  })}
-                </div>
-
                 <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Delegado de (elige una, o ninguna)</p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {teams.map(t => {
@@ -5479,6 +5479,21 @@ function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetR
               </div>
             ) : (
               <div>
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Sección del club</p>
+                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                  {[{ id: "competicion", label: "Competición" }, { id: "ludico", label: "Lúdico" }].map(s => {
+                    const active = openPerson.section === s.id;
+                    return (
+                      <button key={s.id} className="vir-btn" onClick={() => onSetSection(openPerson.id, s.id)} style={{
+                        flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 12, fontWeight: active ? 700 : 500,
+                        background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+                        border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                        color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                      }}>{s.label}</button>
+                    );
+                  })}
+                </div>
+
                 <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Tripulaciones que puede gestionar</p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
                   {teams.map(t => {
