@@ -1178,6 +1178,15 @@ export default function ViradaPrototype() {
     flash(parts.length > 0 ? `Temporada actualizada: ${parts.join(", ")}` : "Temporada guardada");
   };
 
+  // Solo el club puede renombrar una tripulación, una vez ya creada
+  const renameTeam = async (id, name) => {
+    const trimmed = (name || "").trim();
+    if (!trimmed) return;
+    const { error } = await supabase.from("teams").update({ name: trimmed }).eq("id", id);
+    if (error) { flash("No se pudo renombrar la tripulación. Inténtalo de nuevo."); return; }
+    setTeams(prev => prev.map(t => t.id === id ? { ...t, name: trimmed } : t));
+    flash("Tripulación renombrada");
+  };
   const removeTeam = async (id) => {
     const t = teams.find(t => t.id === id);
     const { error } = await supabase.from("teams").delete().eq("id", id);
@@ -2880,6 +2889,8 @@ export default function ViradaPrototype() {
                   ].filter(m => (roleOf(m.id) === "rower" && teamOf(m.id) === openTeam.id) || (roleOf(m.id) === "coach" && managedTeamsOf(m.id).includes(openTeam.id)))
                     .map(m => ({ ...m, isCoach: roleOf(m.id) === "coach" }))}
                   onExport={() => setScreen("teamExport")}
+                  editable={role === "club" || role === "admin"}
+                  onRename={renameTeam}
                 />
               )}
               {screen === "teamExport" && (role === "club" || role === "admin") && openTeam && (
@@ -5554,30 +5565,48 @@ function ClubTeamsScreen({ teams, onAddTeam, onRemoveTeam, onOpenTeam, teamOf, r
     onAddTeam(trimmed, section);
     setName(""); setSection(null);
   };
+
+  const teamRow = (t) => {
+    const count = members.filter(m => roleOf(m.id) === "rower" && teamOf(m.id) === t.id).length;
+    return (
+      <div key={t.id} className="vir-btn" onClick={() => onOpenTeam(t)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, marginBottom: 10 }}>
+        <div>
+          <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.name}</p>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>{count} remeros</p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12 }}>{t.code}</span>
+          <button className="vir-btn" onClick={(e) => { e.stopPropagation(); if (window.confirm(`¿Eliminar la tripulación "${t.name}"? Se perderán sus entrenos de agua, plan de gimnasio y remeros dejarán de tenerla asignada.`)) onRemoveTeam(t.id); }} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", padding: 4, borderRadius: 8 }} title="Eliminar tripulación">
+            <X size={16} />
+          </button>
+          <ChevronRight size={16} color="var(--vir-text-muted, #8A8A8A)" />
+        </div>
+      </div>
+    );
+  };
+
+  const competicion = teams.filter(t => t.section === "competicion");
+  const ludico = teams.filter(t => t.section === "ludico");
+  const sinSeccion = teams.filter(t => t.section !== "competicion" && t.section !== "ludico");
+
   return (
     <div style={{ paddingBottom: 20 }}>
       <SectionTitle sub="Toca una tripulación para ver quién la forma">Tripulaciones y categorías</SectionTitle>
       <div style={{ padding: "10px 16px" }}>
-        {teams.map(t => {
-          const count = members.filter(m => roleOf(m.id) === "rower" && teamOf(m.id) === t.id).length;
-          return (
-            <div key={t.id} className="vir-btn" onClick={() => onOpenTeam(t)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, marginBottom: 10 }}>
-              <div>
-                <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.name}</p>
-                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>
-                  {count} remeros{t.section ? ` · ${SECTION_LABELS[t.section]}` : ""}
-                </p>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12 }}>{t.code}</span>
-                <button className="vir-btn" onClick={(e) => { e.stopPropagation(); if (window.confirm(`¿Eliminar la tripulación "${t.name}"? Se perderán sus entrenos de agua, plan de gimnasio y remeros dejarán de tenerla asignada.`)) onRemoveTeam(t.id); }} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", padding: 4, borderRadius: 8 }} title="Eliminar tripulación">
-                  <X size={16} />
-                </button>
-                <ChevronRight size={16} color="var(--vir-text-muted, #8A8A8A)" />
-              </div>
-            </div>
-          );
-        })}
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Competición</p>
+        {competicion.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, marginBottom: 14 }}>Sin tripulaciones todavía.</p>}
+        {competicion.map(teamRow)}
+
+        <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "18px 0 10px" }}>Lúdico</p>
+        {ludico.length === 0 && <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 12.5, marginBottom: 14 }}>Sin tripulaciones todavía.</p>}
+        {ludico.map(teamRow)}
+
+        {sinSeccion.length > 0 && (
+          <>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "18px 0 10px" }}>Sin ámbito asignado</p>
+            {sinSeccion.map(teamRow)}
+          </>
+        )}
 
         <div style={{ marginTop: 18, background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14 }}>
           <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Nueva tripulación o categoría</p>
@@ -5601,13 +5630,35 @@ function ClubTeamsScreen({ teams, onAddTeam, onRemoveTeam, onOpenTeam, teamOf, r
   );
 }
 
-function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended, onExport }) {
+function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended, onExport, editable, onRename }) {
   const rowerCount = members.filter(m => !m.isCoach).length;
   const coachCount = members.filter(m => m.isCoach).length;
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(team.name);
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
-      <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>{team.name}</h2>
+      {editable && editingName ? (
+        <div style={{ display: "flex", gap: 8, margin: "10px 0 2px" }}>
+          <input
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+            autoFocus
+            style={{ ...inputStyle, fontSize: 18, padding: "9px 12px", flex: 1 }}
+          />
+          <button className="vir-btn" onClick={() => { if (nameInput.trim()) { onRename(team.id, nameInput); setEditingName(false); } }} style={{ ...primaryBtn, width: "auto", padding: "0 16px", fontSize: 13 }}>Guardar</button>
+          <button className="vir-btn" onClick={() => { setNameInput(team.name); setEditingName(false); }} style={{ ...ghostBtn, width: "auto", padding: "0 14px", fontSize: 13 }}>Cancelar</button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0 2px" }}>
+          <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: 0 }}>{team.name}</h2>
+          {editable && (
+            <button className="vir-btn" onClick={() => { setNameInput(team.name); setEditingName(true); }} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", padding: 4 }} title="Renombrar tripulación">
+              <Pencil size={15} />
+            </button>
+          )}
+        </div>
+      )}
       <p className="vir-mono" style={{ color: "var(--vir-red, #E61E29)", fontSize: 13, margin: "0 0 4px" }}>{team.code}{team.section ? ` · ${SECTION_LABELS[team.section]}` : ""}</p>
       <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "0 0 16px" }}>
         {rowerCount} remero{rowerCount === 1 ? "" : "s"}{coachCount > 0 ? ` · ${coachCount} entrenador${coachCount === 1 ? "" : "es"}` : ""}
