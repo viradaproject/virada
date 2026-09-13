@@ -367,6 +367,7 @@ export default function ViradaPrototype() {
   const [teamOverrides, setTeamOverrides] = useState({});
   const [roleOverrides, setRoleOverrides] = useState(DEMO_ROLE_OVERRIDES);
   const [coachTeams, setCoachTeams] = useState({});
+  const [rowerTeamAccess, setRowerTeamAccess] = useState({}); // { [rowerId]: [teamId, ...] } — dónde puede apuntarse a remar
   const [nicknameOverrides, setNicknameOverrides] = useState({});
   const [sideOverrides, setSideOverrides] = useState({});
   const [clubs, setClubs] = useState([DEMO_CLUB]); // { id, name, code, username, password, createdAt }
@@ -403,6 +404,12 @@ export default function ViradaPrototype() {
       const byCoach = {};
       permsData.forEach(p => { byCoach[p.coach_id] = [...(byCoach[p.coach_id] || []), p.team_id]; });
       setCoachTeams(byCoach);
+    }
+    const { data: rowerPermsData } = await supabase.from("rower_team_permissions").select("*");
+    if (rowerPermsData) {
+      const byRower = {};
+      rowerPermsData.forEach(p => { byRower[p.rower_id] = [...(byRower[p.rower_id] || []), p.team_id]; });
+      setRowerTeamAccess(byRower);
     }
   };
   const refetchRaces = async () => {
@@ -531,7 +538,7 @@ export default function ViradaPrototype() {
       await refetchCoachPerms();
       const { data: teamsData, error: teamsErr } = await supabase.from("teams").select("*");
       if (!teamsErr && teamsData) {
-        setTeams(teamsData.map(t => ({ id: t.id, clubId: t.club_id, name: t.name, code: t.code, section: t.section, seasonStart: t.season_start, seasonEnd: t.season_end })));
+        setTeams(teamsData.map(t => ({ id: t.id, clubId: t.club_id, name: t.name, code: t.code, section: t.section, category: t.category, seasonStart: t.season_start, seasonEnd: t.season_end })));
       }
       const { data: waterSessionsData, error: waterErr } = await supabase.from("water_sessions").select("*").order("iso", { ascending: true });
       const { data: crewsData } = await supabase.from("session_crews").select("*").order("created_at", { ascending: true });
@@ -714,7 +721,7 @@ export default function ViradaPrototype() {
           return;
         }
         const t = payload.new;
-        const mapped = { id: t.id, clubId: t.club_id, name: t.name, code: t.code, section: t.section, seasonStart: t.season_start, seasonEnd: t.season_end };
+        const mapped = { id: t.id, clubId: t.club_id, name: t.name, code: t.code, section: t.section, category: t.category, seasonStart: t.season_start, seasonEnd: t.season_end };
         setTeams(prev => {
           const exists = prev.some(x => x.id === mapped.id);
           return exists ? prev.map(x => x.id === mapped.id ? mapped : x) : [...prev, mapped];
@@ -981,6 +988,31 @@ export default function ViradaPrototype() {
     }
     flash("Permisos de gestión actualizados");
   };
+  // Tripulaciones donde un remero puede apuntarse a remar — puede ser ninguna, una, o varias.
+  // La tripulación "principal" (team_id, la que se usa para gimnasio/estadísticas/inicio) se ajusta
+  // sola si se queda sin marcar, a otra de las que sigan concedidas.
+  const rowingTeamsOf = (rowerId) => rowerTeamAccess[rowerId] || [];
+  const toggleRowerTeamAccess = async (rowerId, teamId) => {
+    const cur = rowerTeamAccess[rowerId] || [];
+    const granting = !cur.includes(teamId);
+    const next = granting ? [...cur, teamId] : cur.filter(id => id !== teamId);
+    setRowerTeamAccess(prev => ({ ...prev, [rowerId]: next }));
+    if (granting) {
+      const { error } = await supabase.from("rower_team_permissions").insert({ rower_id: rowerId, team_id: teamId });
+      if (error) { flash("No se pudo guardar el acceso. Inténtalo de nuevo."); return; }
+    } else {
+      const { error } = await supabase.from("rower_team_permissions").delete().eq("rower_id", rowerId).eq("team_id", teamId);
+      if (error) { flash("No se pudo quitar el acceso. Inténtalo de nuevo."); return; }
+    }
+    // Si la tripulación principal se queda sin acceso, o todavía no tenía ninguna, se ajusta sola
+    const currentPrimary = teamOf(rowerId);
+    if (granting && !currentPrimary) {
+      await assignTeam(rowerId, teamId);
+    } else if (!granting && currentPrimary === teamId) {
+      await assignTeam(rowerId, next[0] || null);
+    }
+    flash("Acceso a remar actualizado");
+  };
   const isUsernameTaken = (username) => {
     const u = (username || "").trim().toLowerCase();
     if (!u) return false;
@@ -1186,6 +1218,20 @@ export default function ViradaPrototype() {
     if (error) { flash("No se pudo renombrar la tripulación. Inténtalo de nuevo."); return; }
     setTeams(prev => prev.map(t => t.id === id ? { ...t, name: trimmed } : t));
     flash("Tripulación renombrada");
+  };
+  // El ámbito (competición/lúdico) se puede cambiar más adelante, aunque normalmente se queda fijo.
+  // Al cambiar a lúdico, se limpia la categoría (GEC/edad), que solo tiene sentido en competición.
+  const updateTeamSection = async (id, section) => {
+    const updates = { section };
+    if (section !== "competicion") updates.category = null;
+    const { error } = await supabase.from("teams").update(updates).eq("id", id);
+    if (error) { flash("No se pudo actualizar. Inténtalo de nuevo."); return; }
+    setTeams(prev => prev.map(t => t.id === id ? { ...t, section, category: section === "competicion" ? t.category : null } : t));
+  };
+  const updateTeamCategory = async (id, category) => {
+    const { error } = await supabase.from("teams").update({ category }).eq("id", id);
+    if (error) { flash("No se pudo actualizar. Inténtalo de nuevo."); return; }
+    setTeams(prev => prev.map(t => t.id === id ? { ...t, category } : t));
   };
   const removeTeam = async (id) => {
     const t = teams.find(t => t.id === id);
@@ -2891,6 +2937,8 @@ export default function ViradaPrototype() {
                   onExport={() => setScreen("teamExport")}
                   editable={role === "club" || role === "admin"}
                   onRename={renameTeam}
+                  onUpdateSection={updateTeamSection}
+                  onUpdateCategory={updateTeamCategory}
                 />
               )}
               {screen === "teamExport" && (role === "club" || role === "admin") && openTeam && (
@@ -2907,7 +2955,7 @@ export default function ViradaPrototype() {
                 />
               )}
               {screen === "users" && (role === "club" || role === "admin") && (
-                <ClubUsersScreen teams={clubTeams} teamName={teamName} teamOf={teamOf} roleOf={roleOf} onAssignTeam={assignTeam} onSetRole={setPersonRole} pendingUsers={clubPendingUsers} assignedUsers={clubAssignedUsers} onAssignPending={assignPendingUser} onRejectPending={rejectPendingUser} onRemoveUser={removeAssignedUser} managedTeamsOf={managedTeamsOf} onToggleCoachTeam={toggleCoachTeam} onSetSection={setPersonSection} onToggleDelegate={toggleDelegate} />
+                <ClubUsersScreen teams={clubTeams} teamName={teamName} teamOf={teamOf} roleOf={roleOf} onAssignTeam={assignTeam} onSetRole={setPersonRole} pendingUsers={clubPendingUsers} assignedUsers={clubAssignedUsers} onAssignPending={assignPendingUser} onRejectPending={rejectPendingUser} onRemoveUser={removeAssignedUser} managedTeamsOf={managedTeamsOf} onToggleCoachTeam={toggleCoachTeam} onSetSection={setPersonSection} onToggleDelegate={toggleDelegate} rowingTeamsOf={rowingTeamsOf} onToggleRowerTeam={toggleRowerTeamAccess} />
               )}
               {screen === "calendar" && effectiveRole === "rower" && (
                 <CalendarScreen sessions={rowerUpcoming} onOpen={(s) => { setOpenSession(s); setScreen("sessionRower"); }} onToggle={toggleSignup} myId={currentUserId} alertsFor={alertsFor} />
@@ -5323,7 +5371,7 @@ function RaceDetailScreen({ race: r, editable, onBack, onUpdateTitle, onUpdateNo
   );
 }
 
-function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetRole, pendingUsers, assignedUsers, onAssignPending, onRejectPending, onRemoveUser, managedTeamsOf, onToggleCoachTeam, onSetSection, onToggleDelegate }) {
+function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetRole, pendingUsers, assignedUsers, onAssignPending, onRejectPending, onRemoveUser, managedTeamsOf, onToggleCoachTeam, onSetSection, onToggleDelegate, rowingTeamsOf, onToggleRowerTeam }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [openId, setOpenId] = useState(null);
@@ -5371,15 +5419,30 @@ function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetR
 
             {role === "rower" ? (
               <div>
-                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 6px" }}>Categoría</p>
-                <select
-                  value={teamOf(openPerson.id) || ""}
-                  onChange={e => onAssignTeam(openPerson.id, e.target.value)}
-                  style={{ ...inputStyle, padding: "10px 11px", fontSize: 13, marginBottom: 16 }}
-                >
-                  <option value="" disabled>Sin asignar</option>
-                  {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Tripulaciones donde puede apuntarse a remar</p>
+                {["competicion", "ludico"].map(sec => (
+                  <div key={sec} style={{ marginBottom: 14 }}>
+                    <p style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11, fontWeight: 700, margin: "0 0 6px" }}>{SECTION_LABELS[sec]}</p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {teams.filter(t => t.section === sec).length === 0 && <span style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5 }}>Sin tripulaciones en este ámbito.</span>}
+                      {teams.filter(t => t.section === sec).map(t => {
+                        const granted = rowingTeamsOf(openPerson.id).includes(t.id);
+                        const isPrimary = teamOf(openPerson.id) === t.id;
+                        return (
+                          <button key={t.id} className="vir-btn" onClick={() => onToggleRowerTeam(openPerson.id, t.id)} style={{
+                            padding: "6px 12px", borderRadius: 20, fontSize: 11.5, fontWeight: 600,
+                            background: granted ? "var(--vir-green, #3EA55A)" : "var(--vir-bg-surface, #404040)",
+                            border: `1px solid ${granted ? "var(--vir-green, #3EA55A)" : "var(--vir-border, #565656)"}`,
+                            color: granted ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                          }}>{granted ? "✓ " : ""}{t.name}{isPrimary ? " · principal" : ""}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "0 0 16px", lineHeight: 1.4 }}>
+                  Puede seleccionar ninguna, una o varias. La marcada como "principal" es la que cuenta para su gimnasio, estadísticas e inicio — se ajusta sola si la quitas.
+                </p>
 
                 <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Sección del club</p>
                 <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -5555,6 +5618,16 @@ function PendingUserRow({ user, teams, onAssign, onReject }) {
 }
 
 const SECTION_LABELS = { competicion: "Competición", ludico: "Lúdico" };
+const TEAM_CATEGORIES = [
+  { id: "gec", label: "GEC" },
+  { id: "alevin", label: "Alevín" },
+  { id: "infantil", label: "Infantil" },
+  { id: "cadete", label: "Cadete" },
+  { id: "juvenil", label: "Juvenil" },
+  { id: "absoluto", label: "Absoluto" },
+  { id: "veterano", label: "Veterano" },
+];
+const categoryLabel = (id) => TEAM_CATEGORIES.find(c => c.id === id)?.label || id;
 
 function ClubTeamsScreen({ teams, onAddTeam, onRemoveTeam, onOpenTeam, teamOf, roleOf, members }) {
   const [name, setName] = useState("");
@@ -5630,24 +5703,27 @@ function ClubTeamsScreen({ teams, onAddTeam, onRemoveTeam, onOpenTeam, teamOf, r
   );
 }
 
-function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended, onExport, editable, onRename }) {
+function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended, onExport, editable, onRename, onUpdateSection, onUpdateCategory }) {
   const rowerCount = members.filter(m => !m.isCoach).length;
   const coachCount = members.filter(m => m.isCoach).length;
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(team.name);
+  const [editingSection, setEditingSection] = useState(false);
   return (
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
       {editable && editingName ? (
-        <div style={{ display: "flex", gap: 8, margin: "10px 0 2px" }}>
+        <div style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, margin: "10px 0 2px" }}>
           <input
             value={nameInput}
             onChange={e => setNameInput(e.target.value)}
             autoFocus
-            style={{ ...inputStyle, fontSize: 18, padding: "9px 12px", flex: 1 }}
+            style={{ ...inputStyle, fontSize: 18, padding: "11px 12px", width: "100%", marginBottom: 12 }}
           />
-          <button className="vir-btn" onClick={() => { if (nameInput.trim()) { onRename(team.id, nameInput); setEditingName(false); } }} style={{ ...primaryBtn, width: "auto", padding: "0 16px", fontSize: 13 }}>Guardar</button>
-          <button className="vir-btn" onClick={() => { setNameInput(team.name); setEditingName(false); }} style={{ ...ghostBtn, width: "auto", padding: "0 14px", fontSize: 13 }}>Cancelar</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="vir-btn" onClick={() => { if (nameInput.trim()) { onRename(team.id, nameInput); setEditingName(false); } }} style={{ ...primaryBtn, width: "auto", flex: 1, padding: "10px 0", fontSize: 13 }}>Aceptar</button>
+            <button className="vir-btn" onClick={() => { setNameInput(team.name); setEditingName(false); }} style={{ ...ghostBtn, width: "auto", flex: 1, padding: "10px 0", fontSize: 13 }}>Cancelar</button>
+          </div>
         </div>
       ) : (
         <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0 2px" }}>
@@ -5659,7 +5735,52 @@ function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended
           )}
         </div>
       )}
-      <p className="vir-mono" style={{ color: "var(--vir-red, #E61E29)", fontSize: 13, margin: "0 0 4px" }}>{team.code}{team.section ? ` · ${SECTION_LABELS[team.section]}` : ""}</p>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+        <p className="vir-mono" style={{ color: "var(--vir-red, #E61E29)", fontSize: 13, margin: 0 }}>
+          {team.code}{team.section ? ` · ${SECTION_LABELS[team.section]}` : ""}{team.category ? ` · ${categoryLabel(team.category)}` : ""}
+        </p>
+        {editable && (
+          <button className="vir-btn" onClick={() => setEditingSection(!editingSection)} style={{ background: "transparent", color: "var(--vir-text-muted, #8A8A8A)", padding: 2 }} title="Cambiar ámbito/categoría">
+            <Pencil size={12} />
+          </button>
+        )}
+      </div>
+      {editable && editingSection && (
+        <div style={{ background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14, marginBottom: 14 }}>
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Ámbito</p>
+          <div style={{ display: "flex", gap: 8, marginBottom: team.section === "competicion" ? 14 : 4 }}>
+            {[{ id: "competicion", label: "Competición" }, { id: "ludico", label: "Lúdico" }].map(s => {
+              const active = team.section === s.id;
+              return (
+                <button key={s.id} className="vir-btn" onClick={() => onUpdateSection(team.id, s.id)} style={{
+                  flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 12.5, fontWeight: active ? 700 : 500,
+                  background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+                  border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                  color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                }}>{s.label}</button>
+              );
+            })}
+          </div>
+          {team.section === "competicion" && (
+            <>
+              <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Categoría de competición</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {TEAM_CATEGORIES.map(c => {
+                  const active = team.category === c.id;
+                  return (
+                    <button key={c.id} className="vir-btn" onClick={() => onUpdateCategory(team.id, c.id)} style={{
+                      padding: "7px 12px", borderRadius: 18, fontSize: 11.5, fontWeight: active ? 700 : 500,
+                      background: active ? "var(--vir-green, #3EA55A)" : "var(--vir-bg-surface, #404040)",
+                      border: `1px solid ${active ? "var(--vir-green, #3EA55A)" : "var(--vir-border, #565656)"}`,
+                      color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                    }}>{c.label}</button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "0 0 16px" }}>
         {rowerCount} remero{rowerCount === 1 ? "" : "s"}{coachCount > 0 ? ` · ${coachCount} entrenador${coachCount === 1 ? "" : "es"}` : ""}
       </p>
