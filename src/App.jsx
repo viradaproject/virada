@@ -531,7 +531,7 @@ export default function ViradaPrototype() {
       await refetchCoachPerms();
       const { data: teamsData, error: teamsErr } = await supabase.from("teams").select("*");
       if (!teamsErr && teamsData) {
-        setTeams(teamsData.map(t => ({ id: t.id, clubId: t.club_id, name: t.name, code: t.code, seasonStart: t.season_start, seasonEnd: t.season_end })));
+        setTeams(teamsData.map(t => ({ id: t.id, clubId: t.club_id, name: t.name, code: t.code, section: t.section, seasonStart: t.season_start, seasonEnd: t.season_end })));
       }
       const { data: waterSessionsData, error: waterErr } = await supabase.from("water_sessions").select("*").order("iso", { ascending: true });
       const { data: crewsData } = await supabase.from("session_crews").select("*").order("created_at", { ascending: true });
@@ -714,7 +714,7 @@ export default function ViradaPrototype() {
           return;
         }
         const t = payload.new;
-        const mapped = { id: t.id, clubId: t.club_id, name: t.name, code: t.code, seasonStart: t.season_start, seasonEnd: t.season_end };
+        const mapped = { id: t.id, clubId: t.club_id, name: t.name, code: t.code, section: t.section, seasonStart: t.season_start, seasonEnd: t.season_end };
         setTeams(prev => {
           const exists = prev.some(x => x.id === mapped.id);
           return exists ? prev.map(x => x.id === mapped.id ? mapped : x) : [...prev, mapped];
@@ -1115,13 +1115,13 @@ export default function ViradaPrototype() {
 
   const teamName = (id) => teams.find(t => t.id === id)?.name || "—";
   const teamCode = (id) => teams.find(t => t.id === id)?.code || "—";
-  const addTeam = async (name) => {
+  const addTeam = async (name, section) => {
     const code = randomTeamCode();
     const { data, error } = await supabase.from("teams").insert({
-      club_id: currentClubId, name, code,
+      club_id: currentClubId, name, code, section: section || null,
     }).select().single();
     if (error) { flash("No se pudo crear la tripulación. Inténtalo de nuevo."); return; }
-    const newTeam = { id: data.id, clubId: data.club_id, name: data.name, code: data.code, seasonStart: null, seasonEnd: null };
+    const newTeam = { id: data.id, clubId: data.club_id, name: data.name, code: data.code, section: data.section, seasonStart: null, seasonEnd: null };
     setTeams(prev => [...prev, newTeam]);
     flash(`Tripulación "${name}" creada — configura su temporada desde "Entrenos de agua"`);
   };
@@ -5543,13 +5543,16 @@ function PendingUserRow({ user, teams, onAssign, onReject }) {
   );
 }
 
+const SECTION_LABELS = { competicion: "Competición", ludico: "Lúdico" };
+
 function ClubTeamsScreen({ teams, onAddTeam, onRemoveTeam, onOpenTeam, teamOf, roleOf, members }) {
   const [name, setName] = useState("");
+  const [section, setSection] = useState(null);
   const submit = () => {
     const trimmed = name.trim();
-    if (!trimmed) return;
-    onAddTeam(trimmed);
-    setName("");
+    if (!trimmed || !section) return;
+    onAddTeam(trimmed, section);
+    setName(""); setSection(null);
   };
   return (
     <div style={{ paddingBottom: 20 }}>
@@ -5561,7 +5564,9 @@ function ClubTeamsScreen({ teams, onAddTeam, onRemoveTeam, onOpenTeam, teamOf, r
             <div key={t.id} className="vir-btn" onClick={() => onOpenTeam(t)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "var(--vir-bg-surface, #404040)", border: "1px solid var(--vir-border, #565656)", borderRadius: 12, marginBottom: 10 }}>
               <div>
                 <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 13.5, fontWeight: 600, margin: 0 }}>{t.name}</p>
-                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>{count} remeros</p>
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "3px 0 0" }}>
+                  {count} remeros{t.section ? ` · ${SECTION_LABELS[t.section]}` : ""}
+                </p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span className="vir-mono" style={{ color: "var(--vir-text-secondary, #ADADAD)", fontSize: 12 }}>{t.code}</span>
@@ -5576,10 +5581,19 @@ function ClubTeamsScreen({ teams, onAddTeam, onRemoveTeam, onOpenTeam, teamOf, r
 
         <div style={{ marginTop: 18, background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 12, padding: 14 }}>
           <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: "0 0 10px" }}>Nueva tripulación o categoría</p>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Ej. Veteranos" style={{ ...inputStyle, flex: 1 }} />
-            <button className="vir-btn" onClick={submit} style={{ background: "var(--vir-red, #E61E29)", color: "var(--vir-text-primary, #F5F5F5)", fontWeight: 700, fontSize: 13, padding: "0 18px", borderRadius: 10 }}>Crear</button>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Ej. Veteranos" style={{ ...inputStyle, width: "100%", marginBottom: 10 }} />
+          <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, margin: "0 0 8px" }}>Ámbito</p>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            {[{ id: "competicion", label: "Competición" }, { id: "ludico", label: "Lúdico" }].map(s => (
+              <button key={s.id} className="vir-btn" onClick={() => setSection(s.id)} style={{
+                flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 12.5, fontWeight: section === s.id ? 700 : 500,
+                background: section === s.id ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+                border: `1px solid ${section === s.id ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                color: section === s.id ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+              }}>{s.label}</button>
+            ))}
           </div>
+          <button className="vir-btn" disabled={!name.trim() || !section} onClick={submit} style={{ ...primaryBtn, padding: "11px 0", fontSize: 13, opacity: (name.trim() && section) ? 1 : 0.4 }}>Crear</button>
           <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, margin: "8px 2px 0" }}>Se generará un código de tripulación automáticamente para compartir con el entrenador.</p>
         </div>
       </div>
@@ -5594,7 +5608,7 @@ function TeamDetailScreen({ team, onBack, members, trainedDays, weatherSuspended
     <div style={{ padding: "16px 20px 28px" }}>
       <BackRow onBack={onBack} />
       <h2 style={{ fontFamily: "'Big Shoulders Display', sans-serif", fontWeight: 800, fontSize: 22, color: "var(--vir-text-primary, #F5F5F5)", margin: "10px 0 2px" }}>{team.name}</h2>
-      <p className="vir-mono" style={{ color: "var(--vir-red, #E61E29)", fontSize: 13, margin: "0 0 4px" }}>{team.code}</p>
+      <p className="vir-mono" style={{ color: "var(--vir-red, #E61E29)", fontSize: 13, margin: "0 0 4px" }}>{team.code}{team.section ? ` · ${SECTION_LABELS[team.section]}` : ""}</p>
       <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11.5, margin: "0 0 16px" }}>
         {rowerCount} remero{rowerCount === 1 ? "" : "s"}{coachCount > 0 ? ` · ${coachCount} entrenador${coachCount === 1 ? "" : "es"}` : ""}
       </p>
