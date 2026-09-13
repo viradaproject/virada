@@ -5518,11 +5518,11 @@ function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetR
                   onChange={e => onAssignTeam(openPerson.id, e.target.value)}
                   style={{ ...inputStyle, padding: "10px 11px", fontSize: 13 }}
                 >
-                  <option value="">No rema — solo entrena</option>
+                  <option value="">Entrenador (sin gimnasio ni remo)</option>
                   {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
                 <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "6px 0 0", lineHeight: 1.4 }}>
-                  Si rema en alguna tripulación, podrá cambiar a "Vista Remero" desde su propia app para apuntarse a los físicos de gimnasio como cualquier otro remero. Sus entrenos de agua ya cuentan al asignarse él mismo desde la gestión de la tripulación.
+                  Si eliges "Entrenador", no puede apuntarse a los físicos de gimnasio ni contabiliza estadísticas de remero — solo está en la categoría de entrenador. Si rema en alguna tripulación, podrá cambiar a "Vista Remero" desde su propia app para apuntarse a los físicos de gimnasio como cualquier otro remero. Sus entrenos de agua ya cuentan al asignarse él mismo desde la gestión de la tripulación.
                 </p>
               </div>
             )}
