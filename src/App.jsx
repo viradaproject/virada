@@ -505,11 +505,12 @@ export default function ViradaPrototype() {
         const activeUsers = usersData.filter(u => u.status === "active").map(u => ({
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
           firstName: u.first_name || "", lastName: u.last_name || "", birthDate: u.birth_date || "", phone: u.phone || "",
-          authUserId: u.auth_user_id, rowerCode: u.rower_code || null,
+          authUserId: u.auth_user_id, rowerCode: u.rower_code || null, section: u.section || null, isDelegate: !!u.is_delegate,
         }));
         const pendingList = usersData.filter(u => u.status === "pending").map(u => ({
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
           firstName: u.first_name || "", lastName: u.last_name || "", birthDate: u.birth_date || "", phone: u.phone || "",
+          section: u.section || null,
         }));
         setAssignedUsers(activeUsers);
         setPendingUsers(pendingList);
@@ -730,7 +731,7 @@ export default function ViradaPrototype() {
         const entry = {
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
           firstName: u.first_name || "", lastName: u.last_name || "", birthDate: u.birth_date || "", phone: u.phone || "",
-          authUserId: u.auth_user_id, rowerCode: u.rower_code || null,
+          authUserId: u.auth_user_id, rowerCode: u.rower_code || null, section: u.section || null, isDelegate: !!u.is_delegate,
         };
         if (u.status === "active") {
           setAssignedUsers(prev => {
@@ -940,6 +941,24 @@ export default function ViradaPrototype() {
     if (newRowerCode) setAssignedUsers(prev => prev.map(u => u.id === id ? { ...u, rowerCode: newRowerCode } : u));
     flash(`${displayNameOf(id)} asignado a ${teamName(teamId)}`);
   };
+  const setPersonSection = async (id, section) => {
+    const { error } = await supabase.from("users").update({ section }).eq("id", id);
+    if (error) { flash("No se pudo actualizar. Inténtalo de nuevo."); return; }
+    setAssignedUsers(prev => prev.map(u => u.id === id ? { ...u, section } : u));
+  };
+  // Marca (o quita) a alguien como delegado de su propia tripulación — máximo 2 por tripulación
+  const toggleDelegate = async (id, isDelegate) => {
+    const person = assignedUsers.find(u => u.id === id);
+    const tId = teamOf(id);
+    if (isDelegate && tId) {
+      const currentDelegates = assignedUsers.filter(u => u.id !== id && u.isDelegate && teamOf(u.id) === tId).length;
+      if (currentDelegates >= 2) { flash("Esa tripulación ya tiene 2 delegados — quita uno antes de añadir otro."); return; }
+    }
+    const { error } = await supabase.from("users").update({ is_delegate: isDelegate }).eq("id", id);
+    if (error) { flash("No se pudo actualizar. Inténtalo de nuevo."); return; }
+    setAssignedUsers(prev => prev.map(u => u.id === id ? { ...u, isDelegate } : u));
+    flash(isDelegate ? `${displayNameOf(id)} marcado como delegado` : `${displayNameOf(id)} ya no es delegado`);
+  };
   const setPersonRole = async (id, role) => {
     const { data, error } = await supabase.from("users").update({ role }).eq("id", id).select();
     if (error) { flash("No se pudo actualizar el rol. Inténtalo de nuevo."); return; }
@@ -981,6 +1000,7 @@ export default function ViradaPrototype() {
     if (!person.username || person.username.trim().length < 3) { setLoginError("El usuario debe tener al menos 3 caracteres."); return; }
     if (!person.password || person.password.length < 4) { setLoginError("La contraseña debe tener al menos 4 caracteres."); return; }
     if (!person.side) { setLoginError("Elige tu función en el equipo."); return; }
+    if (!person.section) { setLoginError("Elige a qué sección del club perteneces (lúdico o competición)."); return; }
     if (person.password !== person.passwordRepeat) { setLoginError("Las contraseñas no coinciden."); return; }
     const code = (person.clubCode || "").trim();
     if (code.length !== 3) { setLoginError("El número de club debe tener 3 cifras."); return; }
@@ -1027,6 +1047,7 @@ export default function ViradaPrototype() {
       email: cleanEmail,
       phone: person.phone?.trim() || null,
       side: person.side,
+      section: person.section,
       status: "pending",
       photo_url: person.photo || null,
     }).select().single();
@@ -1535,6 +1556,9 @@ export default function ViradaPrototype() {
       const r = roleOf(u.id);
       if (broadcast.audience === "coaches") return r === "coach";
       if (broadcast.audience === "rowers") return r === "rower";
+      if (broadcast.audience === "competicion") return r === "rower" && u.section === "competicion";
+      if (broadcast.audience === "ludico") return r === "rower" && u.section === "ludico";
+      if (broadcast.audience === "delegates") return !!u.isDelegate;
       return r === "coach" || r === "rower";
     }).map(u => u.id);
   };
@@ -2620,8 +2644,9 @@ export default function ViradaPrototype() {
                   onSaveNote={setClubNote}
                   onRemoveNote={removeClubNote}
                   broadcasts={broadcasts.filter(b => b.teamId === null)}
-                  onSend={(payload) => sendBroadcast({ ...payload, teamId: null })}
+                  onSend={(payload) => sendBroadcast({ ...payload, teamId: payload.teamId || null })}
                   onRemoveBroadcast={removeBroadcast}
+                  teams={clubTeams}
                   onBack={() => setScreen("home")}
                 />
               )}
@@ -2871,7 +2896,7 @@ export default function ViradaPrototype() {
                 />
               )}
               {screen === "users" && (role === "club" || role === "admin") && (
-                <ClubUsersScreen teams={clubTeams} teamName={teamName} teamOf={teamOf} roleOf={roleOf} onAssignTeam={assignTeam} onSetRole={setPersonRole} pendingUsers={clubPendingUsers} assignedUsers={clubAssignedUsers} onAssignPending={assignPendingUser} onRejectPending={rejectPendingUser} onRemoveUser={removeAssignedUser} managedTeamsOf={managedTeamsOf} onToggleCoachTeam={toggleCoachTeam} />
+                <ClubUsersScreen teams={clubTeams} teamName={teamName} teamOf={teamOf} roleOf={roleOf} onAssignTeam={assignTeam} onSetRole={setPersonRole} pendingUsers={clubPendingUsers} assignedUsers={clubAssignedUsers} onAssignPending={assignPendingUser} onRejectPending={rejectPendingUser} onRemoveUser={removeAssignedUser} managedTeamsOf={managedTeamsOf} onToggleCoachTeam={toggleCoachTeam} onSetSection={setPersonSection} onToggleDelegate={toggleDelegate} />
               )}
               {screen === "calendar" && effectiveRole === "rower" && (
                 <CalendarScreen sessions={rowerUpcoming} onOpen={(s) => { setOpenSession(s); setScreen("sessionRower"); }} onToggle={toggleSignup} myId={currentUserId} alertsFor={alertsFor} />
@@ -3063,6 +3088,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
   const [view, setView] = useState("menu"); // "menu" | "registerClub" | "registerUser" | "loginClub" | "loginUser"
   const [showRegisterMenu, setShowRegisterMenu] = useState(false);
   const [regSide, setRegSide] = useState(null); // obligatorio: no viene preseleccionado
+  const [regSection, setRegSection] = useState(null); // "ludico" | "competicion" — obligatorio
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [apodoInput, setApodoInput] = useState("");
@@ -3093,7 +3119,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
     setUsernameInput(""); setPasswordInput(""); setApodoInput(""); setClubNameRegInput("");
     setClubCodeInput(""); setShowRecovery(false); setRecoverySent(false); setRegPhoto(null);
     setPasswordRepeatInput(""); setFirstNameInput(""); setLastNameInput(""); setBirthDateInput("");
-    setEmailInput(""); setPhoneInput(""); setRegSide(null); setUsernameTouched(false);
+    setEmailInput(""); setPhoneInput(""); setRegSide(null); setRegSection(null); setUsernameTouched(false);
     setLegalNameInput(""); setNifInput(""); setAddressInput(""); setCityInput(""); setPostalCodeInput("");
     setContactFirstNameInput(""); setContactLastNameInput(""); setContactRoleInput(""); setContactPhoneInput("");
     setShowRegisterMenu(false);
@@ -3112,7 +3138,7 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
       username: usernameInput, password: passwordInput, passwordRepeat: passwordRepeatInput,
       firstName: firstNameInput, lastName: lastNameInput, apodo: apodoInput,
       birthDate: birthDateInput, email: emailInput, phone: phoneInput,
-      side: regSide, clubCode: clubCodeInput, photo: regPhoto,
+      side: regSide, section: regSection, clubCode: clubCodeInput, photo: regPhoto,
     });
   };
 
@@ -3386,6 +3412,24 @@ function LoginScreen({ onRegisterClub, onLoginClub, onLoginUser, onRegisterUser,
                   }}>{letter}</span>
                   <span style={{ fontSize: 11.5, fontWeight: 600, color: active ? "#FFFFFF" : "var(--vir-text-primary, #E8E8E8)", textAlign: "left", lineHeight: 1.2 }}>{label}</span>
                 </button>
+              );
+            })}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "22px 0 12px", borderTop: "1px solid var(--vir-border, #565656)", paddingTop: 18 }}>
+            <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 11, textTransform: "uppercase", margin: 0 }}>Sección del club</p>
+            {regSection ? <Check size={13} color="var(--vir-green, #3EA55A)" /> : <span style={{ color: "var(--vir-red, #E61E29)", fontWeight: 800, fontSize: 14 }}>*</span>}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {[{ key: "competicion", label: "Competición" }, { key: "ludico", label: "Lúdico" }].map(({ key, label }) => {
+              const active = regSection === key;
+              return (
+                <button key={key} className="vir-btn" onClick={() => setRegSection(key)} style={{
+                  padding: "11px 12px", borderRadius: 10, fontSize: 12.5, fontWeight: active ? 700 : 500,
+                  background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+                  border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                  color: active ? "#FFFFFF" : "var(--vir-text-primary, #E8E8E8)",
+                }}>{label}</button>
               );
             })}
           </div>
@@ -5268,14 +5312,14 @@ function RaceDetailScreen({ race: r, editable, onBack, onUpdateTitle, onUpdateNo
   );
 }
 
-function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetRole, pendingUsers, assignedUsers, onAssignPending, onRejectPending, onRemoveUser, managedTeamsOf, onToggleCoachTeam }) {
+function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetRole, pendingUsers, assignedUsers, onAssignPending, onRejectPending, onRemoveUser, managedTeamsOf, onToggleCoachTeam, onSetSection, onToggleDelegate }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [openId, setOpenId] = useState(null);
 
   const people = [
     ...ROWERS.map(r => ({ id: r.id, name: r.name, nickname: r.nickname })),
-    ...assignedUsers.map(u => ({ id: u.id, name: u.username, nickname: u.apodo })),
+    ...assignedUsers.map(u => ({ id: u.id, name: u.username, nickname: u.apodo, section: u.section, isDelegate: u.isDelegate })),
   ];
 
   const visible = people.filter(p => {
@@ -5320,11 +5364,34 @@ function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetR
                 <select
                   value={teamOf(openPerson.id) || ""}
                   onChange={e => onAssignTeam(openPerson.id, e.target.value)}
-                  style={{ ...inputStyle, padding: "10px 11px", fontSize: 13 }}
+                  style={{ ...inputStyle, padding: "10px 11px", fontSize: 13, marginBottom: 16 }}
                 >
                   <option value="" disabled>Sin asignar</option>
                   {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
+
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Sección del club</p>
+                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                  {[{ id: "competicion", label: "Competición" }, { id: "ludico", label: "Lúdico" }].map(s => {
+                    const active = openPerson.section === s.id;
+                    return (
+                      <button key={s.id} className="vir-btn" onClick={() => onSetSection(openPerson.id, s.id)} style={{
+                        flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 12, fontWeight: active ? 700 : 500,
+                        background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)",
+                        border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`,
+                        color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                      }}>{s.label}</button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ paddingRight: 10 }}>
+                    <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, margin: 0 }}>Delegado de su tripulación</p>
+                    <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "3px 0 0" }}>Máximo 2 por tripulación</p>
+                  </div>
+                  <ToggleSwitch checked={!!openPerson.isDelegate} onChange={() => onToggleDelegate(openPerson.id, !openPerson.isDelegate)} disabled={!teamOf(openPerson.id)} />
+                </div>
               </div>
             ) : (
               <div>
@@ -5650,9 +5717,10 @@ function MeasurementBoatCard({ boat, members, measurements, editable, onSetValue
 }
 
 // Compone y programa un aviso puntual; se reutiliza en el club y en el entrenador
-function BroadcastComposer({ onSend, audienceOptions }) {
+function BroadcastComposer({ onSend, audienceOptions, teams, teamName }) {
   const [text, setText] = useState("");
   const [audience, setAudience] = useState(audienceOptions ? audienceOptions[0].id : "all");
+  const [teamId, setTeamId] = useState("");
   const [scheduling, setScheduling] = useState(false);
   const [dateInput, setDateInput] = useState("");
   const [timeInput, setTimeInput] = useState("");
@@ -5661,11 +5729,16 @@ function BroadcastComposer({ onSend, audienceOptions }) {
     if (!scheduling || !dateInput || !timeInput) return null;
     return new Date(`${dateInput}T${timeInput}:00`).toISOString();
   };
-  const canSend = text.trim().length > 0 && (!scheduling || (dateInput && timeInput));
+  const needsTeam = audience === "team";
+  const canSend = text.trim().length > 0 && (!scheduling || (dateInput && timeInput)) && (!needsTeam || teamId);
 
   const submit = () => {
-    onSend({ audience: audienceOptions ? audience : undefined, text: text.trim(), scheduledFor: scheduledFor() });
-    setText(""); setScheduling(false); setDateInput(""); setTimeInput("");
+    onSend({
+      audience: audienceOptions ? audience : undefined,
+      teamId: needsTeam ? teamId : undefined,
+      text: text.trim(), scheduledFor: scheduledFor(),
+    });
+    setText(""); setScheduling(false); setDateInput(""); setTimeInput(""); setTeamId("");
   };
 
   return (
@@ -5677,17 +5750,23 @@ function BroadcastComposer({ onSend, audienceOptions }) {
         style={{ ...inputStyle, fontSize: 16, padding: "11px", width: "100%", resize: "vertical", marginBottom: 10 }}
       />
       {audienceOptions && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
           {audienceOptions.map(a => {
             const active = audience === a.id;
             return (
               <button key={a.id} className="vir-btn" onClick={() => setAudience(a.id)} style={{
-                flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 11.5, fontWeight: active ? 700 : 400,
+                flex: "1 0 30%", padding: "8px 4px", borderRadius: 8, fontSize: 11, fontWeight: active ? 700 : 400,
                 background: active ? "var(--vir-red, #E61E29)" : "var(--vir-bg-surface, #404040)", border: `1px solid ${active ? "var(--vir-red, #E61E29)" : "var(--vir-border, #565656)"}`, color: active ? "#FFFFFF" : "var(--vir-text-primary, #F5F5F5)",
               }}>{a.label}</button>
             );
           })}
         </div>
+      )}
+      {needsTeam && teams && (
+        <select value={teamId} onChange={e => setTeamId(e.target.value)} style={{ ...inputStyle, padding: "10px 11px", fontSize: 13, width: "100%", marginBottom: 10 }}>
+          <option value="">Elige la tripulación</option>
+          {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
       )}
       <button className="vir-btn" onClick={() => setScheduling(!scheduling)} style={{ background: "transparent", color: "var(--vir-text-secondary, #ADADAD)", fontSize: 11.5, textDecoration: "underline", marginBottom: scheduling ? 10 : 12, display: "block" }}>
         {scheduling ? "Cancelar programación — enviar ahora" : "Programar para más adelante"}
@@ -5729,7 +5808,7 @@ function BroadcastLog({ items, onRemove }) {
   );
 }
 
-function ClubRemindersScreen({ note, onSaveNote, onRemoveNote, broadcasts, onSend, onRemoveBroadcast, onBack }) {
+function ClubRemindersScreen({ note, onSaveNote, onRemoveNote, broadcasts, onSend, onRemoveBroadcast, teams, onBack }) {
   const [editing, setEditing] = useState(false);
   const [input, setInput] = useState(note?.text || "");
   return (
@@ -5767,7 +5846,15 @@ function ClubRemindersScreen({ note, onSaveNote, onRemoveNote, broadcasts, onSen
       )}
 
       <BroadcastComposer
-        audienceOptions={[{ id: "all", label: "Todos" }, { id: "coaches", label: "Entrenadores" }, { id: "rowers", label: "Remeros" }]}
+        audienceOptions={[
+          { id: "all", label: "Todos" },
+          { id: "competicion", label: "Competición" },
+          { id: "ludico", label: "Lúdicos" },
+          { id: "team", label: "Una tripulación" },
+          { id: "coaches", label: "Entrenadores" },
+          { id: "delegates", label: "Delegados" },
+        ]}
+        teams={teams}
         onSend={onSend}
       />
 
