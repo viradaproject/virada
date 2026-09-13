@@ -512,7 +512,7 @@ export default function ViradaPrototype() {
         const activeUsers = usersData.filter(u => u.status === "active").map(u => ({
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
           firstName: u.first_name || "", lastName: u.last_name || "", birthDate: u.birth_date || "", phone: u.phone || "",
-          authUserId: u.auth_user_id, rowerCode: u.rower_code || null, section: u.section || null, isDelegate: !!u.is_delegate,
+          authUserId: u.auth_user_id, rowerCode: u.rower_code || null, section: u.section || null, delegateTeamId: u.delegate_team_id || null,
         }));
         const pendingList = usersData.filter(u => u.status === "pending").map(u => ({
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
@@ -738,7 +738,7 @@ export default function ViradaPrototype() {
         const entry = {
           id: u.id, clubId: u.club_id, username: u.username, apodo: u.nickname, side: u.side,
           firstName: u.first_name || "", lastName: u.last_name || "", birthDate: u.birth_date || "", phone: u.phone || "",
-          authUserId: u.auth_user_id, rowerCode: u.rower_code || null, section: u.section || null, isDelegate: !!u.is_delegate,
+          authUserId: u.auth_user_id, rowerCode: u.rower_code || null, section: u.section || null, delegateTeamId: u.delegate_team_id || null,
         };
         if (u.status === "active") {
           setAssignedUsers(prev => {
@@ -954,17 +954,17 @@ export default function ViradaPrototype() {
     setAssignedUsers(prev => prev.map(u => u.id === id ? { ...u, section } : u));
   };
   // Marca (o quita) a alguien como delegado de su propia tripulación — máximo 2 por tripulación
-  const toggleDelegate = async (id, isDelegate) => {
-    const person = assignedUsers.find(u => u.id === id);
-    const tId = teamOf(id);
-    if (isDelegate && tId) {
-      const currentDelegates = assignedUsers.filter(u => u.id !== id && u.isDelegate && teamOf(u.id) === tId).length;
+  // Delegado de una tripulación concreta — máximo 2 personas distintas por tripulación,
+  // y cada persona solo puede ser delegado de una tripulación a la vez (no de varias)
+  const setDelegateTeam = async (id, teamId) => {
+    if (teamId) {
+      const currentDelegates = assignedUsers.filter(u => u.id !== id && u.delegateTeamId === teamId).length;
       if (currentDelegates >= 2) { flash("Esa tripulación ya tiene 2 delegados — quita uno antes de añadir otro."); return; }
     }
-    const { error } = await supabase.from("users").update({ is_delegate: isDelegate }).eq("id", id);
+    const { error } = await supabase.from("users").update({ delegate_team_id: teamId }).eq("id", id);
     if (error) { flash("No se pudo actualizar. Inténtalo de nuevo."); return; }
-    setAssignedUsers(prev => prev.map(u => u.id === id ? { ...u, isDelegate } : u));
-    flash(isDelegate ? `${displayNameOf(id)} marcado como delegado` : `${displayNameOf(id)} ya no es delegado`);
+    setAssignedUsers(prev => prev.map(u => u.id === id ? { ...u, delegateTeamId: teamId } : u));
+    flash(teamId ? `${displayNameOf(id)} marcado como delegado de ${teamName(teamId)}` : `${displayNameOf(id)} ya no es delegado`);
   };
   const setPersonRole = async (id, role) => {
     const { data, error } = await supabase.from("users").update({ role }).eq("id", id).select();
@@ -1613,7 +1613,7 @@ export default function ViradaPrototype() {
       if (broadcast.audience === "rowers") return r === "rower";
       if (broadcast.audience === "competicion") return r === "rower" && u.section === "competicion";
       if (broadcast.audience === "ludico") return r === "rower" && u.section === "ludico";
-      if (broadcast.audience === "delegates") return !!u.isDelegate;
+      if (broadcast.audience === "delegates") return !!u.delegateTeamId;
       return r === "coach" || r === "rower";
     }).map(u => u.id);
   };
@@ -2955,7 +2955,7 @@ export default function ViradaPrototype() {
                 />
               )}
               {screen === "users" && (role === "club" || role === "admin") && (
-                <ClubUsersScreen teams={clubTeams} teamName={teamName} teamOf={teamOf} roleOf={roleOf} onAssignTeam={assignTeam} onSetRole={setPersonRole} pendingUsers={clubPendingUsers} assignedUsers={clubAssignedUsers} onAssignPending={assignPendingUser} onRejectPending={rejectPendingUser} onRemoveUser={removeAssignedUser} managedTeamsOf={managedTeamsOf} onToggleCoachTeam={toggleCoachTeam} onSetSection={setPersonSection} onToggleDelegate={toggleDelegate} rowingTeamsOf={rowingTeamsOf} onToggleRowerTeam={toggleRowerTeamAccess} />
+                <ClubUsersScreen teams={clubTeams} teamName={teamName} teamOf={teamOf} roleOf={roleOf} onAssignTeam={assignTeam} onSetRole={setPersonRole} pendingUsers={clubPendingUsers} assignedUsers={clubAssignedUsers} onAssignPending={assignPendingUser} onRejectPending={rejectPendingUser} onRemoveUser={removeAssignedUser} managedTeamsOf={managedTeamsOf} onToggleCoachTeam={toggleCoachTeam} onSetSection={setPersonSection} onSetDelegateTeam={setDelegateTeam} rowingTeamsOf={rowingTeamsOf} onToggleRowerTeam={toggleRowerTeamAccess} />
               )}
               {screen === "calendar" && effectiveRole === "rower" && (
                 <CalendarScreen sessions={rowerUpcoming} onOpen={(s) => { setOpenSession(s); setScreen("sessionRower"); }} onToggle={toggleSignup} myId={currentUserId} alertsFor={alertsFor} />
@@ -5371,14 +5371,14 @@ function RaceDetailScreen({ race: r, editable, onBack, onUpdateTitle, onUpdateNo
   );
 }
 
-function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetRole, pendingUsers, assignedUsers, onAssignPending, onRejectPending, onRemoveUser, managedTeamsOf, onToggleCoachTeam, onSetSection, onToggleDelegate, rowingTeamsOf, onToggleRowerTeam }) {
+function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetRole, pendingUsers, assignedUsers, onAssignPending, onRejectPending, onRemoveUser, managedTeamsOf, onToggleCoachTeam, onSetSection, onSetDelegateTeam, rowingTeamsOf, onToggleRowerTeam }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [openId, setOpenId] = useState(null);
 
   const people = [
     ...ROWERS.map(r => ({ id: r.id, name: r.name, nickname: r.nickname })),
-    ...assignedUsers.map(u => ({ id: u.id, name: u.username, nickname: u.apodo, section: u.section, isDelegate: u.isDelegate })),
+    ...assignedUsers.map(u => ({ id: u.id, name: u.username, nickname: u.apodo, section: u.section, delegateTeamId: u.delegateTeamId })),
   ];
 
   const visible = people.filter(p => {
@@ -5459,13 +5459,23 @@ function ClubUsersScreen({ teams, teamName, teamOf, roleOf, onAssignTeam, onSetR
                   })}
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--vir-bg-surface-alt, #3A3A3A)", border: "1px dashed var(--vir-border, #565656)", borderRadius: 10, padding: "10px 12px" }}>
-                  <div style={{ paddingRight: 10 }}>
-                    <p style={{ color: "var(--vir-text-primary, #F5F5F5)", fontSize: 12.5, margin: 0 }}>Delegado de su tripulación</p>
-                    <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "3px 0 0" }}>Máximo 2 por tripulación</p>
-                  </div>
-                  <ToggleSwitch checked={!!openPerson.isDelegate} onChange={() => onToggleDelegate(openPerson.id, !openPerson.isDelegate)} disabled={!teamOf(openPerson.id)} />
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, textTransform: "uppercase", margin: "0 0 8px" }}>Delegado de (elige una, o ninguna)</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {teams.map(t => {
+                    const active = openPerson.delegateTeamId === t.id;
+                    return (
+                      <button key={t.id} className="vir-btn" onClick={() => onSetDelegateTeam(openPerson.id, active ? null : t.id)} style={{
+                        padding: "6px 12px", borderRadius: 20, fontSize: 11.5, fontWeight: 600,
+                        background: active ? "var(--vir-green, #3EA55A)" : "var(--vir-bg-surface, #404040)",
+                        border: `1px solid ${active ? "var(--vir-green, #3EA55A)" : "var(--vir-border, #565656)"}`,
+                        color: active ? "#FFFFFF" : "var(--vir-text-secondary, #ADADAD)",
+                      }}>{active ? "✓ " : ""}{t.name}</button>
+                    );
+                  })}
                 </div>
+                <p style={{ color: "var(--vir-text-muted, #8A8A8A)", fontSize: 10.5, margin: "6px 0 0", lineHeight: 1.4 }}>
+                  Solo puede ser delegado de una tripulación a la vez, y como máximo 2 personas por tripulación.
+                </p>
               </div>
             ) : (
               <div>
